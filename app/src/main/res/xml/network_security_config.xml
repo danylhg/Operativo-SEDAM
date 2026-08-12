@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  El certificado del server está firmado por la CA LOCAL de mkcert (linux-ios.pem),
+  que Android NO confía por defecto. Aquí declaramos esa CA como de confianza.
+
+  PASO MANUAL: copia el cert de la CA a app/src/main/res/raw/sedam_ca.pem
+  (es el archivo ~/.local/share/mkcert/linux-ios.pem del server).
+
+  Se limita al dominio del server para no ampliar la confianza a toda la app.
+  Cuando pases a un cert de CA pública (Let's Encrypt, etc.) elimina este bloque.
+-->
+<network-security-config>
+    <!-- Servidor SEDAM local con CA personalizada -->
+    <domain-config>
+        <domain includeSubdomains="false">192.168.123.145</domain>
+        <trust-anchors>
+            <certificates src="@raw/sedam_ca" />
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- Permitir tiles de mapas públicos: OpenStreetMap, Google Maps, Mapbox, etc. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">tile.openstreetmap.org</domain>
+        <domain includeSubdomains="true">google.com</domain>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">mapbox.com</domain>
+        <domain includeSubdomains="true">opentopomap.org</domain>
+        <domain includeSubdomains="true">cartocdn.com</domain>
+        <domain includeSubdomains="true">arcgisonline.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
