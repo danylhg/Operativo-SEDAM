@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingHorizontal="14dp"
+    android:paddingVertical="2dp">
+
+    <LinearLayout
+        android:id="@+id/bubble"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start"
+        android:orientation="vertical"
+        android:background="@drawable/bg_bubble_recv"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp">
+
+        <TextView
+            android:id="@+id/msgMeta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#4E8BA0"
+            android:textSize="10sp"
+            android:layout_marginBottom="3dp"/>
+
+        <TextView
+            android:id="@+id/msgText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#e2e8f0"
+            android:textSize="13sp"
+            android:lineSpacingExtra="1dp"/>
+
+        <ImageView
+            android:id="@+id/msgImageAttachment"
+            android:layout_width="240dp"
+            android:layout_height="160dp"
+            android:layout_marginTop="6dp"
+            android:adjustViewBounds="true"
+            android:background="#0B1625"
+            android:contentDescription="Imagen adjunta"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+
+        <VideoView
+            android:id="@+id/msgVideoAttachment"
+            android:layout_width="240dp"
+            android:layout_height="160dp"
+            android:layout_marginTop="6dp"
+            android:background="#0B1625"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/msgAudioPlayer"
+            android:layout_width="240dp"
+            android:layout_height="54dp"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/msgAudioPlay"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:background="@drawable/bg_chat_audio_play"
+                android:contentDescription="Reproducir audio"
+                android:gravity="center"
+                android:paddingStart="2dp"
+                android:text="▶"
+                android:textColor="#06252C"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="9dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="vertical">
+
+                <com.operaciones.operaciones_android.ui.widget.AudioWaveformView
+                    android:id="@+id/msgAudioWaveform"
+                    android:layout_width="match_parent"
+                    android:layout_height="30dp"
+                    android:contentDescription="Progreso del audio" />
+
+                <TextView
+                    android:id="@+id/msgAudioDuration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0:00"
+                    android:textColor="#9CB3BA"
+                    android:textSize="10sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/msgAttachment"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_dest_btn"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="7dp"
+            android:textColor="#93C5FD"
+            android:textSize="12sp"
+            android:visibility="gone"/>
+
+    </LinearLayout>
+
+</FrameLayout>

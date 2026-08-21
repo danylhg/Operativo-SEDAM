@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0A1424"
+    android:paddingHorizontal="16dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="12dp">
+
+    <!-- ── Header: TITULO y Boton Cerrar ────────────────────────── -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/tvVideoTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_alignParentStart="true"
+            android:text="VIDEO"
+            android:textColor="#F8FAFC"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.08"/>
+
+        <ImageButton
+            android:id="@+id/btnCloseVideoModal"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:tint="#94A3B8"
+            android:contentDescription="Cerrar modal de video"/>
+    </RelativeLayout>
+
+    <!-- ── Tabs Selector Centrado: COMUNICACIONES y DRON DJI ───────────── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/bg_map_drawer_action"
+        android:orientation="horizontal"
+        android:padding="3dp">
+
+        <LinearLayout
+            android:id="@+id/tabComunicaciones"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:background="@drawable/bg_map_drawer_action_selected"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:id="@+id/ivTabComunicacionesIcon"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_stream_camera_on"
+                android:tint="#38BDF8"
+                android:layout_marginEnd="8dp"
+                android:contentDescription="Icono Comunicaciones"/>
+
+            <TextView
+                android:id="@+id/tvTabComunicacionesText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Comunicaciones"
+                android:textColor="#38BDF8"
+                android:textSize="12sp"
+                android:textStyle="bold"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/tabDron"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:background="@null"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:id="@+id/ivTabDronIcon"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_cloud"
+                android:tint="#94A3B8"
+                android:layout_marginEnd="8dp"
+                android:contentDescription="Icono Dron"/>
+
+            <TextView
+                android:id="@+id/tvTabDronText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Dron DJI"
+                android:textColor="#94A3B8"
+                android:textSize="12sp"
+                android:textStyle="bold"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ── Grid Recycler de Tarjetas de Camaras ────────────────── -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvCameraGrid"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="10dp"
+        android:clipToPadding="false"
+        android:scrollbars="vertical"/>
+
+    <!-- ── Bar de Acciones Inferiores (Solo RTMP PUSH URL) ── -->
+    <LinearLayout
+        android:id="@+id/cardRtmpUrl"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_map_drawer"
+        android:paddingHorizontal="16dp"
+        android:clickable="true"
+        android:focusable="true">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="RTMP PUSH: "
+            android:textColor="#64748B"
+            android:textSize="11sp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:id="@+id/tvRtmpUrl"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="rtmp://servidor:1935/live/dron01"
+            android:textColor="#F59E0B"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"/>
+    </LinearLayout>
+
+</LinearLayout>

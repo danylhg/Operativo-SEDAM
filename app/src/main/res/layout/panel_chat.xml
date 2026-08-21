@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#07111F">
+
+    <!-- ── Header con flecha de volver y nombre ─────────────── -->
+    <LinearLayout
+        android:id="@+id/chatHeader"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="12dp"
+        android:background="#0D1B2E">
+
+        <ImageButton
+            android:id="@+id/chatBackBtn"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/bg_bubble_sent"
+            android:src="@drawable/ic_chat_back"
+            android:contentDescription="Volver"
+            android:scaleType="centerInside"
+            android:padding="7dp"
+            android:visibility="gone"/>
+
+        <LinearLayout
+            android:id="@+id/chatHeaderInfo"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="12dp"
+            android:clickable="false"
+            android:focusable="false">
+
+            <TextView
+                android:id="@+id/chatHeaderTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="MENSAJES"
+                android:textColor="#EAF2FF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"/>
+
+            <TextView
+                android:id="@+id/chatHeaderSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#62A8FF"
+                android:textSize="10sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:visibility="gone"/>
+
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/chatCallBtn"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_call"
+            android:tint="#69B4FF"
+            android:contentDescription="Iniciar llamada de voz"
+            android:scaleType="centerInside"
+            android:padding="8dp"
+            android:visibility="gone"/>
+
+    </LinearLayout>
+
+    <!-- ── Lista de mensajes ─────────────────────────────────── -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/chatRecycler"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingVertical="4dp"
+        android:clipToPadding="false"/>
+
+    <!-- ── Respuestas rápidas ─────────────────────────────────── -->
+    <HorizontalScrollView
+        android:id="@+id/quickRepliesScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:overScrollMode="never"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="4dp">
+        <LinearLayout
+            android:id="@+id/quickRepliesContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"/>
+    </HorizontalScrollView>
+
+    <!-- Dummy/hidden destination selector to satisfy compiler R.id checks without taking space -->
+    <LinearLayout
+        android:id="@+id/channelSelector"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/destBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"/>
+    </LinearLayout>
+
+    <!-- ── Composición (Capsule input bar) ─────────────────── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="10dp"
+        android:background="#07111F">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_chat_input_bar"
+            android:paddingHorizontal="6dp">
+
+            <ImageButton
+                android:id="@+id/attachmentBtn"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_attachment"
+                android:tint="#8FB6E8"
+                android:contentDescription="Adjuntar"
+                android:scaleType="centerInside"
+                android:padding="8dp"/>
+
+            <EditText
+                android:id="@+id/msgInput"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:hint="Escribe un mensaje"
+                android:textColor="#EAF2FF"
+                android:textColorHint="#7F93AE"
+                android:background="@null"
+                android:paddingHorizontal="8dp"
+                android:inputType="text"
+                android:textSize="14sp"
+                android:imeOptions="actionSend"/>
+
+            <TextView
+                android:id="@+id/voiceRecordingIndicator"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="10dp"
+                android:text="●  Grabando audio  0:00"
+                android:textColor="#69B4FF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:visibility="gone"/>
+
+            <ImageButton
+                android:id="@+id/sendBtn"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@drawable/bg_send_circle"
+                android:src="@drawable/ic_send_arrow"
+                android:tint="#F8FBFF"
+                android:contentDescription="Enviar"
+                android:scaleType="centerInside"
+                android:padding="8dp"/>
+
+            <ImageButton
+                android:id="@+id/voiceBtn"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_mic"
+                android:tint="#8FB6E8"
+                android:contentDescription="Mensaje de voz"
+                android:scaleType="centerInside"
+                android:padding="8dp"/>
+
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ── Alerta (discreta, solo texto) ─────────────────────── -->
+</LinearLayout>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:background="#0d1526"
+    android:padding="10dp"
+    android:layout_marginBottom="6dp"
+    android:gravity="center_vertical">
+
+    <!-- android:textColor="#ffffff" agregado para que el emoji/ícono
+         no herede un color inesperado según el tema del sistema -->
+    <TextView
+        android:id="@+id/equipoIcon"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:gravity="center"
+        android:textSize="18sp"
+        android:textColor="#ffffff"
+        android:background="#0f172a"/>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginStart="10dp">
+
+        <TextView
+            android:id="@+id/equipoNombre"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#e2e8f0"
+            android:textSize="13sp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:id="@+id/equipoDetalle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#64748b"
+            android:textSize="11sp"/>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/equipoTipo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#3b82f6"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.05"/>
+
+</LinearLayout>

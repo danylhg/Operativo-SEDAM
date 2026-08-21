@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:background="#0d1526"
+    android:padding="10dp"
+    android:layout_marginBottom="6dp"
+    android:gravity="center_vertical">
+
+    <!-- Avatar / inicial -->
+    <TextView
+        android:id="@+id/personalAvatar"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:gravity="center"
+        android:textColor="#ffffff"
+        android:textStyle="bold"
+        android:textSize="14sp"
+        android:background="#1e3a5f"/>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginStart="10dp">
+
+        <TextView
+            android:id="@+id/personalNombre"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#e2e8f0"
+            android:textSize="13sp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:id="@+id/personalRol"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#64748b"
+            android:textSize="11sp"/>
+    </LinearLayout>
+
+    <!-- Indicador de estado: color seteado desde el adapter según disponibilidad.
+         Valores sugeridos: #22c55e activo · #ef4444 inactivo · #f59e0b ausente -->
+    <View
+        android:id="@+id/personalStatus"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:background="#22c55e"/>
+    <!-- El color por defecto (#22c55e) es solo un fallback visual.
+         Siempre llamar personalStatus.setBackgroundColor(...) desde el adapter. -->
+
+</LinearLayout>

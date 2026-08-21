@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="180dp"
+    android:orientation="vertical"
+    android:background="@drawable/bg_map_drawer"
+    android:padding="8dp"
+    android:layout_margin="4dp">
+
+    <!-- ── Card Top Header: Nombre del agente y Boton de Camara Top-Right ── -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="28dp"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="4dp">
+
+        <TextView
+            android:id="@+id/tvCardName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_toStartOf="@id/btnCardCameraToggle"
+            android:layout_centerVertical="true"
+            android:text="Nombre Cámara"
+            android:textColor="#EAF2FF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"/>
+
+        <ImageButton
+            android:id="@+id/btnCardCameraToggle"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_stream_camera_on"
+            android:tint="#64748B"
+            android:padding="4dp"
+            android:visibility="gone"
+            android:contentDescription="Activar camara"/>
+    </RelativeLayout>
+
+    <!-- ── Contenido de la Camara: Esperando Señal / Estado Local / Preview Nativo / Video WebView ── -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="4dp"
+        android:background="#060C17">
+
+        <!-- Contenedor Nativo WebRTC (SurfaceViewRenderer) para Camara Propia -->
+        <FrameLayout
+            android:id="@+id/cardCameraPreviewContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#000000"
+            android:visibility="gone"/>
+
+        <!-- Vista cuando esta ESPERANDO SEÑAL o CARGANDO -->
+        <LinearLayout
+            android:id="@+id/cardWaitingContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="8dp"
+            android:visibility="visible">
+
+            <ImageView
+                android:id="@+id/ivWaitingIcon"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginBottom="6dp"
+                android:src="@drawable/ic_stream_camera_on"
+                android:tint="#00E5F0"
+                android:visibility="gone"
+                android:contentDescription="Icono estado"/>
+
+            <TextView
+                android:id="@+id/tvWaitingBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_map_drawer_action"
+                android:text="ESPERANDO SEÑAL"
+                android:textColor="#E2E8F0"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp"/>
+
+            <TextView
+                android:id="@+id/tvWaitingSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:text=""
+                android:textColor="#64748B"
+                android:textSize="10sp"
+                android:visibility="gone"/>
+
+        </LinearLayout>
+
+        <!-- Vista cuando esta TRANSMITIENDO REMOTO (WebView Player) -->
+        <WebView
+            android:id="@+id/cardWebView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#000000"
+            android:visibility="gone"/>
+
+        <!-- Overlay transparente superior para capturar gestos de clic y doble toque -->
+        <View
+            android:id="@+id/cardTouchOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="@android:color/transparent" />
+
+    </FrameLayout>
+
+</LinearLayout>

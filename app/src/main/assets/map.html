@@ -1,0 +1,4615 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>window.CESIUM_BASE_URL = "cesium/";</script>
+  <script src="cesium/Cesium.js"></script>
+  <script src="milsymbol.min.js"></script>
+  <link href="cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body,
+    #cesiumContainer {
+      width: 100%;
+      height: 100%;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    .cesium-widget-credits {
+      display: none !important;
+    }
+
+    #cesiumContainer canvas {
+      touch-action: none;
+    }
+
+    .targetPopup {
+      position: absolute;
+      z-index: 18;
+      width: 210px;
+      padding: 11px 12px 10px;
+      border: 1px solid rgba(196, 156, 55, .42);
+      border-radius: 10px;
+      background: rgba(5, 25, 47, .96);
+      color: #f5f8fc;
+      font: 12px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, .3);
+      pointer-events: auto;
+      display: none;
+    }
+    .targetPopup::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -8px;
+      width: 14px;
+      height: 14px;
+      background: #061a30;
+      border-right: 1px solid rgba(196, 156, 55, .42);
+      border-bottom: 1px solid rgba(196, 156, 55, .42);
+      transform: translateX(-50%) rotate(45deg);
+    }
+    .targetPopupName { font-size: 13px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .targetPopupType { margin-top: 2px; color: #9bb0c7; font-size: 10px; }
+    .targetPopupRule { height: 1px; margin: 9px 0 8px; background: rgba(129, 157, 187, .18); }
+    .targetPopupMetrics { color: #e6c34b; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+    .targetPopupCoords { display: flex; align-items: center; gap: 6px; margin-top: 7px; color: #9bb0c7; font: 10px ui-monospace, monospace; }
+    .targetPopupCopy { margin-left: auto; border: 0; background: transparent; padding: 2px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .targetPopupRoute {
+      width: 100%;
+      min-height: 38px;
+      margin-top: 10px;
+      border: 1px solid rgba(125, 184, 200, .5);
+      border-radius: 8px;
+      background: rgba(20, 72, 91, .42);
+      color: #eef8fa;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .035em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+    .targetPopupRoute:active { background: rgba(38, 111, 133, .68); }
+    .targetPopupClose {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      border: none;
+      background: transparent;
+      color: #9BB0C7;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      padding: 4px;
+      transition: color 0.15s ease;
+      z-index: 20;
+    }
+    .targetPopupClose:active {
+      color: #F3C84B;
+    }
+
+    .mapLayerControl {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .mapLayerButton {
+      width: 36px;
+      height: 36px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.9);
+      color: #e5edf5;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.3);
+      cursor: pointer;
+    }
+
+    .mapLayerMenu {
+      position: absolute;
+      top: 44px;
+      left: 0;
+      width: 150px;
+      padding: 8px;
+      border: 1px solid rgba(59, 130, 246, 0.36);
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.94);
+      box-shadow: 0 16px 32px rgba(15, 23, 42, 0.35);
+      display: none;
+    }
+
+    .mapLayerControl.open .mapLayerMenu {
+      display: block;
+    }
+
+    .mapLayerOption {
+      width: 100%;
+      min-height: 38px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #dbeafe;
+      font-weight: 800;
+      text-align: left;
+      padding: 0 10px;
+      margin: 2px 0;
+    }
+
+    .mapLayerOption.active,
+    .mapLayerOption:active {
+      background: rgba(14, 116, 144, 0.65);
+      color: #bff3ff;
+    }
+
+  </style>
+</head>
+
+<body>
+  <div id="cesiumContainer"></div>
+  <div id="targetPopup" class="targetPopup" role="dialog" aria-label="Información del blanco">
+    <button id="targetPopupClose" class="targetPopupClose" type="button" aria-label="Cerrar/Borrar">✕</button>
+    <div id="targetPopupName" class="targetPopupName"></div>
+    <div id="targetPopupType" class="targetPopupType"></div>
+    <div class="targetPopupRule"></div>
+    <div class="targetPopupMetrics">▲ RUMBO 0° N &nbsp;·&nbsp; VEL. 0.0 km/h</div>
+    <div class="targetPopupCoords">
+      <svg width="11" height="14" viewBox="0 0 14 18" fill="#9bb0c7" style="vertical-align: middle; flex-shrink: 0; display: inline-block;"><path fill-rule="evenodd" clip-rule="evenodd" d="M7 0C3.13401 0 0 3.13401 0 7C0 12.25 7 18 7 18C7 18 14 12.25 14 7C14 3.13401 10.866 0 7 0ZM7 9.5C5.61929 9.5 4.5 8.38071 4.5 7C4.5 5.61929 5.61929 4.5 7 4.5C8.38071 4.5 9.5 5.61929 9.5 7C9.5 8.38071 8.38071 9.5 7 9.5Z"/></svg>
+      <span id="targetPopupCoords"></span>
+      <button id="targetPopupCopy" class="targetPopupCopy" type="button" aria-label="Copiar coordenadas">
+        <svg width="14" height="14" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; display: inline-block;"><rect x="5.5" y="5.5" width="10" height="10" rx="1.5" stroke="#e6c34b" stroke-width="1.8"/><path d="M3.5 12.5H2.5C1.94772 12.5 1.5 12.0523 1.5 11.5V2.5C1.5 1.94772 1.94772 1.5 2.5 1.5H11.5C12.0523 1.5 12.5 1.94772 12.5 2.5V3.5" stroke="#e6c34b" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <button id="targetPopupRoute" class="targetPopupRoute" type="button">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="6" cy="18" r="2.5" stroke="currentColor" stroke-width="2"/><path d="M8.5 18h2.2c1.7 0 2.7-1 2.7-2.5V8.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17 3.5a3.5 3.5 0 0 0-3.5 3.5c0 2.6 3.5 6 3.5 6s3.5-3.4 3.5-6A3.5 3.5 0 0 0 17 3.5Z" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="7" r="1" fill="currentColor"/></svg>
+      IR DESDE MI UBICACIÓN
+    </button>
+  </div>
+
+  <script>
+    let viewer = null;
+    let userMarker = null;
+
+    if (!window.Cesium) {
+      document.body.innerHTML =
+        '<div style="height:100%;display:flex;align-items:center;justify-content:center;padding:24px;background:#dbe7f1;color:#0f172a;font-family:system-ui,sans-serif;text-align:center;font-weight:800;">No se pudo cargar el mapa. Revisa la conexiÃ³n a internet del dispositivo.</div>';
+      throw new Error("Cesium no cargÃ³");
+    }
+
+    // Escala Ã­conos/etiquetas con la distancia de la cÃ¡mara:
+    // cerca (1 km) â†’ Ã—1.5 ; lejos (2 000 km) â†’ Ã—0.1
+    const SCALE_BY_DIST = new Cesium.NearFarScalar(1e3, 1.0, 2e6, 0.04);
+
+    // =========================
+    // Estado de rutas
+    // =========================
+    let pickMode = null; // "start" | "end" | null
+    let startPoint = null;
+    let endPoint = null;
+    let lastRoute = null;
+
+    let startEntity = null;
+    let endEntity = null;
+    let routeEntity = null;
+    let selectedRouteVehicleId = "global";
+
+    let remoteRoutes = new Map();
+    let tacticalRoutes = new Map();
+    const trackingPersonalEntities = new Map();
+    const trackingVehiculoEntities = new Map();
+    const trackingEquipoEntities = new Map();
+    const trackingDispositivoEntities = new Map();
+    const trackingHeadingEntities = new Map();
+    const trackingDispositivoLatest = new Map();
+    const requestedDispositivoTrackingIds = new Set();
+    const emergencyPulseEntities = new Map();
+    let selectedTrackingKind = null;
+    let selectedTrackingId = null;
+    let selectedTrackingPersonalId = null;
+    let followedTrackingPersonalId = null;
+    let followMyLocation = false;
+    const MIN_CAMERA_ZOOM_DISTANCE = 800;
+    const FOLLOW_LOCATION_ZOOM = 1200;
+    const FOLLOW_TRACKING_ZOOM = 1200;
+    const TRACKING_PERSONAL_COLOR = Cesium.Color.fromCssColorString("#00BFFF");
+    const TRACKING_PERSONAL_SELECTED_COLOR = Cesium.Color.fromCssColorString("#2563EB");
+    const TRACKING_VEHICULO_COLOR = Cesium.Color.fromCssColorString("#FFD700");
+    const TRACKING_EQUIPO_COLOR = Cesium.Color.fromCssColorString("#B4FF39");
+    const TRACKING_DISPOSITIVO_COLOR = Cesium.Color.fromCssColorString("#38BDF8");
+    const TRACKING_SELECTED_COLOR = Cesium.Color.fromCssColorString("#2563EB");
+    const TRACKING_ACTIVE_COLOR = Cesium.Color.LIME;
+    const TRACKING_SYMBOL_SIZE = 42;
+    const TRACKING_SYMBOL_RENDER_SIZE = 160;
+    const TRACKING_HEADING_START_M = 7;
+    const TRACKING_HEADING_LENGTH_M = 32;
+    const TRACKING_LABEL_MAX_CHARS = 18;
+    const TRACKING_DRONE_LABEL_MAX_CHARS = 14;
+    const TRACKING_SYMBOL_SCALE_BY_DIST = new Cesium.NearFarScalar(1e3, 1.0, 2e6, 0.28);
+    const HEADING_LINE_LENGTH_METERS = 90;
+    const HEADING_LINE_WIDTH = 4;
+    const trackingSymbolImageCache = new Map();
+    const EMERGENCY_PULSE_COLORS = [
+      Cesium.Color.fromCssColorString("#FF1D25"),
+      Cesium.Color.fromCssColorString("#FFD400"),
+      Cesium.Color.fromCssColorString("#00E5FF")
+    ];
+
+    const OSRM_BASE = "https://router.project-osrm.org";
+    const ROUTE_COLOR_HEX = [
+      "#FF00FF", "#FFA500", "#32CD32",
+      "#FFC0CB", "#00BFFF", "#FF69B4",
+      "#FFD700", "#EE82EE", "#00FF7F"
+    ];
+    const CAMERA_STATE_TTL_MS = 24 * 60 * 60 * 1000;
+    let cameraStateKey = "sedam_map_camera_default";
+    let cameraStateSaveTimer = null;
+    let firstOperationViewHandled = false;
+    let restoredCameraAt = 0;
+
+    const BASE_LAYER_PROVIDERS = {
+      osm: () => new Cesium.UrlTemplateImageryProvider({
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+        // Niveles superiores pueden devolver mosaicos grises de Esri en
+        // algunas zonas. Cesium ampliará el nivel 17 y mantendrá el mapa visible.
+        maximumLevel: 18,
+        credit: "Esri World Street Map"
+      }),
+      satellite: () => new Cesium.UrlTemplateImageryProvider({
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        maximumLevel: 18,
+        credit: "Esri World Imagery"
+      }),
+      reference: () => new Cesium.UrlTemplateImageryProvider({
+        url: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+        maximumLevel: 18,
+        credit: "Esri Reference"
+      })
+    };
+
+    function updateLayerButtons(key) {
+      document.querySelectorAll("[data-map-layer]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.mapLayer === key);
+      });
+    }
+
+    function setBaseLayer(key) {
+      if (!viewer) return;
+      const layerKey = ["osm", "satellite", "hybrid"].includes(key) ? key : "hybrid";
+
+      try {
+        localStorage.setItem("sedam_android_map_layer", layerKey);
+      } catch (_) {}
+
+      updateLayerButtons(layerKey);
+      viewer.imageryLayers.removeAll();
+
+      if (layerKey === "hybrid") {
+        const satelliteLayer = viewer.imageryLayers.addImageryProvider(BASE_LAYER_PROVIDERS.satellite());
+        satelliteLayer.brightness = 0.78;
+        satelliteLayer.contrast = 1.35;
+        satelliteLayer.saturation = 1.15;
+        satelliteLayer.gamma = 0.9;
+
+        const referenceOverlay = viewer.imageryLayers.addImageryProvider(BASE_LAYER_PROVIDERS.reference());
+        referenceOverlay.alpha = 0.78;
+        return;
+      }
+
+      const layer = viewer.imageryLayers.addImageryProvider(BASE_LAYER_PROVIDERS[layerKey]());
+      if (layerKey === "satellite") {
+        layer.brightness = 0.78;
+        layer.contrast = 1.35;
+        layer.saturation = 1.15;
+        layer.gamma = 0.9;
+      }
+    }
+
+    function initLayerControl() {
+      const control = document.getElementById("mapLayerControl");
+      const button = document.getElementById("mapLayerButton");
+      if (!control || !button) return;
+
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const open = control.classList.toggle("open");
+        button.setAttribute("aria-expanded", String(open));
+      });
+
+      control.querySelectorAll("[data-map-layer]").forEach((option) => {
+        option.addEventListener("click", (event) => {
+          event.stopPropagation();
+          setBaseLayer(option.dataset.mapLayer || "hybrid");
+          control.classList.remove("open");
+          button.setAttribute("aria-expanded", "false");
+        });
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!control.contains(event.target)) {
+          control.classList.remove("open");
+          button.setAttribute("aria-expanded", "false");
+        }
+      });
+    }
+
+    function cameraKeyPart(value, digits) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toFixed(digits) : "x";
+    }
+
+    function getOperationCameraScope() {
+      try {
+        if (window.Android && typeof Android.getOperationId === "function") {
+          const id = Number(Android.getOperationId());
+          if (Number.isFinite(id) && id > 0) return "op_" + id;
+        }
+      } catch (_) {
+        return null;
+      }
+      return null;
+    }
+
+    function buildCameraStateKey(lat, lon, zoomMeters) {
+      const operationScope = getOperationCameraScope();
+      if (operationScope) return "sedam_map_camera_" + operationScope;
+
+      return [
+        "sedam_map_camera",
+        cameraKeyPart(lat, 6),
+        cameraKeyPart(lon, 6),
+        cameraKeyPart(zoomMeters || 0, 0)
+      ].join("_");
+    }
+
+    function setCameraStateKey(lat, lon, zoomMeters) {
+      cameraStateKey = buildCameraStateKey(lat, lon, zoomMeters);
+    }
+
+    function captureCameraState() {
+      if (!viewer || !viewer.camera) return null;
+      const cartographic = Cesium.Cartographic.fromCartesian(viewer.camera.positionWC || viewer.camera.position);
+      if (!cartographic) return null;
+
+      return {
+        lat: Cesium.Math.toDegrees(cartographic.latitude),
+        lon: Cesium.Math.toDegrees(cartographic.longitude),
+        height: cartographic.height,
+        heading: viewer.camera.heading,
+        pitch: viewer.camera.pitch,
+        roll: viewer.camera.roll,
+        savedAt: Date.now()
+      };
+    }
+
+    function saveCameraStateNow() {
+      try {
+        const state = captureCameraState();
+        if (!state) return;
+        localStorage.setItem(cameraStateKey, JSON.stringify(state));
+      } catch (e) {
+        console.warn("No se pudo guardar la camara: " + e.message);
+      }
+    }
+
+    function scheduleCameraStateSave() {
+      window.clearTimeout(cameraStateSaveTimer);
+      cameraStateSaveTimer = window.setTimeout(saveCameraStateNow, 250);
+    }
+
+    function restoreCameraState() {
+      try {
+        const raw = localStorage.getItem(cameraStateKey);
+        if (!raw) return false;
+
+        const state = JSON.parse(raw);
+        if (!state || Date.now() - Number(state.savedAt || 0) > CAMERA_STATE_TTL_MS) {
+          localStorage.removeItem(cameraStateKey);
+          return false;
+        }
+
+        const lat = Number(state.lat);
+        const lon = Number(state.lon);
+        const height = Number(state.height);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(height)) return false;
+
+        viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(lon, lat, height),
+          orientation: {
+            heading: Number.isFinite(Number(state.heading)) ? Number(state.heading) : 0,
+            pitch: Number.isFinite(Number(state.pitch)) ? Number(state.pitch) : -Cesium.Math.PI_OVER_TWO,
+            roll: Number.isFinite(Number(state.roll)) ? Number(state.roll) : 0
+          }
+        });
+
+        restoredCameraAt = Date.now();
+        resizeCesium();
+        return true;
+      } catch (e) {
+        console.warn("No se pudo restaurar la camara: " + e.message);
+        return false;
+      }
+    }
+
+    function resizeCesium() {
+      try {
+        if (!viewer) return;
+        viewer.resize();
+        if (viewer.scene && typeof viewer.scene.requestRender === "function") {
+          viewer.scene.requestRender();
+        }
+      } catch (e) {
+        console.warn("No se pudo redimensionar Cesium: " + e.message);
+      }
+    }
+
+    window.resizeCesium = resizeCesium;
+
+    function notifyAndroid(message) {
+      try {
+        if (window.Android && typeof Android.sendTrafficAlert === "function") {
+          Android.sendTrafficAlert(String(message));
+        }
+      } catch (e) {
+        console.error("Error notificando a Android: " + e.message);
+      }
+    }
+
+    function stableRouteColorHex(id) {
+      if (!id || id === "global") return "#00FFFF";
+
+      const text = String(id);
+      let hash = 0;
+      for (let i = 0; i < text.length; i += 1) {
+        hash = text.charCodeAt(i) + ((hash << 5) - hash);
+        hash |= 0;
+      }
+      return ROUTE_COLOR_HEX[Math.abs(hash) % ROUTE_COLOR_HEX.length];
+    }
+
+    function routeColorFromData(route) {
+      const explicit = route && typeof route.color === "string" ? route.color.trim() : "";
+      if (/^#[0-9A-F]{6}$/i.test(explicit) && explicit.toUpperCase() !== "#1E90FF") {
+        return explicit;
+      }
+      const vehicleId = route && route.id_vehiculo != null ? String(route.id_vehiculo) : "global";
+      return stableRouteColorHex(vehicleId);
+    }
+
+    function navigationRouteMaterial(alpha) {
+      return Cesium.Color.fromCssColorString("#123E66").withAlpha(alpha || 0.96);
+    }
+
+    function configureGoogleLikeCamera(viewerInstance) {
+      const controller = viewerInstance
+        && viewerInstance.scene
+        && viewerInstance.scene.screenSpaceCameraController;
+      if (!controller) return;
+
+      controller.minimumZoomDistance = MIN_CAMERA_ZOOM_DISTANCE;
+      controller.maximumZoomDistance = 5000000;
+      controller.inertiaSpin = 0.35;
+      controller.inertiaTranslate = 0.35;
+      controller.inertiaZoom = 0.25;
+      controller.maximumMovementRatio = 0.08;
+
+      if ('zoomFactor' in controller) {
+        controller.zoomFactor = 2.2;
+      }
+
+      controller.enableRotate = true;
+      controller.enableTranslate = true;
+      controller.enableZoom = true;
+      controller.enableTilt = true;
+      controller.enableLook = false;
+    }
+
+    function disableFollowMyLocation() {
+      followMyLocation = false;
+    }
+
+    function flyToLocation(lat, lon, zoomMeters, duration) {
+      if (!viewer) return;
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(lon, lat, zoomMeters || FOLLOW_LOCATION_ZOOM),
+        duration: duration === undefined ? 0.55 : duration
+      });
+    }
+
+    function notifyMapTap(lat, lon) {
+      try {
+        if (window.Android && typeof Android.onMapTapped === "function") {
+          Android.onMapTapped(lat, lon);
+        }
+      } catch (e) {
+        console.error("Error notificando tap a Android: " + e.message);
+      }
+    }
+
+    function notifyMapObjectSelected(payload) {
+      try {
+        if (window.Android && typeof Android.onMapObjectSelected === "function") {
+          Android.onMapObjectSelected(JSON.stringify(payload));
+        }
+      } catch (e) {
+        console.error("Error notificando objeto seleccionado: " + e.message);
+      }
+    }
+
+    function notifyMapLongPress(lat, lon) {
+      try {
+        if (window.Android && typeof Android.onMapLongPressed === "function") {
+          Android.onMapLongPressed(lat, lon);
+        }
+      } catch (e) {
+        console.error("Error notificando pulsacion prolongada: " + e.message);
+      }
+    }
+
+    function notifyMapObjectMoved(payload) {
+      try {
+        if (window.Android && typeof Android.onMapObjectMoved === "function") {
+          Android.onMapObjectMoved(JSON.stringify(payload));
+        }
+      } catch (e) {
+        console.error("Error notificando movimiento de objeto: " + e.message);
+      }
+    }
+
+    function notifyMapSelectionCleared() {
+      try {
+        if (window.Android && typeof Android.onMapSelectionCleared === "function") {
+          Android.onMapSelectionCleared();
+        }
+      } catch (e) {
+        console.error("Error limpiando seleccion: " + e.message);
+      }
+    }
+
+    function getEntityText(entity) {
+      try {
+        if (!entity) return "";
+        if (entity.label && entity.label.text) {
+          return String(entity.label.text.getValue ? entity.label.text.getValue() : entity.label.text);
+        }
+        return entity.name ? String(entity.name) : "";
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function getEntityProperty(entity, key) {
+      try {
+        if (!entity || !entity.properties || !entity.properties[key]) return "";
+        const prop = entity.properties[key];
+        return prop.getValue ? prop.getValue() : prop;
+      } catch (_) {
+        return "";
+      }
+    }
+
+    let activePopupEntity = null;
+
+    function hideTargetPopup() {
+      activePopupEntity = null;
+      const popup = document.getElementById('targetPopup');
+      if (popup) popup.style.display = 'none';
+    }
+
+    function targetPlatformFromSidc(sidc) {
+      if (!sidc) return '';
+      const s = String(sidc);
+      const dimension = s.charAt(2);
+      if (dimension === 'S') return 'Superficie';
+      if (dimension === 'A') return 'Aire';
+      if (dimension === 'U') return 'Submarino';
+      if (dimension === 'G') return 'Tierra';
+      return '';
+    }
+
+    function updatePopupPosition(screenPosition) {
+      const popup = document.getElementById('targetPopup');
+      if (!popup || popup.style.display === 'none') return;
+
+      let pos = screenPosition;
+      if (!pos && activePopupEntity && activePopupEntity.position && viewer) {
+        const cartesian = activePopupEntity.position.getValue ? activePopupEntity.position.getValue(viewer.clock.currentTime) : activePopupEntity.position;
+        if (cartesian) {
+          pos = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, cartesian);
+        }
+      }
+      if (!pos) return;
+
+      const viewportWidth = (viewer && viewer.canvas) ? viewer.canvas.clientWidth : window.innerWidth;
+      const viewportHeight = (viewer && viewer.canvas) ? viewer.canvas.clientHeight : window.innerHeight;
+      const width = popup.offsetWidth || 210;
+      const height = popup.offsetHeight || 96;
+
+      popup.style.left = Math.max(8, Math.min(viewportWidth - width - 8, pos.x - width / 2)) + 'px';
+      popup.style.top = Math.max(8, Math.min(viewportHeight - height - 16, pos.y - height - 22)) + 'px';
+    }
+
+    function showTargetPopup(entity, screenPosition) {
+      if (!entity) { hideTargetPopup(); return; }
+      const popup = document.getElementById('targetPopup');
+      if (!popup) return;
+
+      const trackingKind = String(getEntityProperty(entity, 'trackingKind') || '').toLowerCase();
+      if (trackingKind === 'personal' || trackingKind === 'vehiculo' || trackingKind === 'equipo' || trackingKind === 'dispositivo') {
+        hideTargetPopup();
+        return;
+      }
+
+      const sidc = String(getEntityProperty(entity, 'poiSidc') || getEntityProperty(entity, 'trackingSidc') || '');
+      const name = getEntityProperty(entity, 'poiName') || getEntityProperty(entity, 'trackingFullLabel') || entity.name || getEntityText(entity) || 'Blanco';
+
+      let lat = Number(getEntityProperty(entity, 'poiLat'));
+      let lon = Number(getEntityProperty(entity, 'poiLon'));
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        if (entity.position && viewer) {
+          const pos = entity.position.getValue ? entity.position.getValue(viewer.clock.currentTime) : entity.position;
+          if (pos) {
+            const cartographic = Cesium.Cartographic.fromCartesian(pos);
+            if (cartographic) {
+              lat = Cesium.Math.toDegrees(cartographic.latitude);
+              lon = Cesium.Math.toDegrees(cartographic.longitude);
+            }
+          }
+        }
+      }
+
+      const coords = (Number.isFinite(lat) && Number.isFinite(lon)) ? lat.toFixed(5) + ', ' + lon.toFixed(5) : '';
+      popup.dataset.routeLat = Number.isFinite(lat) ? String(lat) : '';
+      popup.dataset.routeLon = Number.isFinite(lon) ? String(lon) : '';
+      popup.dataset.routeLabel = String(name || 'Destino');
+
+      let rumbo = Number(getEntityProperty(entity, 'rumbo') ?? getEntityProperty(entity, 'heading') ?? getEntityProperty(entity, 'headingDegrees') ?? 0);
+      if (!Number.isFinite(rumbo)) rumbo = 0;
+      let vel = Number(getEntityProperty(entity, 'velocidad') ?? getEntityProperty(entity, 'speed') ?? getEntityProperty(entity, 'velocidad_kmh') ?? 0);
+      if (!Number.isFinite(vel)) vel = 0;
+
+      const platform = targetPlatformFromSidc(sidc);
+      const tipo = String(getEntityProperty(entity, 'poiTipo') || getEntityProperty(entity, 'trackingKind') || '').trim();
+      const creator = String(getEntityProperty(entity, 'poiCreator') || '').trim();
+      const normTipo = tipo.toUpperCase();
+
+      if (normTipo === 'GEO-MSG' || getEntityProperty(entity, 'tacticalType') === 'geomsg' || (entity.id && String(entity.id).startsWith('geomsg_'))) {
+        const author = getEntityProperty(entity, 'poiAuthor') || getEntityProperty(entity, 'poiCreator') || 'Yo';
+        const msgText = getEntityProperty(entity, 'geoMsgText') || getEntityProperty(entity, 'poiName') || (entity.properties && entity.properties.geoMsgText) || '';
+        const nameEl = document.getElementById('targetPopupName');
+        if (nameEl) nameEl.textContent = author + ' · GEO-MSG';
+        const typeEl = document.getElementById('targetPopupType');
+        if (typeEl) {
+          typeEl.textContent = msgText;
+          typeEl.style.fontSize = '14px';
+          typeEl.style.color = '#F8FAFC';
+          typeEl.style.whiteSpace = 'pre-wrap';
+        }
+        const metricsEl = document.querySelector('.targetPopupMetrics');
+        if (metricsEl) metricsEl.style.display = 'none';
+        const coordsEl = document.getElementById('targetPopupCoords');
+        if (coordsEl) coordsEl.textContent = coords;
+        popup.dataset.coords = coords;
+        popup.style.display = 'block';
+        activePopupEntity = entity;
+        updatePopupPosition(screenPosition);
+        return;
+      }
+
+      const isBlanco = (
+        normTipo === 'MIL' ||
+        normTipo.includes('BLANCO') ||
+        Boolean(sidc && (sidc.startsWith('S') || sidc.startsWith('A') || sidc.startsWith('U'))) ||
+        Boolean(getEntityProperty(entity, 'trackingKind')) ||
+        normTipo === 'VEHICULO' ||
+        normTipo === 'PERSONAL' ||
+        normTipo === 'EQUIPO' ||
+        normTipo === 'DISPOSITIVO'
+      );
+
+      let subtitle = '';
+      if (isBlanco) {
+        subtitle = platform || (tipo && normTipo !== 'MIL' ? tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase() : '') || 'Transmitiendo';
+        if (creator && !subtitle.includes(creator)) {
+          subtitle += ' • ' + creator;
+        }
+      } else {
+        subtitle = 'Compartiendo';
+        if (creator) {
+          subtitle += ' • ' + creator;
+        }
+      }
+
+      const nameEl = document.getElementById('targetPopupName');
+      if (nameEl) nameEl.textContent = name;
+      const typeEl = document.getElementById('targetPopupType');
+      if (typeEl) typeEl.textContent = subtitle;
+
+      const metricsEl = document.querySelector('.targetPopupMetrics');
+      if (metricsEl) {
+        if (isBlanco) {
+          metricsEl.textContent = `▲ RUMBO ${Math.round(rumbo)}° N  -  VEL ${vel.toFixed(1)} km/h`;
+          metricsEl.style.display = 'block';
+        } else {
+          metricsEl.style.display = 'none';
+        }
+      }
+
+      const coordsEl = document.getElementById('targetPopupCoords');
+      if (coordsEl) coordsEl.textContent = coords;
+      popup.dataset.coords = coords;
+      popup.style.display = 'block';
+
+      activePopupEntity = entity;
+      updatePopupPosition(screenPosition);
+    }
+
+    const popupCloseBtn = document.getElementById('targetPopupClose');
+    if (popupCloseBtn) {
+      popupCloseBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        if (activePopupEntity) {
+          const entityId = String(activePopupEntity.id || "");
+          const tipo = String(getEntityProperty(activePopupEntity, "poiTipo") || "").toUpperCase();
+          const tacticalType = String(getEntityProperty(activePopupEntity, "tacticalType") || "");
+
+          if (tipo === "GEO-MSG" || tacticalType === "geomsg" || entityId.indexOf("geomsg_") === 0) {
+            viewer.entities.remove(activePopupEntity);
+            poiEntities.delete(entityId);
+            notifyAndroid("Mensaje Geo-anclado borrado");
+          }
+        }
+        hideTargetPopup();
+      });
+    }
+
+    const popupCopyBtn = document.getElementById('targetPopupCopy');
+    if (popupCopyBtn) {
+      popupCopyBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        const coords = document.getElementById('targetPopup').dataset.coords || '';
+        if (coords) {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(coords).catch(function () {});
+          }
+          notifyAndroid('Coordenadas copiadas: ' + coords);
+        }
+      });
+    }
+
+    const popupContainer = document.getElementById('targetPopup');
+    if (popupContainer) {
+      popupContainer.addEventListener('click', function (event) {
+        event.stopPropagation();
+      });
+    }
+
+    const popupRouteBtn = document.getElementById('targetPopupRoute');
+    if (popupRouteBtn) {
+      popupRouteBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        const popup = document.getElementById('targetPopup');
+        const lat = Number(popup && popup.dataset.routeLat);
+        const lon = Number(popup && popup.dataset.routeLon);
+        const label = (popup && popup.dataset.routeLabel) || 'Destino';
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          notifyAndroid('Este lugar no tiene una ubicación válida.');
+          return;
+        }
+        if (window.Android && typeof window.Android.onNavigateTo === 'function') {
+          window.Android.onNavigateTo(lat, lon, label);
+          hideTargetPopup();
+          return;
+        }
+        if (userMarker && userMarker.position && viewer) {
+          const current = userMarker.position.getValue ? userMarker.position.getValue(viewer.clock.currentTime) : userMarker.position;
+          const origin = current && Cesium.Cartographic.fromCartesian(current);
+          if (origin) {
+            window.setRouteStart(Cesium.Math.toDegrees(origin.latitude), Cesium.Math.toDegrees(origin.longitude));
+            window.setRouteEnd(lat, lon);
+            hideTargetPopup();
+            return;
+          }
+        }
+        notifyAndroid('Activa tu ubicación para calcular la ruta.');
+      });
+    }
+
+    function isIgnoredSelectionEntity(entity) {
+      const tacticalType = String(getEntityProperty(entity, "tacticalType") || "");
+      const trackingKind = String(getEntityProperty(entity, "trackingKind") || "");
+      return tacticalType === "tracking-heading" || trackingKind === "heading";
+    }
+
+    function getSelectableEntityAt(position) {
+      const pickedItems = viewer.scene.drillPick?.(position, 12) || [];
+      for (const picked of pickedItems) {
+        if (picked?.id && !isIgnoredSelectionEntity(picked.id)) return picked.id;
+      }
+
+      const picked = viewer.scene.pick(position);
+      return picked?.id && !isIgnoredSelectionEntity(picked.id) ? picked.id : null;
+    }
+
+    function getSelectableObjectAt(position) {
+      if (!viewer) return null;
+      const entity = getSelectableEntityAt(position);
+      if (!entity) return null;
+      const entityId = String(entity.id || "");
+      const label = getEntityText(entity);
+
+      if (entityId.indexOf("geomsg_") === 0 || getEntityProperty(entity, "poiTipo") === "GEO-MSG" || getEntityProperty(entity, "tacticalType") === "geomsg") {
+        return { kind: "geomsg", id: entityId, label: (getEntityProperty(entity, "poiAuthor") || "Yo") + " · GEO-MSG" };
+      }
+      if (entityId.indexOf("poi_") === 0) {
+        return { kind: "poi", id: Number(entityId.replace("poi_", "")), label: label || "Punto de Interes" };
+      }
+      if (entityId.indexOf("area_") === 0) {
+        return { kind: "area", id: Number(entityId.replace("area_", "")), label: label || "Area de Interes" };
+      }
+      if (entityId.indexOf("estructura_") === 0) {
+        return { kind: "structure", id: Number(entityId.replace("estructura_", "")), label: label || "Estructura" };
+      }
+      if (entityId.indexOf("remote_route_") === 0) {
+        return { kind: "route", id: Number(entityId.replace("remote_route_", "")), label: label || "Ruta" };
+      }
+      if (entityId.indexOf("ruta_operacion_") === 0) {
+        return { kind: "tactical_route", id: Number(entityId.replace("ruta_operacion_", "")), label: label || "Linea tactica" };
+      }
+
+      const trackingKind = String(getEntityProperty(entity, "trackingKind") || "");
+      if (isTrackingKind(trackingKind)) {
+        const trackingId = Number(getEntityProperty(entity, "trackingId"));
+        if (Number.isFinite(trackingId) && trackingId > 0) {
+          const prefix = trackingKind === "vehiculo" ? "V-" : trackingKind === "equipo" ? "E-" : trackingKind === "dispositivo" ? "D-" : "P-";
+          const fullLabel = String(getEntityProperty(entity, "trackingFullLabel") || "").trim();
+          return { kind: trackingKind, id: trackingId, label: fullLabel || label || (prefix + trackingId) };
+        }
+      }
+
+      const tacticalType = String(getEntityProperty(entity, "tacticalType") || "");
+      if (tacticalType === "freehand-drawing") {
+        const match = entityId.match(/^draw_loaded_(\d+)$/);
+        return {
+          kind: "drawing",
+          id: match ? Number(match[1]) : null,
+          localId: entityId,
+          label: "Dibujo libre"
+        };
+      }
+
+      return null;
+    }
+
+    function notifyRouteCreated(route) {
+      try {
+        if (!route || !route.geometry || !Array.isArray(route.geometry.coordinates)) {
+          console.error("Ruta inválida para enviar a Android");
+          return;
+        }
+
+        if (!startPoint || !endPoint) {
+          console.error("No hay origen/destino para enviar ruta a Android");
+          return;
+        }
+
+        const payload = {
+          geojson: route.geometry,
+          origen_lat: startPoint.lat,
+          origen_lon: startPoint.lon,
+          destino_lat: endPoint.lat,
+          destino_lon: endPoint.lon,
+          distancia_m: Number(route.distance) || 0,
+          duracion_s: Number(route.duration) || 0
+        };
+
+        console.log("Enviando ruta a Android:", payload);
+
+        if (window.Android && typeof Android.onRouteCreated === "function") {
+          Android.onRouteCreated(JSON.stringify(payload));
+        } else {
+          console.warn("Android.onRouteCreated no está disponible");
+        }
+      } catch (e) {
+        console.error("Error notificando ruta a Android: " + e.message);
+      }
+    }
+
+    try {
+      viewer = new Cesium.Viewer('cesiumContainer', {
+        contextOptions: {
+          requestWebgl1: true,
+          webgl: {
+            alpha: false,
+            antialias: true,
+            depth: true,
+            stencil: false,
+            preserveDrawingBuffer: false,
+            powerPreference: 'high-performance'
+          }
+        },
+        useBrowserRecommendedResolution: false,
+        msaaSamples: 1,
+        requestRenderMode: true,
+        maximumRenderTimeChange: 0.1,
+        baseLayer: new Cesium.ImageryLayer(
+          new Cesium.UrlTemplateImageryProvider({
+            url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+            subdomains: 'abcd',
+            credit: '© OpenStreetMap contributors, © CARTO'
+          })
+        ),
+        terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+        timeline: false,
+        animation: false,
+        baseLayerPicker: false,
+        geocoder: false,
+        homeButton: false,
+        sceneModePicker: false,
+        navigationHelpButton: false,
+        fullscreenButton: false,
+        infoBox: false,
+        selectionIndicator: false
+      });
+
+      viewer.scene.renderError.addEventListener(function (sceneOrError, possibleError) {
+        const actualError = possibleError || sceneOrError;
+        const details = actualError && typeof actualError === 'object'
+          ? JSON.stringify(actualError, Object.getOwnPropertyNames(actualError))
+          : String(actualError);
+        console.error('[CESIUM_RENDER_ERROR] ' + details);
+      });
+
+      // Vista limpia táctica HD
+      viewer.scene.skyBox.show = false;
+      viewer.scene.skyAtmosphere.show = false;
+      viewer.scene.sun.show = false;
+      viewer.scene.moon.show = false;
+      const dpr = window.devicePixelRatio || 1.0;
+      viewer.resolutionScale = Math.min(dpr, 1.5);
+      viewer.scene.highDynamicRange = false;
+      viewer.scene.fxaa = false;
+      if (viewer.scene.globe) {
+        viewer.scene.globe.showGroundAtmosphere = false;
+        viewer.scene.globe.enableLighting = false;
+        viewer.scene.globe.maximumScreenSpaceError = 1.75;
+        viewer.scene.globe.tileCacheSize = 180;
+        viewer.scene.globe.preloadAncestors = true;
+        viewer.scene.globe.preloadSiblings = false;
+      }
+      configureGoogleLikeCamera(viewer);
+      initLayerControl();
+      let savedBaseLayer = "hybrid";
+      try {
+        savedBaseLayer = localStorage.getItem("sedam_android_map_layer") || "hybrid";
+      } catch (_) {}
+      setBaseLayer(savedBaseLayer);
+      if (viewer.scene && viewer.scene.postRender) {
+        viewer.scene.postRender.addEventListener(function () {
+          if (activePopupEntity) {
+            updatePopupPosition(null);
+          }
+        });
+      }
+      if (viewer.camera && viewer.camera.changed) {
+        viewer.camera.changed.addEventListener(scheduleCameraStateSave);
+      }
+      if (viewer.camera && viewer.camera.moveEnd) {
+        viewer.camera.moveEnd.addEventListener(saveCameraStateNow);
+      }
+      window.addEventListener("pagehide", saveCameraStateNow);
+      window.addEventListener("beforeunload", saveCameraStateNow);
+      window.addEventListener("resize", () => window.setTimeout(resizeCesium, 120));
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) saveCameraStateNow();
+      });
+
+      const followCancelHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+      [
+        Cesium.ScreenSpaceEventType.LEFT_DOWN,
+        Cesium.ScreenSpaceEventType.MIDDLE_DOWN,
+        Cesium.ScreenSpaceEventType.RIGHT_DOWN,
+        Cesium.ScreenSpaceEventType.WHEEL,
+        Cesium.ScreenSpaceEventType.PINCH_START
+      ].forEach((eventType) => {
+        if (eventType !== undefined) {
+          followCancelHandler.setInputAction(disableFollowMyLocation, eventType);
+        }
+      });
+
+      // Handler de clicks
+      const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+      handler.setInputAction((movement) => {
+        try {
+          if (!viewer || !movement || !movement.position) return;
+
+          const cartesian = viewer.camera.pickEllipsoid(
+            movement.position,
+            viewer.scene.globe.ellipsoid
+          );
+
+          if (!cartesian) return;
+
+          const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+          const lat = Cesium.Math.toDegrees(cartographic.latitude);
+          const lon = Cesium.Math.toDegrees(cartographic.longitude);
+
+          if (pickMode === "start") {
+            setStartPoint(lat, lon);
+            pickMode = null;
+            notifyAndroid("Origen seleccionado");
+            return;
+          }
+
+          if (pickMode === "end") {
+            setEndPoint(lat, lon);
+            pickMode = null;
+            notifyAndroid("Destino seleccionado. Calculando ruta...");
+            calculateRouteSilently();
+            return;
+          }
+
+          if (isGeoMsgMode) {
+            isGeoMsgMode = false;
+            hideTargetPopup();
+            if (window.Android && typeof Android.onGeoMsgRequested === "function") {
+              Android.onGeoMsgRequested(lat, lon);
+            }
+            return;
+          }
+
+          if (_drawMode) {
+            return;
+          }
+
+          if (!_drawMode) {
+            const selectedObject = getSelectableObjectAt(movement.position);
+            if (selectedObject) {
+              if (isTrackingKind(selectedObject.kind)) {
+                setSelectedTracking(selectedObject.kind, selectedObject.id);
+              } else {
+                setSelectedTracking(null, null);
+              }
+              selectedObject.screenX = movement.position.x;
+              selectedObject.screenY = movement.position.y;
+              selectedObject.viewportWidth = viewer.canvas.clientWidth || window.innerWidth || 1;
+              selectedObject.viewportHeight = viewer.canvas.clientHeight || window.innerHeight || 1;
+              const isTrackingPersonOrDevice = (
+                selectedObject.kind === "personal" ||
+                selectedObject.kind === "vehiculo" ||
+                selectedObject.kind === "equipo" ||
+                selectedObject.kind === "dispositivo"
+              );
+              const pickedEntity = getSelectableEntityAt(movement.position);
+              if (pickedEntity && !isTrackingPersonOrDevice) {
+                showTargetPopup(pickedEntity, movement.position);
+              } else {
+                hideTargetPopup();
+              }
+              notifyMapObjectSelected(selectedObject);
+              return;
+            }
+          }
+
+          setSelectedTracking(null, null);
+          hideTargetPopup();
+          notifyMapSelectionCleared();
+
+          // Click normal, se mantiene tu flujo actual
+          notifyMapTap(lat, lon);
+        } catch (e) {
+          console.error("Error en click del mapa: " + e.message);
+          notifyAndroid("Error en el click del mapa: " + e.message);
+        }
+      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+      // Pulsación prolongada (Touch y Click sostenido) para crear Waypoints o Blancos.
+      let mapLongPressTimer = null;
+      let mapLongPressStart = null;
+      const mapCanvas = viewer.scene.canvas;
+
+      function triggerLongPressAt(clientX, clientY) {
+        try {
+          const rect = mapCanvas.getBoundingClientRect();
+          const position = new Cesium.Cartesian2(clientX - rect.left, clientY - rect.top);
+          const cartesian = viewer.camera.pickEllipsoid(position, viewer.scene.globe.ellipsoid);
+          if (!cartesian) return;
+          const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+          const lat = Cesium.Math.toDegrees(cartographic.latitude);
+          const lon = Cesium.Math.toDegrees(cartographic.longitude);
+
+          notifyMapLongPress(lat, lon);
+          if (navigator.vibrate) navigator.vibrate(40);
+        } catch (e) {
+          console.error("Error en pulsacion prolongada: " + e.message);
+        }
+      }
+
+      const cancelMapLongPress = function () {
+        if (mapLongPressTimer) clearTimeout(mapLongPressTimer);
+        mapLongPressTimer = null;
+        mapLongPressStart = null;
+      };
+
+      mapCanvas.addEventListener('touchstart', function (event) {
+        if (_drawMode || mobileToolHandler || !event.touches || event.touches.length !== 1) return;
+        const touch = event.touches[0];
+        mapLongPressStart = { x: touch.clientX, y: touch.clientY };
+        mapLongPressTimer = setTimeout(function () {
+          triggerLongPressAt(touch.clientX, touch.clientY);
+          cancelMapLongPress();
+        }, 400);
+      }, { passive: true });
+
+      mapCanvas.addEventListener('mousedown', function (event) {
+        if (_drawMode || mobileToolHandler || event.button !== 0) return;
+        mapLongPressStart = { x: event.clientX, y: event.clientY };
+        mapLongPressTimer = setTimeout(function () {
+          triggerLongPressAt(event.clientX, event.clientY);
+          cancelMapLongPress();
+        }, 400);
+      }, { passive: true });
+
+      mapCanvas.addEventListener('touchmove', function (event) {
+        if (!mapLongPressStart || !event.touches || event.touches.length !== 1) return cancelMapLongPress();
+        const touch = event.touches[0];
+        if (Math.hypot(touch.clientX - mapLongPressStart.x, touch.clientY - mapLongPressStart.y) > 12) cancelMapLongPress();
+      }, { passive: true });
+
+      mapCanvas.addEventListener('mousemove', function (event) {
+        if (!mapLongPressStart) return;
+        if (Math.hypot(event.clientX - mapLongPressStart.x, event.clientY - mapLongPressStart.y) > 12) cancelMapLongPress();
+      }, { passive: true });
+
+      mapCanvas.addEventListener('touchend', cancelMapLongPress, { passive: true });
+      mapCanvas.addEventListener('touchcancel', cancelMapLongPress, { passive: true });
+      mapCanvas.addEventListener('mouseup', cancelMapLongPress, { passive: true });
+
+      const objectDragHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+      let draggedObject = null;
+      let objectDragMoved = false;
+
+      objectDragHandler.setInputAction(function (movement) {
+        if (_drawMode || !movement || !movement.position) return;
+        const entity = getSelectableEntityAt(movement.position);
+        if (!entity) return;
+        const selectable = getSelectableObjectAt(movement.position);
+        if (!selectable || !["poi", "structure", "area"].includes(selectable.kind)) return;
+        if (selectable.kind === "area" && !entity.ellipse) return;
+
+        draggedObject = {
+          entity: entity,
+          kind: selectable.kind,
+          id: selectable.id,
+          label: selectable.label,
+          start: Cesium.Cartesian2.clone(movement.position),
+          lastLat: null,
+          lastLon: null
+        };
+        objectDragMoved = false;
+      }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+      objectDragHandler.setInputAction(function (movement) {
+        if (!draggedObject || !movement || !movement.endPosition) return;
+        const distance = Cesium.Cartesian2.distance(draggedObject.start, movement.endPosition);
+        if (!objectDragMoved && distance < 8) return;
+
+        const cartesian = viewer.camera.pickEllipsoid(
+          movement.endPosition,
+          viewer.scene.globe.ellipsoid
+        );
+        if (!cartesian) return;
+
+        objectDragMoved = true;
+        viewer.scene.screenSpaceCameraController.enableRotate = false;
+        viewer.scene.screenSpaceCameraController.enableTranslate = false;
+        const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+        draggedObject.lastLat = Cesium.Math.toDegrees(cartographic.latitude);
+        draggedObject.lastLon = Cesium.Math.toDegrees(cartographic.longitude);
+        draggedObject.entity.position = Cesium.Cartesian3.fromDegrees(
+          draggedObject.lastLon,
+          draggedObject.lastLat,
+          0
+        );
+        viewer.scene.requestRender();
+      }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+      objectDragHandler.setInputAction(function () {
+        if (!draggedObject) return;
+        viewer.scene.screenSpaceCameraController.enableRotate = true;
+        viewer.scene.screenSpaceCameraController.enableTranslate = true;
+        viewer.scene.screenSpaceCameraController.enableZoom = true;
+
+        if (objectDragMoved &&
+            Number.isFinite(draggedObject.lastLat) &&
+            Number.isFinite(draggedObject.lastLon)) {
+          notifyMapObjectMoved({
+            kind: draggedObject.kind,
+            id: draggedObject.id,
+            label: draggedObject.label,
+            lat: draggedObject.lastLat,
+            lon: draggedObject.lastLon
+          });
+        }
+        draggedObject = null;
+        objectDragMoved = false;
+      }, Cesium.ScreenSpaceEventType.LEFT_UP);
+
+      if (window.Android && typeof Android.sendTrafficAlert === 'function') {
+        Android.sendTrafficAlert("Mapa listo");
+      }
+
+      console.log("Cesium OK");
+    } catch (e) {
+      console.error("Error iniciando Cesium: " + e.message);
+      document.body.innerHTML =
+        '<div style="color:#ef4444;padding:20px;font-family:monospace;background:#0a0f1e">Error: ' + e.message + '</div>';
+    }
+
+    // =========================
+    // Funciones actuales
+    // =========================
+    window.setOperationView = function (lat, lon, zoomMeters) {
+      try {
+        if (!viewer) return;
+        setCameraStateKey(lat, lon, zoomMeters);
+
+        if (!firstOperationViewHandled) {
+          firstOperationViewHandled = true;
+          if (restoreCameraState()) return;
+        }
+
+        if (restoredCameraAt && Date.now() - restoredCameraAt < 7000) {
+          return;
+        }
+
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(lon, lat, zoomMeters || 15000),
+          duration: 2.5
+        });
+      } catch (e) {
+        console.error("Error en setOperationView: " + e.message);
+      }
+    };
+
+    window.centerOnLocation = function (lat, lon, zoomMeters, followMode) {
+      try {
+        if (!viewer) return;
+        followMyLocation = followMode === true;
+        if (followMyLocation) followedTrackingPersonalId = null;
+        flyToLocation(lat, lon, zoomMeters || FOLLOW_LOCATION_ZOOM, 0.8);
+      } catch (e) {
+        console.error("Error en centerOnLocation: " + e.message);
+      }
+    };
+
+    window.updateMyPosition = function (lat, lon, showMarker) {
+      try {
+        if (!viewer) return;
+        if (userMarker) viewer.entities.remove(userMarker);
+        userMarker = null;
+
+        if (showMarker === false) {
+          if (followMyLocation) {
+            flyToLocation(lat, lon, FOLLOW_LOCATION_ZOOM, 0.45);
+          }
+          return;
+        }
+
+        const marker = getTrackingMilMarker({ kind: "personal", tacticalType: "personal" }, "Mi ubicacion");
+        userMarker = viewer.entities.add({
+          position: Cesium.Cartesian3.fromDegrees(lon, lat),
+          billboard: marker.billboard,
+          properties: {
+            trackingKind: "personal",
+            trackingKey: "SELF",
+            tacticalType: "personal",
+            trackingSidc: marker.sidc || ""
+          }
+        });
+
+        if (followMyLocation) {
+          flyToLocation(lat, lon, FOLLOW_LOCATION_ZOOM, 0.45);
+        }
+      } catch (e) {
+        console.error("Error en updateMyPosition: " + e.message);
+      }
+    };
+
+    function normalizeTrackingText(value) {
+      return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toUpperCase();
+    }
+
+    function textIncludes(text) {
+      const needles = Array.prototype.slice.call(arguments, 1);
+      return needles.some(function (needle) { return text.indexOf(needle) >= 0; });
+    }
+
+    function compactTrackingLabel(value, maxChars) {
+      const limit = Number(maxChars) || TRACKING_LABEL_MAX_CHARS;
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      if (!text || text.length <= limit) return text;
+      return text.slice(0, Math.max(1, limit - 3)).trim() + "...";
+    }
+
+    function stripTrackingIdentityPrefix(value) {
+      return String(value || "")
+        .replace(/^[A-Z0-9_-]{8,}\s*-\s*/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function makeTrackingMapLabel(kind, label, options) {
+      const source = options || {};
+      const trackingKind = kind || source.tacticalType || source.kind || "";
+      if (trackingKind !== "equipo") return compactTrackingLabel(label, TRACKING_LABEL_MAX_CHARS);
+
+      const text = normalizeTrackingText([
+        source.categoria,
+        source.tipo_equipo,
+        source.tipo,
+        source.nombre,
+        label
+      ].filter(Boolean).join(" "));
+
+      const preferred = stripTrackingIdentityPrefix(source.nombre || source.tipo_equipo || label);
+      if (textIncludes(text, "DRON", "DRONE", "UAV", "MATRICE")) {
+        const droneLabel = preferred.replace(/\bDJI\b\s*/i, "").trim() || preferred || "Dron";
+        return compactTrackingLabel(droneLabel, TRACKING_DRONE_LABEL_MAX_CHARS);
+      }
+
+      return compactTrackingLabel(preferred || label, TRACKING_LABEL_MAX_CHARS);
+    }
+
+    function buildMilSidc(identity, dimension, icon) {
+      const safeIdentity = String(identity || "F").slice(0, 1);
+      const safeDimension = String(dimension || "G").slice(0, 1);
+      const safeIcon = String(icon || "U-----").padEnd(6, "-").slice(0, 6);
+      return "S" + safeIdentity + safeDimension + "P" + safeIcon + "-----";
+    }
+
+    function getFallbackTrackingSidc(kind) {
+      if (kind === "vehiculo") return buildMilSidc("F", "G", "EV----");
+      if (kind === "equipo") return buildMilSidc("F", "G", "E-----");
+      if (kind === "dispositivo") return buildMilSidc("F", "G", "UCS---");
+      return buildMilSidc("F", "G", "UCI---");
+    }
+
+    function resolveTrackingMilSymbol(options, label) {
+      options = options || {};
+      const kind = options.tacticalType || options.kind || "personal";
+      const providedSidc = options.sidc || options.codigo_sidc || options.mil_sidc;
+      if (providedSidc) return String(providedSidc);
+
+      const text = normalizeTrackingText([
+        kind,
+        label,
+        options.rol,
+        options.rol_en_operacion,
+        options.role,
+        options.tipo,
+        options.tipo_equipo,
+        options.categoria,
+        options.nombre,
+        options.alias,
+        options.codigo_interno,
+        options.modelo,
+        options.marca
+      ].filter(Boolean).join(" "));
+
+      if (kind === "vehiculo") {
+        if (textIncludes(text, "AMBULANC", "MEDIC")) return buildMilSidc("F", "G", "UCM---");
+        if (textIncludes(text, "BLIND", "TANQUE", "ARMORED")) return buildMilSidc("F", "G", "UCD---");
+        if (textIncludes(text, "PATRULL", "POLIC", "SEGUR")) return buildMilSidc("F", "G", "UCF---");
+        return buildMilSidc("F", "G", "EV----");
+      }
+
+      if (kind === "equipo") {
+        if (textIncludes(text, "DRON", "DRONE", "UAV", "MATRICE")) return buildMilSidc("F", "A", "MFQ---");
+        if (textIncludes(text, "RADIO", "COMUNIC", "SENAL", "SIGNAL")) return buildMilSidc("F", "G", "UCS---");
+        if (textIncludes(text, "ARMA", "RIFLE", "PISTOLA", "FUSIL")) return buildMilSidc("F", "G", "EW----");
+        if (textIncludes(text, "CAMARA", "SENSOR", "TACTICO")) return buildMilSidc("F", "G", "EX----");
+        return buildMilSidc("F", "G", "E-----");
+      }
+
+      if (kind === "dispositivo") {
+        if (textIncludes(text, "WATCH", "RELOJ")) return buildMilSidc("F", "G", "U-----");
+        if (textIncludes(text, "TELEFONO", "CELULAR", "TABLET", "RADIO", "LORA", "COMUNIC")) return buildMilSidc("F", "G", "UCS---");
+        if (textIncludes(text, "CAMARA", "CAMERA")) return buildMilSidc("F", "G", "EX----");
+        return buildMilSidc("F", "G", "E-----");
+      }
+
+      if (textIncludes(text, "CUT", "CET")) return buildMilSidc("F", "G", "UCI---");
+      if (textIncludes(text, "CELL", "CELULA")) return buildMilSidc("F", "G", "UCI---");
+      if (textIncludes(text, "PATRULL", "POLIC", "SEGUR")) return buildMilSidc("F", "G", "UCF---");
+      return getFallbackTrackingSidc("personal");
+    }
+
+    function renderTrackingMilSymbol(sidc) {
+      if (!sidc || typeof ms === "undefined" || typeof ms.Symbol !== "function") return null;
+      if (trackingSymbolImageCache.has(sidc)) return trackingSymbolImageCache.get(sidc);
+
+      try {
+        const symbol = new ms.Symbol(sidc, {
+          size: TRACKING_SYMBOL_RENDER_SIZE,
+          colorMode: "Light"
+        });
+
+        if (typeof symbol.isValid === "function" && symbol.isValid() === false) {
+          trackingSymbolImageCache.set(sidc, null);
+          return null;
+        }
+
+        if (typeof symbol.asSVG !== "function") {
+          trackingSymbolImageCache.set(sidc, null);
+          return null;
+        }
+
+        const svg = symbol.asSVG();
+        if (!svg || />\s*\?\s*</.test(svg)) {
+          trackingSymbolImageCache.set(sidc, null);
+          return null;
+        }
+
+        const image = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+        trackingSymbolImageCache.set(sidc, image);
+        return image;
+      } catch (e) {
+        console.warn("[TRACKING] No se pudo generar simbolo MIL:", sidc, e);
+        trackingSymbolImageCache.set(sidc, null);
+        return null;
+      }
+    }
+
+    function getTrackingMilMarker(options, label) {
+      const kind = (options && (options.tacticalType || options.kind)) || "personal";
+      const sidc = resolveTrackingMilSymbol(options, label);
+      const fallbackSidc = getFallbackTrackingSidc(kind);
+      let image = renderTrackingMilSymbol(sidc);
+      let renderedSidc = sidc;
+
+      if (!image && sidc !== fallbackSidc) {
+        image = renderTrackingMilSymbol(fallbackSidc);
+        if (image) renderedSidc = fallbackSidc;
+      }
+
+      return {
+        sidc: renderedSidc,
+        billboard: image ? {
+          image,
+          width: TRACKING_SYMBOL_SIZE,
+          height: TRACKING_SYMBOL_SIZE,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          scaleByDistance: TRACKING_SYMBOL_SCALE_BY_DIST
+        } : undefined,
+        labelOffset: new Cesium.Cartesian2(0, 17)
+      };
+    }
+
+    function isTrackingKind(kind) {
+      return kind === "personal" || kind === "vehiculo" || kind === "equipo" || kind === "dispositivo";
+    }
+
+    function trackingStoreForKind(kind) {
+      if (kind === "vehiculo") return trackingVehiculoEntities;
+      if (kind === "equipo") return trackingEquipoEntities;
+      if (kind === "dispositivo") return trackingDispositivoEntities;
+      return trackingPersonalEntities;
+    }
+
+    function trackingColorForKind(kind, selected) {
+      if (selected) return kind === "personal" ? TRACKING_PERSONAL_SELECTED_COLOR : TRACKING_SELECTED_COLOR;
+      if (kind === "vehiculo") return TRACKING_VEHICULO_COLOR;
+      if (kind === "equipo") return TRACKING_EQUIPO_COLOR;
+      if (kind === "dispositivo") return TRACKING_DISPOSITIVO_COLOR;
+      return TRACKING_PERSONAL_COLOR;
+    }
+
+    function applyTrackingStyle(entity, kind, selected) {
+      if (!entity) return;
+
+      const markerColor = trackingColorForKind(kind, selected);
+      if (entity.billboard) {
+        entity.billboard.width = selected ? TRACKING_SYMBOL_SIZE + 8 : TRACKING_SYMBOL_SIZE;
+        entity.billboard.height = selected ? TRACKING_SYMBOL_SIZE + 8 : TRACKING_SYMBOL_SIZE;
+      }
+
+      if (entity.label) {
+        entity.label.showBackground = selected || kind === "personal";
+        entity.label.fillColor = Cesium.Color.WHITE;
+        entity.label.backgroundColor = markerColor.withAlpha(selected ? 0.9 : 0.68);
+        entity.label.backgroundPadding = new Cesium.Cartesian2(5, 3);
+      }
+    }
+
+    function applyPersonalTrackingStyle(entity, selected) {
+      applyTrackingStyle(entity, "personal", selected);
+    }
+
+    function setSelectedTracking(kind, id) {
+      const nextKind = isTrackingKind(kind) && id != null ? kind : null;
+      const nextId = nextKind ? String(id) : null;
+
+      if (
+        selectedTrackingKind &&
+        selectedTrackingId &&
+        (selectedTrackingKind !== nextKind || selectedTrackingId !== nextId)
+      ) {
+        const previous = trackingStoreForKind(selectedTrackingKind).get(selectedTrackingId);
+        applyTrackingStyle(previous, selectedTrackingKind, false);
+      }
+
+      selectedTrackingKind = nextKind;
+      selectedTrackingId = nextId;
+      selectedTrackingPersonalId = nextKind === "personal" ? nextId : null;
+
+      if (selectedTrackingKind && selectedTrackingId) {
+        const current = trackingStoreForKind(selectedTrackingKind).get(selectedTrackingId);
+        applyTrackingStyle(current, selectedTrackingKind, true);
+      }
+    }
+
+    function setSelectedTrackingPersonal(id) {
+      setSelectedTracking("personal", id);
+    }
+
+    function coordinateNumber(value) {
+      if (value === undefined || value === null) return null;
+      const text = String(value).trim();
+      if (!text) return null;
+      const number = Number(text);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    function normalizeCoordinatePair(lat, lon) {
+      const nLat = coordinateNumber(lat);
+      const nLon = coordinateNumber(lon);
+      if (nLat === null || nLon === null) return null;
+      if (Math.abs(nLat) > 90 || Math.abs(nLon) > 180) return null;
+      if (nLat === 0 && nLon === 0) return null;
+      return { lat: nLat, lon: nLon };
+    }
+
+    function trackingHeadingKey(kind, key) {
+      return String(kind || "personal") + ":" + String(key || "");
+    }
+
+    function normalizeHeadingDegrees(value) {
+      if (value === undefined || value === null) return null;
+      const text = String(value).replace("Â°", "").trim();
+      if (!text) return null;
+      const number = Number(text);
+      if (!Number.isFinite(number)) return null;
+      return ((number % 360) + 360) % 360;
+    }
+
+    function firstHeadingValue(options) {
+      const source = options || {};
+      const keys = [
+        "rumbo_grados",
+        "rumboGrados",
+        "headingDegrees",
+        "heading",
+        "heading_deg",
+        "bearing",
+        "curso",
+        "rumbo"
+      ];
+      for (let i = 0; i < keys.length; i += 1) {
+        const value = source[keys[i]];
+        if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+      }
+      return null;
+    }
+
+    function makeHeadingLinePositions(position, headingDegrees) {
+      const headingRadians = Cesium.Math.toRadians(headingDegrees);
+      const eastMeters = Math.sin(headingRadians) * HEADING_LINE_LENGTH_METERS;
+      const northMeters = Math.cos(headingRadians) * HEADING_LINE_LENGTH_METERS;
+      const enu = Cesium.Transforms.eastNorthUpToFixedFrame(position);
+      const endPosition = Cesium.Matrix4.multiplyByPoint(
+        enu,
+        new Cesium.Cartesian3(eastMeters, northMeters, 0),
+        new Cesium.Cartesian3()
+      );
+      return [position, endPosition];
+    }
+
+    function removeTrackingHeadingEntity(kind, key) {
+      const id = trackingHeadingKey(kind, key);
+      const entity = trackingHeadingEntities.get(id);
+      if (!entity) return;
+      if (viewer) viewer.entities.remove(entity);
+      trackingHeadingEntities.delete(id);
+    }
+
+    function upsertTrackingHeadingEntity(kind, key, position, color, options) {
+      const headingDegrees = normalizeHeadingDegrees(firstHeadingValue(options));
+      if (headingDegrees === null) {
+        removeTrackingHeadingEntity(kind, key);
+        return;
+      }
+
+      const id = trackingHeadingKey(kind, key);
+      const positions = makeHeadingLinePositions(position, headingDegrees);
+      const material = color.withAlpha(0.95);
+
+      if (trackingHeadingEntities.has(id)) {
+        const entity = trackingHeadingEntities.get(id);
+        entity.name = "Rumbo " + headingDegrees.toFixed(0) + "Â°";
+        entity.polyline.positions = positions;
+        entity.polyline.material = material;
+        if (entity.properties) entity.properties.headingDegrees = headingDegrees;
+        return;
+      }
+
+      const entity = viewer.entities.add({
+        name: "Rumbo " + headingDegrees.toFixed(0) + "Â°",
+        polyline: {
+          positions,
+          width: HEADING_LINE_WIDTH,
+          material,
+          clampToGround: false,
+          zIndex: 5
+        },
+        properties: {
+          tacticalType: "tracking-heading",
+          headingDegrees,
+          draggable: false
+        }
+      });
+      trackingHeadingEntities.set(id, entity);
+    }
+
+    function followTrackingEntity(kind, idValue, lat, lon, zoomMeters) {
+      if (!viewer) return;
+      const id = String(idValue || "");
+      followMyLocation = false;
+      if (kind !== "dispositivo") {
+        clearRequestedDispositivoTracking(null);
+      }
+
+      const live = id ? trackingStoreForKind(kind).get(id) : null;
+      const providedCoords = normalizeCoordinatePair(lat, lon);
+      let destLat = providedCoords ? providedCoords.lat : null;
+      let destLon = providedCoords ? providedCoords.lon : null;
+      const livePosition = live && (live.position && live.position.getValue
+        ? live.position.getValue(viewer.clock.currentTime)
+        : live.position);
+
+      if (livePosition) {
+        const carto = Cesium.Cartographic.fromCartesian(livePosition);
+        destLat = Cesium.Math.toDegrees(carto.latitude);
+        destLon = Cesium.Math.toDegrees(carto.longitude);
+      }
+
+      if (destLat !== null && destLon !== null) {
+        followedTrackingPersonalId = kind === "personal" ? (id || null) : null;
+        setSelectedTracking(kind, id || null);
+        flyToLocation(destLat, destLon, zoomMeters || FOLLOW_TRACKING_ZOOM, 0.45);
+      }
+    }
+
+    function selectExistingTracking(kind, idValue) {
+      const id = String(idValue || "");
+      if (!id || !trackingStoreForKind(kind).has(id)) return;
+      setSelectedTracking(kind, id);
+    }
+
+    window.selectTrackingPersonal = function (idPersonal) {
+      selectExistingTracking("personal", idPersonal);
+    };
+
+    window.selectTrackingVehiculo = function (idVehiculo) {
+      selectExistingTracking("vehiculo", idVehiculo);
+    };
+
+    window.selectTrackingEquipo = function (idEquipo) {
+      selectExistingTracking("equipo", idEquipo);
+    };
+
+    window.selectTrackingDispositivo = function (idDispositivo) {
+      selectExistingTracking("dispositivo", idDispositivo);
+    };
+
+    window.followTrackingPersonal = function (idPersonal, lat, lon, zoomMeters) {
+      followTrackingEntity("personal", idPersonal, lat, lon, zoomMeters);
+    };
+
+    window.followTrackingVehiculo = function (idVehiculo, lat, lon, zoomMeters) {
+      followTrackingEntity("vehiculo", idVehiculo, lat, lon, zoomMeters);
+    };
+
+    window.followTrackingEquipo = function (idEquipo, lat, lon, zoomMeters) {
+      followTrackingEntity("equipo", idEquipo, lat, lon, zoomMeters);
+    };
+
+    window.followTrackingDispositivo = function (idDispositivo, lat, lon, zoomMeters, label, meta) {
+      const id = String(idDispositivo || "");
+      requestDispositivoTrackingDisplay(id, lat, lon, label, meta);
+      followTrackingEntity("dispositivo", id, lat, lon, zoomMeters);
+    };
+
+    window.clearTrackingSelection = function () {
+      followedTrackingPersonalId = null;
+      setSelectedTracking(null, null);
+      clearRequestedDispositivoTracking(null);
+    };
+
+    function removeEmergencyPulse(id) {
+      const entities = emergencyPulseEntities.get(id);
+      if (!entities) return;
+      entities.forEach(function (entity) {
+        if (entity) viewer.entities.remove(entity);
+      });
+      emergencyPulseEntities.delete(id);
+    }
+
+    function positionForEntity(entity) {
+      if (!entity || !entity.position) return null;
+      return entity.position.getValue
+        ? entity.position.getValue(viewer.clock.currentTime)
+        : entity.position;
+    }
+
+    function drawEmergencyPulse(id, position) {
+      if (!viewer || !id || !position) return;
+
+      removeEmergencyPulse(id);
+
+      const startedAt = Date.now();
+      const durationMs = 4200;
+      const pulseEntities = EMERGENCY_PULSE_COLORS.map(function (color, index) {
+        const delayMs = index * 430;
+        const entity = viewer.entities.add({
+          name: "Emergencia personal " + id,
+          position: position,
+          ellipse: {
+            semiMajorAxis: new Cesium.CallbackProperty(function () {
+              const progress = Math.max(0, Math.min(1, (Date.now() - startedAt - delayMs) / durationMs));
+              return 35 + progress * 360;
+            }, false),
+            semiMinorAxis: new Cesium.CallbackProperty(function () {
+              const progress = Math.max(0, Math.min(1, (Date.now() - startedAt - delayMs) / durationMs));
+              return 35 + progress * 360;
+            }, false),
+            material: new Cesium.ColorMaterialProperty(
+              new Cesium.CallbackProperty(function () {
+                const progress = Math.max(0, Math.min(1, (Date.now() - startedAt - delayMs) / durationMs));
+                const alpha = progress <= 0 ? 0 : Math.max(0, 0.68 * (1 - progress));
+                return color.withAlpha(alpha);
+              }, false)
+            ),
+            outline: true,
+            outlineColor: color.withAlpha(0.95),
+            outlineWidth: 4,
+            height: 0
+          }
+        });
+        return entity;
+      });
+
+      emergencyPulseEntities.set(id, pulseEntities);
+      window.setTimeout(function () {
+        removeEmergencyPulse(id);
+      }, durationMs + (EMERGENCY_PULSE_COLORS.length * 430) + 300);
+    }
+
+    window.pulseEmergencyPersonal = function (idPersonal) {
+      try {
+        if (!viewer) return;
+
+        const id = String(idPersonal || "");
+        const tracked = trackingPersonalEntities.get(id);
+        const position = positionForEntity(tracked);
+        if (!id || !position) return;
+
+        drawEmergencyPulse(id, position);
+        setSelectedTrackingPersonal(id);
+      } catch (e) {
+        console.error("Error en pulseEmergencyPersonal: " + e.message);
+      }
+    };
+
+    window.pulseEmergencyAtLocation = function (idPersonal, lat, lon) {
+      try {
+        if (!viewer) return;
+
+        const coords = normalizeCoordinatePair(lat, lon);
+        if (!coords) return;
+
+        const id = String(idPersonal || ("loc-" + Date.now()));
+        drawEmergencyPulse(id, Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat));
+        if (trackingPersonalEntities.has(id)) setSelectedTrackingPersonal(id);
+      } catch (e) {
+        console.error("Error en pulseEmergencyAtLocation: " + e.message);
+      }
+    };
+
+    function firstTrackingValue() {
+      for (let i = 0; i < arguments.length; i += 1) {
+        const value = arguments[i];
+        if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+      }
+      return null;
+    }
+
+    function normalizeHeadingDegrees(value) {
+      if (value === undefined || value === null || String(value).trim() === "") return null;
+      const degrees = Number(value);
+      if (!Number.isFinite(degrees)) return null;
+      return ((degrees % 360) + 360) % 360;
+    }
+
+    function trackingHeadingDegrees(meta) {
+      const source = meta || {};
+      return normalizeHeadingDegrees(firstTrackingValue(
+        source.rumbo_grados,
+        source.rumboGrados,
+        source.headingDegrees,
+        source.heading,
+        source.bearing,
+        source.curso,
+        source.rumbo
+      ));
+    }
+
+    function headingEndPosition(lat, lon, headingDegrees, meters) {
+      const origin = Cesium.Cartesian3.fromDegrees(lon, lat);
+      const radians = Cesium.Math.toRadians(headingDegrees);
+      const localStart = new Cesium.Cartesian3(
+        Math.sin(radians) * TRACKING_HEADING_START_M,
+        Math.cos(radians) * TRACKING_HEADING_START_M,
+        0
+      );
+      const localEnd = new Cesium.Cartesian3(
+        Math.sin(radians) * meters,
+        Math.cos(radians) * meters,
+        0
+      );
+      const enu = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
+      const start = Cesium.Matrix4.multiplyByPoint(enu, localStart, new Cesium.Cartesian3());
+      const end = Cesium.Matrix4.multiplyByPoint(enu, localEnd, new Cesium.Cartesian3());
+      return { start, end };
+    }
+
+    function upsertTrackingHeadingLine(trackingKey, lat, lon, color, meta) {
+      if (!viewer || !trackingKey) return;
+
+      const heading = trackingHeadingDegrees(meta);
+      if (heading === null) {
+        removeTrackingHeadingLine(trackingKey);
+        return;
+      }
+
+      const positions = headingEndPosition(lat, lon, heading, TRACKING_HEADING_LENGTH_M);
+      const current = trackingHeadingEntities.get(trackingKey);
+      if (current) {
+        current.polyline.positions = [positions.start, positions.end];
+        current.polyline.material = color.withAlpha(0.92);
+        current.name = "Rumbo " + Math.round(heading) + "Â°";
+        current.properties.headingDegrees = heading;
+        return;
+      }
+
+      const entity = viewer.entities.add({
+        name: "Rumbo " + Math.round(heading) + "Â°",
+        polyline: {
+          positions: [positions.start, positions.end],
+          width: 3,
+          material: color.withAlpha(0.92),
+          clampToGround: false
+        },
+        properties: {
+          trackingKind: "heading",
+          trackingKey: trackingKey,
+          tacticalType: "tracking-heading",
+          headingLine: true,
+          headingDegrees: heading
+        }
+      });
+      trackingHeadingEntities.set(trackingKey, entity);
+    }
+
+    function removeTrackingHeadingLine(trackingKey) {
+      const current = trackingHeadingEntities.get(trackingKey);
+      if (!current) return;
+      if (viewer) viewer.entities.remove(current);
+      trackingHeadingEntities.delete(trackingKey);
+    }
+
+    function removeTrackingDispositivoEntity(id) {
+      const key = String(id || "");
+      const current = trackingDispositivoEntities.get(key);
+      if (current && viewer) viewer.entities.remove(current);
+      trackingDispositivoEntities.delete(key);
+      removeTrackingHeadingLine("D:" + key);
+    }
+
+    function clearRequestedDispositivoTracking(keepId) {
+      const keep = keepId ? String(keepId) : null;
+      Array.from(requestedDispositivoTrackingIds).forEach(function (id) {
+        if (keep && id === keep) return;
+        requestedDispositivoTrackingIds.delete(id);
+        removeTrackingDispositivoEntity(id);
+      });
+    }
+
+    function cacheTrackingDispositivo(idValue, lat, lon, label, meta) {
+      const id = String(idValue || "");
+      const coords = normalizeCoordinatePair(lat, lon);
+      if (!id || !coords) return null;
+      const previous = trackingDispositivoLatest.get(id) || {};
+      const options = Object.assign({}, previous.options || {}, meta || {}, {
+        kind: "dispositivo",
+        trackingKey: "D:" + id,
+        tacticalType: "dispositivo",
+        active: true
+      });
+      const cached = {
+        lat: coords.lat,
+        lon: coords.lon,
+        label: label || previous.label || ("D-" + id),
+        options: options
+      };
+      trackingDispositivoLatest.set(id, cached);
+      return cached;
+    }
+
+    function upsertCachedDispositivoTracking(id, cached) {
+      if (!cached) return;
+      upsertTrackingEntity(
+        trackingDispositivoEntities,
+        id,
+        cached.lat,
+        cached.lon,
+        cached.label || ("D-" + id),
+        TRACKING_DISPOSITIVO_COLOR,
+        cached.options || {}
+      );
+    }
+
+    function requestDispositivoTrackingDisplay(idValue, lat, lon, label, meta) {
+      const id = String(idValue || "");
+      if (!id) return;
+      clearRequestedDispositivoTracking(id);
+      requestedDispositivoTrackingIds.add(id);
+      const cached = cacheTrackingDispositivo(id, lat, lon, label, meta) || trackingDispositivoLatest.get(id);
+      upsertCachedDispositivoTracking(id, cached);
+    }
+
+    function upsertTrackingEntity(store, key, lat, lon, label, color, meta) {
+      const coords = normalizeCoordinatePair(lat, lon);
+      if (!viewer || !coords) return;
+
+      const options = meta || {};
+      const marker = getTrackingMilMarker(options, label);
+      const mapLabel = makeTrackingMapLabel(options.kind || options.tacticalType, label, options);
+      const current = store.get(key);
+      if (current) viewer.entities.remove(current);
+      const position = Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat);
+
+      const entity = viewer.entities.add({
+        name: label,
+        position,
+        billboard: marker.billboard,
+        label: label ? {
+          text: mapLabel || label,
+          font: "bold 12px sans-serif",
+          fillColor: Cesium.Color.WHITE,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 3,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: marker.labelOffset,
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 50000),
+          showBackground: options.kind === "personal",
+          backgroundColor: color.withAlpha(0.68),
+          backgroundPadding: new Cesium.Cartesian2(5, 3)
+        } : undefined,
+        properties: {
+          trackingKind: options.kind || "",
+          trackingId: String(key),
+          trackingKey: options.trackingKey || "",
+          tacticalType: options.tacticalType || "",
+          trackingSidc: marker.sidc || "",
+          trackingFullLabel: label,
+          trackingMapLabel: mapLabel || label,
+          velocidad: options.velocidad ?? 0,
+          active: options.active === true
+        }
+      });
+
+      store.set(key, entity);
+      upsertTrackingHeadingLine(options.trackingKey || (options.kind + ":" + key), coords.lat, coords.lon, color, options);
+
+      if (isTrackingKind(options.kind)) {
+        applyTrackingStyle(
+          entity,
+          options.kind,
+          selectedTrackingKind === options.kind && selectedTrackingId === String(key)
+        );
+      }
+    }
+
+    function isAndroidVehicleMoving(entity) {
+      if (!entity) return false;
+      const speedVal = getEntityProperty(entity, "velocidad") || 0;
+      const speed = parseFloat(speedVal) || 0;
+      return speed > 1.0;
+    }
+
+    function reevaluateAndroidClusters() {
+      if (!viewer) return;
+
+      const vehicles = [];
+      const persons = [];
+
+      trackingVehiculoEntities.forEach((entity, id) => {
+        const pos = entity.position?.getValue(Cesium.JulianDate.now());
+        if (pos) {
+          vehicles.push({ id, entity, cartesian: pos });
+        }
+      });
+
+      trackingPersonalEntities.forEach((entity, id) => {
+        const pos = entity.position?.getValue(Cesium.JulianDate.now());
+        if (pos) {
+          persons.push({ id, entity, cartesian: pos });
+        }
+      });
+
+      const CLUSTER_DISTANCE_METERS = 30;
+
+      persons.forEach(p => {
+        let minDistance = Infinity;
+        let closestVehicle = null;
+
+        vehicles.forEach(v => {
+          const distance = Cesium.Cartesian3.distance(p.cartesian, v.cartesian);
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestVehicle = v;
+          }
+        });
+
+        let shouldShow = true;
+
+        if (closestVehicle && minDistance <= CLUSTER_DISTANCE_METERS) {
+          const moving = isAndroidVehicleMoving(closestVehicle.entity);
+          shouldShow = !moving;
+        }
+
+        if (p.entity.show !== shouldShow) {
+          p.entity.show = shouldShow;
+        }
+
+        const headingLine = trackingHeadingEntities.get("P:" + p.id);
+        if (headingLine && headingLine.show !== shouldShow) {
+          headingLine.show = shouldShow;
+        }
+      });
+    }
+
+    window.updateTrackingPersonal = function (idPersonal, lat, lon, label, meta) {
+      try {
+        const id = String(idPersonal || "");
+        const coords = normalizeCoordinatePair(lat, lon);
+        if (!coords) return;
+        const options = Object.assign({}, meta || {}, {
+          kind: "personal",
+          trackingKey: "P:" + id,
+          tacticalType: "personal",
+          active: true
+        });
+        upsertTrackingEntity(
+          trackingPersonalEntities,
+          id,
+          coords.lat,
+          coords.lon,
+          label || ("P-" + id),
+          TRACKING_PERSONAL_COLOR,
+          options
+        );
+        if (followedTrackingPersonalId === id) {
+          flyToLocation(coords.lat, coords.lon, FOLLOW_TRACKING_ZOOM, 0.3);
+        }
+        reevaluateAndroidClusters();
+      } catch (e) {
+        console.error("Error en updateTrackingPersonal: " + e.message);
+      }
+    };
+
+    window.updateTrackingVehiculo = function (idVehiculo, lat, lon, label, meta) {
+      try {
+        const id = String(idVehiculo || "");
+        const options = Object.assign({}, meta || {}, {
+          kind: "vehiculo",
+          trackingKey: "V:" + id,
+          tacticalType: "vehiculo",
+          active: true
+        });
+        upsertTrackingEntity(
+          trackingVehiculoEntities,
+          id,
+          lat,
+          lon,
+          label || ("V-" + id),
+          TRACKING_VEHICULO_COLOR,
+          options
+        );
+        reevaluateAndroidClusters();
+      } catch (e) {
+        console.error("Error en updateTrackingVehiculo: " + e.message);
+      }
+    };
+
+    window.updateTrackingEquipo = function (idEquipo, lat, lon, label, meta) {
+      try {
+        const id = String(idEquipo || "");
+        const options = Object.assign({}, meta || {}, {
+          kind: "equipo",
+          trackingKey: "E:" + id,
+          tacticalType: "equipo",
+          active: true
+        });
+        upsertTrackingEntity(
+          trackingEquipoEntities,
+          id,
+          lat,
+          lon,
+          label || ("E-" + id),
+          TRACKING_EQUIPO_COLOR,
+          options
+        );
+      } catch (e) {
+        console.error("Error en updateTrackingEquipo: " + e.message);
+      }
+    };
+
+    window.updateTrackingDispositivo = function (idDispositivo, lat, lon, label, meta) {
+      try {
+        const id = String(idDispositivo || "");
+        const cached = cacheTrackingDispositivo(id, lat, lon, label || ("D-" + id), meta || {});
+        if (!requestedDispositivoTrackingIds.has(id)) {
+          removeTrackingDispositivoEntity(id);
+          return;
+        }
+        upsertCachedDispositivoTracking(id, cached || trackingDispositivoLatest.get(id));
+      } catch (e) {
+        console.error("Error en updateTrackingDispositivo: " + e.message);
+      }
+    };
+
+    // =========================
+    // Rutas - selecciÃ³n
+    // =========================
+    function setStartPoint(lat, lon) {
+      startPoint = { lat, lon };
+      lastRoute = null;
+
+      clearRemoteRoutesForScope(selectedRouteScopeKey());
+
+      if (routeEntity) {
+        viewer.entities.remove(routeEntity);
+        routeEntity = null;
+      }
+
+      if (startEntity) {
+        viewer.entities.remove(startEntity);
+      }
+
+      startEntity = viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(lon, lat),
+        point: {
+          pixelSize: 12,
+          color: Cesium.Color.LIME,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          scaleByDistance: SCALE_BY_DIST
+        },
+        label: {
+          text: "ORIGEN",
+          font: "14px sans-serif",
+          fillColor: Cesium.Color.WHITE,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 3,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(0, -24),
+          scaleByDistance: SCALE_BY_DIST
+        }
+      });
+    }
+
+    function setEndPoint(lat, lon) {
+      endPoint = { lat, lon };
+      lastRoute = null;
+
+      if (routeEntity) {
+        viewer.entities.remove(routeEntity);
+        routeEntity = null;
+      }
+
+      if (endEntity) {
+        viewer.entities.remove(endEntity);
+      }
+
+      endEntity = viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(lon, lat),
+        point: {
+          pixelSize: 12,
+          color: Cesium.Color.YELLOW,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          scaleByDistance: SCALE_BY_DIST
+        },
+        label: {
+          text: "DESTINO",
+          font: "14px sans-serif",
+          fillColor: Cesium.Color.WHITE,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 3,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(0, -24),
+          scaleByDistance: SCALE_BY_DIST
+        }
+      });
+    }
+
+    window.setRouteStart = function (lat, lon) {
+      try {
+        setStartPoint(lat, lon);
+
+        if (startPoint && endPoint) {
+          calculateRouteSilently();
+        }
+      } catch (e) {
+        console.error("Error en setRouteStart: " + e.message);
+      }
+    };
+
+    window.setRouteEnd = function (lat, lon) {
+      try {
+        setEndPoint(lat, lon);
+
+        if (startPoint && endPoint) {
+          calculateRouteSilently();
+        }
+      } catch (e) {
+        console.error("Error en setRouteEnd: " + e.message);
+      }
+    };
+
+    window.clearPttEmergencyZones = function () {
+      if (!viewer) return;
+      ["ptt-emergency-zone-outer", "ptt-emergency-zone-middle", "ptt-emergency-zone-inner"]
+        .forEach(function (id) { viewer.entities.removeById(id); });
+    };
+
+    window.showPttEmergencyZones = function (lat, lon, idPersonal) {
+      if (!viewer || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon))) return;
+      window.clearPttEmergencyZones();
+
+      var tracked = idPersonal != null ? trackingPersonalEntities.get(String(Number(idPersonal))) : null;
+      var position = tracked && tracked.position
+        ? tracked.position
+        : Cesium.Cartesian3.fromDegrees(Number(lon), Number(lat), 1);
+      var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var startedAt = performance.now();
+      var cycleMs = 2400;
+      var zones = [
+        { id: "ptt-emergency-zone-outer", radius: 300, delay: 0, fill: "#DC2626", alpha: 0.48, outline: "#EF4444" },
+        { id: "ptt-emergency-zone-middle", radius: 230, delay: 0.28, fill: "#F59E0B", alpha: 0.52, outline: "#FBBF24" },
+        { id: "ptt-emergency-zone-inner", radius: 155, delay: 0.56, fill: "#D9E6A3", alpha: 0.66, outline: "#67E8F9" }
+      ];
+
+      zones.forEach(function (zone) {
+        var progress = function () {
+          if (reduceMotion) return 1;
+          var elapsed = (performance.now() - startedAt) / cycleMs;
+          return (elapsed + zone.delay) % 1;
+        };
+        var radius = new Cesium.CallbackProperty(function () {
+          var p = progress();
+          return 45 + (zone.radius - 45) * (1 - Math.pow(1 - p, 3));
+        }, false);
+        var baseColor = Cesium.Color.fromCssColorString(zone.fill);
+        viewer.entities.add({
+          id: zone.id,
+          position: position,
+          ellipse: {
+            semiMajorAxis: radius,
+            semiMinorAxis: radius,
+            material: new Cesium.ColorMaterialProperty(new Cesium.CallbackProperty(function () {
+              var p = progress();
+              return baseColor.withAlpha(reduceMotion ? zone.alpha : zone.alpha * Math.pow(1 - p, 1.35));
+            }, false)),
+            outline: true,
+            outlineColor: Cesium.Color.fromCssColorString(zone.outline),
+            outlineWidth: 2,
+            height: 1,
+            classificationType: Cesium.ClassificationType.BOTH
+          }
+        });
+      });
+    };
+
+    window.setRouteVehicleId = function (idVehiculo) {
+      const id = Number(idVehiculo);
+      selectedRouteVehicleId = Number.isFinite(id) && id > 0 ? String(id) : "global";
+      if (routeEntity && routeEntity.polyline) {
+        routeEntity.polyline.material = navigationRouteMaterial(0.96);
+      }
+    };
+
+    window.enablePickStart = function () {
+      pickMode = "start";
+      notifyAndroid("Modo origen activo");
+    };
+
+    window.enablePickEnd = function () {
+      pickMode = "end";
+      notifyAndroid("Modo destino activo");
+    };
+
+    // =========================
+    // Rutas - OSRM
+    // =========================
+    async function getOsrmRoute(start, end) {
+      const url =
+        `${OSRM_BASE}/route/v1/driving/` +
+        `${start.lon},${start.lat};${end.lon},${end.lat}` +
+        `?overview=full&geometries=geojson`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 900000);
+
+      try {
+        const response = await fetch(url, {
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          throw new Error("No se pudo obtener ruta");
+        }
+
+        const data = await response.json();
+
+        if (!data.routes || !data.routes.length) {
+          throw new Error("No hay ruta disponible");
+        }
+
+        return data.routes[0];
+      } catch (err) {
+        if (err.name === "AbortError") {
+          throw new Error("La consulta de ruta tardÃ³ demasiado");
+        }
+        throw err;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    function drawRouteOnCesium(geojsonLineString) {
+      if (!viewer || !geojsonLineString || !Array.isArray(geojsonLineString.coordinates)) {
+        return;
+      }
+
+      const positions = geojsonLineString.coordinates.map(([lon, lat]) =>
+        Cesium.Cartesian3.fromDegrees(lon, lat)
+      );
+
+      if (routeEntity) {
+        viewer.entities.remove(routeEntity);
+      }
+
+      routeEntity = viewer.entities.add({
+        polyline: {
+          positions,
+          width: 5,
+          material: navigationRouteMaterial(0.96),
+          clampToGround: false
+        }
+      });
+    }
+
+    async function calculateRouteSilently() {
+      try {
+        if (!startPoint || !endPoint) return;
+
+        console.log("1. EntrÃ³ a calculateRouteSilently", Date.now());
+        console.log("startPoint:", startPoint);
+        console.log("endPoint:", endPoint);
+
+        const route = await getOsrmRoute(startPoint, endPoint);
+
+        console.log("2. OSRM respondiÃ³", Date.now(), route);
+
+        if (!route || !route.geometry || route.geometry.type !== "LineString") {
+          throw new Error("La ruta regresÃ³ vacÃ­a o sin geometry vÃ¡lida");
+        }
+
+        lastRoute = route;
+
+        drawRouteOnCesium(route.geometry);
+        notifyRouteCreated(route);
+
+        const km = route.distance / 1000;
+        const min = route.duration / 60;
+        notifyAndroid(
+          `Ruta lista. Distancia: ${km.toFixed(2)} km · Tiempo: ${min.toFixed(1)} min`
+        );
+
+        console.log("3. Ruta dibujada y enviada al backend", Date.now());
+      } catch (e) {
+        console.error("Error calculando ruta:", e);
+        notifyAndroid("Error calculando ruta: " + e.message);
+      }
+    }
+
+    window.calculateRoute = async function () {
+      try {
+        if (!startPoint || !endPoint) {
+          notifyAndroid("Selecciona origen y destino primero");
+          return;
+        }
+
+        notifyAndroid("Calculando ruta...");
+
+        const route = await getOsrmRoute(startPoint, endPoint);
+        lastRoute = route;
+
+        drawRouteOnCesium(route.geometry);
+
+
+        const km = route.distance / 1000;
+        const min = route.duration / 60;
+
+        notifyAndroid(
+          `Ruta lista. Distancia: ${km.toFixed(2)} km Â· Tiempo: ${min.toFixed(1)} min`
+        );
+      } catch (e) {
+        console.error("Error calculando ruta: " + e.message);
+        notifyAndroid("Error calculando ruta: " + e.message);
+      }
+    };
+
+    window.clearRoute = function () {
+      try {
+        pickMode = null;
+        startPoint = null;
+        endPoint = null;
+        lastRoute = null;
+
+        if (routeEntity) {
+          viewer.entities.remove(routeEntity);
+          routeEntity = null;
+        }
+
+        if (startEntity) {
+          viewer.entities.remove(startEntity);
+          startEntity = null;
+        }
+
+        if (endEntity) {
+          viewer.entities.remove(endEntity);
+          endEntity = null;
+        }
+      } catch (e) {
+        console.error("Error limpiando ruta: " + e.message);
+        notifyAndroid("Error limpiando ruta: " + e.message);
+      }
+    };
+
+    // =========================
+    // Helpers opcionales
+    // =========================
+    window.getRouteState = function () {
+      return {
+        startPoint,
+        endPoint,
+        lastRoute
+      };
+    };
+
+    // =========================
+    // Rutas Remotas (SincronizaciÃ³n)
+    // =========================
+    function routeScopeKey(route) {
+      const vehicleId = Number(route && route.id_vehiculo);
+      return Number.isFinite(vehicleId) && vehicleId > 0
+        ? "vehicle:" + vehicleId
+        : "global";
+    }
+
+    function selectedRouteScopeKey() {
+      const vehicleId = Number(selectedRouteVehicleId);
+      return Number.isFinite(vehicleId) && vehicleId > 0
+        ? "vehicle:" + vehicleId
+        : "global";
+    }
+
+    function clearRemoteRoutesForScope(scope) {
+      Array.from(remoteRoutes.entries()).forEach(function (entry) {
+        const id = entry[0];
+        const entity = entry[1];
+        if (entity && entity._routeScope === scope) {
+          viewer.entities.remove(entity);
+          remoteRoutes.delete(id);
+        }
+      });
+    }
+
+    window.loadRemoteRoutes = function (routesArray, replace) {
+      if (!Array.isArray(routesArray)) return;
+      if (replace) {
+        Array.from(remoteRoutes.values()).forEach(function (entity) {
+          viewer.entities.remove(entity);
+        });
+        remoteRoutes.clear();
+      }
+
+      const latestByScope = new Map();
+      routesArray.forEach(function (route) {
+        const routeId = Number(route && route.id_ruta);
+        if (!Number.isFinite(routeId)) return;
+        const scope = routeScopeKey(route);
+        const current = latestByScope.get(scope);
+        const currentId = Number(current && current.id_ruta);
+        if (!current || !Number.isFinite(currentId) || routeId > currentId) {
+          latestByScope.set(scope, route);
+        }
+      });
+      latestByScope.forEach(function (route) {
+        drawRemoteRoute(route);
+      });
+    };
+
+    window.drawRemoteRoute = function (rutaObj) {
+      if (!rutaObj || !rutaObj.geojson) return;
+
+      const geojson = typeof rutaObj.geojson === 'string' ? JSON.parse(rutaObj.geojson) : rutaObj.geojson;
+      const id = rutaObj.id_ruta;
+      if (!id) return;
+
+      const scope = routeScopeKey(rutaObj);
+      clearRemoteRoutesForScope(scope);
+
+      if (routeEntity && selectedRouteScopeKey() === scope) {
+        viewer.entities.remove(routeEntity);
+        routeEntity = null;
+      }
+
+      let coords = [];
+      if (geojson.coordinates && geojson.coordinates.length > 0) {
+        coords = geojson.coordinates.map(c => Cesium.Cartesian3.fromDegrees(c[0], c[1]));
+      }
+
+      if (coords.length > 0) {
+        const lineEntity = viewer.entities.add({
+          id: "remote_route_" + id,
+          polyline: {
+            positions: coords,
+            width: 4,
+            material: navigationRouteMaterial(0.9),
+            clampToGround: false
+          }
+        });
+        lineEntity._routeScope = scope;
+        remoteRoutes.set(Number(id), lineEntity);
+      }
+    };
+
+    window.removeRemoteRoute = function (id_ruta) {
+      const normalizedId = Number(id_ruta);
+      const lineEntity = remoteRoutes.get(normalizedId) || remoteRoutes.get(id_ruta);
+      if (lineEntity) {
+        viewer.entities.remove(lineEntity);
+        remoteRoutes.delete(normalizedId);
+        remoteRoutes.delete(id_ruta);
+      }
+    };
+
+    // =========================
+    // Puntos de InterÃ©s (POI)
+    // =========================
+    const poiEntities = new Map(); // id_poi â†’ entity
+    const structureEntities = new Map();
+    const areaEntities = new Map();
+    const operationGridEntities = [];
+    const operationZoneRoseEntities = [];
+    let operationZoneEntity = null;
+    let operationZoneForGrid = null;
+    let pendingOperationGrid = null;
+
+    function getMilSymbolImage(sidc) {
+      try {
+        if (!sidc || typeof ms === 'undefined' || typeof ms.Symbol !== 'function') return null;
+        const waypointColors = { F: '#F7FAFF', H: '#FF3347', N: '#00F53D', U: '#FFF000' };
+        const isWaypoint = String(sidc).startsWith('G');
+        const symbol = new ms.Symbol(sidc, isWaypoint ? {
+          size: 500,
+          monoColor: waypointColors[String(sidc).charAt(1)] || '#FFF000',
+          fill: false
+        } : { size: 500, colorMode: 'Light' });
+        if (typeof symbol.isValid === 'function' && symbol.isValid() === false) return null;
+        if (typeof symbol.isValid === 'function' && symbol.isValid() === false) return null;
+        if (typeof symbol.asSVG !== 'function') return null;
+        const svg = symbol.asSVG();
+        if (!svg || />\s*\?\s*</.test(svg)) return null;
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      } catch (e) {
+        console.error('[POI][WEB] Error creando milsymbol: ' + e.message);
+        return null;
+      }
+    }
+
+    function getCleanDisplayLabel(rawName, defaultList, fallbackIfLabel) {
+      const nameStr = String(rawName || '').trim();
+      if (!nameStr) return fallbackIfLabel || '';
+      const upper = nameStr.toUpperCase();
+      if (defaultList.some(function (d) { return d.toUpperCase() === upper; })) {
+        return fallbackIfLabel || '';
+      }
+      return nameStr;
+    }
+
+    window.addPoiToMap = function (id, lat, lon, nombre, tipoPoi, color, iconoSrc, sidc, creatorLabel) {
+      try {
+        if (!viewer) return;
+
+        const hexColor = (color && color.startsWith('#')) ? color : '#FFD700';
+        const cesiumColor = Cesium.Color.fromCssColorString(hexColor);
+        const rawLabel = String(nombre || '').trim();
+        const defaultPoiNames = ['PDI', 'PUNTO DE INTERÉS', 'PUNTO DE INTERES', 'POI', 'SÍMBOLO MIL', 'SIMBOLO MIL'];
+        const cleanLabel = (tipoPoi || '').toUpperCase() === 'MIL' ? rawLabel.replace(/\s\d{17}$/, '').trim() : rawLabel;
+        const displayLabelText = getCleanDisplayLabel(cleanLabel, defaultPoiNames, '');
+        const entityId = 'poi_' + id;
+        const normalizedIconoSrc = (typeof iconoSrc === 'string') ? iconoSrc.trim() : iconoSrc;
+        const normalizedSidc = (typeof sidc === 'string') ? sidc.trim() : sidc;
+        const milImage = getMilSymbolImage(normalizedSidc || (normalizedIconoSrc && (normalizedIconoSrc.startsWith('S') || normalizedIconoSrc.startsWith('G')) ? normalizedIconoSrc : null));
+        const isSafeImageSource = (value) => {
+          if (!value || typeof value !== 'string' || value === 'null' || value.endsWith('/null')) return false;
+          if (/\s/.test(value) || value.length > 2048) return false;
+          if (value.startsWith('data:image/')) return true;
+          if (value.startsWith('blob:')) return true;
+          try {
+            const parsed = new URL(value);
+            return (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+              !/[<>"'{}]/.test(value);
+          } catch (_) {
+            return false;
+          }
+        };
+        const useImageSrc = isSafeImageSource(normalizedIconoSrc) &&
+          (normalizedIconoSrc.startsWith('data:image/') || normalizedIconoSrc.startsWith('blob:'));
+        const billboardImage = milImage || (useImageSrc ? normalizedIconoSrc : null);
+        const useBillboard = !!billboardImage;
+        const billboardScale = 0.05;
+
+        console.log('[POI][WEB] addPoiToMap in', JSON.stringify({
+          id, lat, lon, nombre, tipoPoi, color, iconoSrc: normalizedIconoSrc, sidc: normalizedSidc, useBillboard
+        }));
+
+        if (poiEntities.has(entityId)) {
+          viewer.entities.remove(poiEntities.get(entityId));
+          poiEntities.delete(entityId);
+        }
+
+        const entity = viewer.entities.add({
+          id: entityId,
+          position: Cesium.Cartesian3.fromDegrees(lon, lat),
+          billboard: useBillboard ? {
+            image: billboardImage,
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            scale: billboardScale,
+            scaleByDistance: SCALE_BY_DIST,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          } : undefined,
+          point: !useBillboard ? {
+            pixelSize: 10,
+            color: cesiumColor,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            scaleByDistance: SCALE_BY_DIST,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          } : undefined,
+          label: displayLabelText ? {
+            text: displayLabelText,
+            font: '14px sans-serif',
+            fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: useBillboard ? new Cesium.Cartesian2(0, 15) : new Cesium.Cartesian2(0, -20),
+            showBackground: !useBillboard,
+            backgroundColor: !useBillboard ? cesiumColor.withAlpha(0.7) : undefined,
+            backgroundPadding: !useBillboard ? new Cesium.Cartesian2(6, 4) : undefined,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            scaleByDistance: SCALE_BY_DIST,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          } : undefined,
+          properties: {
+            poiId: id,
+            poiLat: lat,
+            poiLon: lon,
+            poiName: rawLabel,
+            poiTipo: tipoPoi || 'PDI',
+            poiColor: hexColor,
+            poiSidc: normalizedSidc || '',
+            poiIconoSrc: normalizedIconoSrc || '',
+            poiCreator: creatorLabel || '',
+            tacticalType: 'poi'
+          }
+        });
+
+        console.log('[POI][WEB] entity created', JSON.stringify({
+          entityId,
+          hasBillboard: !!entity.billboard,
+          hasPoint: !!entity.point,
+          labelText: entity.label?.text?._value || displayLabelText
+        }));
+
+        poiEntities.set(entityId, entity);
+      } catch (e) {
+        console.error('[POI][WEB] Error addPoiToMap: ' + e.message);
+      }
+    };
+
+    window.loadPois = function (poisArray, replace) {
+      try {
+        if (!Array.isArray(poisArray)) return;
+        console.log('[POI][WEB] loadPois count=' + poisArray.length);
+        const incomingIds = new Set(
+          poisArray
+            .map(poi => Number(poi && poi.id_poi))
+            .filter(id => Number.isFinite(id) && id > 0)
+        );
+        if (replace) {
+          Array.from(poiEntities.keys()).forEach(function (entityId) {
+            const id = Number(String(entityId).replace('poi_', ''));
+            if (!incomingIds.has(id)) {
+              const entity = poiEntities.get(entityId);
+              if (entity) viewer.entities.remove(entity);
+              poiEntities.delete(entityId);
+            }
+          });
+        }
+        poisArray.forEach(function (poi) {
+          addPoiToMap(
+            poi.id_poi,
+            parseFloat(poi.latitud),
+            parseFloat(poi.longitud),
+            poi.nombre || '',
+            poi.tipo_poi || '',
+            poi.color || '#FFD700',
+            poi.icono_src || null,
+            poi.sidc || null,
+            poi.creador_label || poi.creador || ''
+          );
+        });
+      } catch (e) {
+        console.error('[POI][WEB] Error loadPois: ' + e.message);
+      }
+    };
+
+    window.removePoiFromMap = function (id) {
+      try {
+        const entityId = 'poi_' + id;
+        const entity = poiEntities.get(entityId);
+        if (entity) {
+          viewer.entities.remove(entity);
+          poiEntities.delete(entityId);
+        }
+      } catch (e) {
+        console.error('Error removePoiFromMap: ' + e.message);
+      }
+    };
+
+    window.addStructureToMap = function (id, lat, lon, nombre, tipoEstructura, iconoSrc) {
+      try {
+        if (!viewer) return;
+
+        const entityId = 'estructura_' + id;
+        if (structureEntities.has(entityId)) {
+          viewer.entities.remove(structureEntities.get(entityId));
+          structureEntities.delete(entityId);
+        }
+
+        const tipo = String(tipoEstructura || '').toUpperCase();
+        const isLabel = tipo === 'ETIQUETA';
+        const rawName = String(nombre || '').trim();
+        const defaultStructureNames = ['EDIFICIO', 'ESTRUCTURA', 'ETIQUETA'];
+        const displayLabelText = getCleanDisplayLabel(rawName, defaultStructureNames, isLabel ? 'Etiqueta' : '');
+
+        const normalizedIconoSrc = tipo === 'EDIFICIO'
+          ? 'img/estructuras/casa.png'
+          : ((typeof iconoSrc === 'string') ? iconoSrc.trim() : iconoSrc);
+        const useBillboard = !isLabel && typeof normalizedIconoSrc === 'string' &&
+          !/\s/.test(normalizedIconoSrc) && normalizedIconoSrc.length <= 2048 &&
+          (
+            normalizedIconoSrc.startsWith('data:image/') ||
+            normalizedIconoSrc.startsWith('blob:') ||
+            /^img\/[a-z0-9_./-]+\.(png|webp|jpe?g)$/i.test(normalizedIconoSrc)
+          );
+
+        const entity = viewer.entities.add({
+          id: entityId,
+          position: Cesium.Cartesian3.fromDegrees(lon, lat, isLabel ? 8 : 0),
+          billboard: useBillboard ? {
+            image: normalizedIconoSrc,
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            scale: 0.05,
+            scaleByDistance: SCALE_BY_DIST,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          } : undefined,
+          point: (!isLabel && !useBillboard) ? {
+            pixelSize: 12,
+            color: Cesium.Color.YELLOW,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            scaleByDistance: SCALE_BY_DIST,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          } : undefined,
+          label: displayLabelText ? {
+            text: displayLabelText,
+            font: '12px sans-serif',
+            fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: isLabel ? new Cesium.Cartesian2(0, -18) : new Cesium.Cartesian2(0, 8),
+            showBackground: isLabel,
+            backgroundColor: isLabel ? Cesium.Color.BLACK.withAlpha(0.75) : undefined,
+            backgroundPadding: isLabel ? new Cesium.Cartesian2(6, 4) : undefined,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            scaleByDistance: SCALE_BY_DIST,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          } : undefined,
+          properties: {
+            poiId: id,
+            poiLat: lat,
+            poiLon: lon,
+            poiName: rawName || (isLabel ? 'Etiqueta' : 'Estructura'),
+            poiTipo: tipoEstructura || 'Estructura',
+            tacticalType: 'structure'
+          }
+        });
+
+        structureEntities.set(entityId, entity);
+      } catch (e) {
+        console.error('Error addStructureToMap: ' + e.message);
+      }
+    };
+
+    window.loadStructures = function (structuresArray, replace) {
+      try {
+        if (!Array.isArray(structuresArray)) return;
+        const incomingIds = new Set(
+          structuresArray
+            .map(structure => Number(structure && structure.id_marca))
+            .filter(id => Number.isFinite(id) && id > 0)
+        );
+        if (replace) {
+          Array.from(structureEntities.keys()).forEach(function (entityId) {
+            const id = Number(String(entityId).replace('estructura_', ''));
+            if (!incomingIds.has(id)) {
+              const entity = structureEntities.get(entityId);
+              if (entity) viewer.entities.remove(entity);
+              structureEntities.delete(entityId);
+            }
+          });
+        }
+        structuresArray.forEach(function (structure) {
+          addStructureToMap(
+            structure.id_marca,
+            parseFloat(structure.latitud),
+            parseFloat(structure.longitud),
+            structure.nombre || '',
+            structure.tipo_estructura || 'EDIFICIO',
+            structure.icono_src || null
+          );
+        });
+      } catch (e) {
+        console.error('Error loadStructures: ' + e.message);
+      }
+    };
+
+    window.removeStructureFromMap = function (id) {
+      try {
+        const entityId = 'estructura_' + id;
+        const entity = structureEntities.get(entityId);
+        if (entity) {
+          viewer.entities.remove(entity);
+          structureEntities.delete(entityId);
+        }
+      } catch (e) {
+        console.error('Error removeStructureFromMap: ' + e.message);
+      }
+    };
+
+    function clearOperationZoneRose() {
+      operationZoneRoseEntities.forEach(function (entity) {
+        if (entity) viewer.entities.remove(entity);
+      });
+      operationZoneRoseEntities.length = 0;
+    }
+
+    function renderOperationZoneRose(zoneObj) {
+      if (!viewer || !zoneObj || !Array.isArray(zoneObj.points)) return;
+      const bounds = operationGridBounds(zoneObj.points);
+      if (!bounds) return;
+
+      const centerLat = (bounds.minLat + bounds.maxLat) / 2;
+      const centerLon = (bounds.minLon + bounds.maxLon) / 2;
+
+      function cardinalInset(direction) {
+        return new Cesium.CallbackProperty(function () {
+          const heading = viewer.camera.heading;
+          const sin = Math.sin(heading);
+          const cos = Math.cos(heading);
+          const inset = 18;
+          if (direction === 'N') return new Cesium.Cartesian2(-sin * inset, -cos * inset);
+          if (direction === 'S') return new Cesium.Cartesian2(sin * inset, cos * inset);
+          if (direction === 'E') return new Cesium.Cartesian2(cos * inset, -sin * inset);
+          return new Cesium.Cartesian2(-cos * inset, sin * inset);
+        }, false);
+      }
+
+      [
+        { text: 'N', lat: bounds.maxLat, lon: centerLon },
+        { text: 'S', lat: bounds.minLat, lon: centerLon },
+        { text: 'E', lat: centerLat, lon: bounds.maxLon },
+        { text: 'O', lat: centerLat, lon: bounds.minLon }
+      ].forEach(function (label) {
+        operationZoneRoseEntities.push(viewer.entities.add({
+          position: Cesium.Cartesian3.fromDegrees(label.lon, label.lat),
+          label: {
+            text: label.text,
+            font: 'bold 24px monospace',
+            fillColor: Cesium.Color.fromCssColorString('rgba(0,0,0,0.92)'),
+            outlineColor: Cesium.Color.WHITE.withAlpha(0.82),
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: cardinalInset(label.text),
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            scaleByDistance: SCALE_BY_DIST
+          }
+        }));
+      });
+    }
+
+    window.loadOperationZone = function (zoneObj) {
+      try {
+        if (!viewer || !zoneObj || !Array.isArray(zoneObj.points) || zoneObj.points.length < 3) return;
+
+        // Limpiar zona anterior
+        if (operationZoneEntity) {
+          viewer.entities.remove(operationZoneEntity);
+          operationZoneEntity = null;
+        }
+        clearOperationZoneRose();
+        const hexColor = (zoneObj.color && String(zoneObj.color).startsWith('#')) ? zoneObj.color : '#3b82f6';
+        const outline = Cesium.Color.fromCssColorString(hexColor);
+        const bounds = operationGridBounds(zoneObj.points);
+        if (!bounds) return;
+        const positions = Cesium.Cartesian3.fromDegreesArray([
+          bounds.minLon, bounds.maxLat,
+          bounds.maxLon, bounds.maxLat,
+          bounds.maxLon, bounds.minLat,
+          bounds.minLon, bounds.minLat,
+          bounds.minLon, bounds.maxLat
+        ]);
+        operationZoneForGrid = zoneObj;
+
+        operationZoneEntity = viewer.entities.add({
+          id: 'zona_operacion_' + (zoneObj.id_zona || 'actual'),
+          polyline: {
+            positions,
+            width: 3,
+            material: new Cesium.PolylineDashMaterialProperty({
+              color: outline,
+              dashLength: 16
+            }),
+            clampToGround: false
+          }
+        });
+        renderOperationZoneRose(zoneObj);
+        if (pendingOperationGrid) {
+          const grid = pendingOperationGrid;
+          pendingOperationGrid = null;
+          renderOperationGrid(grid);
+        }
+      } catch (e) {
+        console.error('Error loadOperationZone: ' + e.message);
+      }
+    };
+
+    window.clearOperationGrid = function () {
+      try {
+        operationGridEntities.forEach(function (entity) {
+          if (entity) viewer.entities.remove(entity);
+        });
+        operationGridEntities.length = 0;
+        pendingOperationGrid = null;
+      } catch (e) {
+        console.error('Error clearOperationGrid: ' + e.message);
+      }
+    };
+
+    function operationGridDefaultName(index) {
+      const phonetic = [
+        'ALFA', 'BRAVO', 'CHARLIE', 'DELTA', 'ECHO', 'FOXTROT', 'GOLF', 'HOTEL',
+        'INDIA', 'JULIETT', 'KILO', 'LIMA', 'MIKE', 'NOVEMBER', 'OSCAR', 'PAPA',
+        'QUEBEC', 'ROMEO', 'SIERRA', 'TANGO', 'UNIFORM', 'VICTOR', 'WHISKEY', 'X-RAY',
+        'YANKEE', 'ZULU'
+      ];
+      const baseName = phonetic[index % phonetic.length] || ('Q' + (index + 1));
+      const cycle = Math.floor(index / phonetic.length);
+      return cycle > 0 ? (baseName + '-' + (cycle + 1)) : baseName;
+    }
+
+    function operationGridBounds(points) {
+      let minLat = Infinity;
+      let maxLat = -Infinity;
+      let minLon = Infinity;
+      let maxLon = -Infinity;
+
+      points.forEach(function (point) {
+        const lat = Number(point.lat);
+        const lon = Number(point.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+        minLon = Math.min(minLon, lon);
+        maxLon = Math.max(maxLon, lon);
+      });
+
+      if (!Number.isFinite(minLat) || !Number.isFinite(maxLat) ||
+          !Number.isFinite(minLon) || !Number.isFinite(maxLon)) return null;
+
+      return { minLat, maxLat, minLon, maxLon };
+    }
+
+    function renderOperationGrid(gridObj) {
+      try {
+        if (!viewer || !gridObj) return;
+
+        clearOperationGrid();
+
+        const size = String(gridObj.size || '').toLowerCase();
+        const match = size.match(/^(\d+)x(\d+)$/);
+        const rows = Number(gridObj.rows || (match && match[1]));
+        const cols = Number(gridObj.cols || (match && match[2]));
+        if (!Number.isFinite(rows) || !Number.isFinite(cols) || rows <= 0 || cols <= 0) return;
+
+        let bounds = null;
+        if (operationZoneForGrid && Array.isArray(operationZoneForGrid.points) && operationZoneForGrid.points.length >= 3) {
+          bounds = operationGridBounds(operationZoneForGrid.points);
+        }
+        if (!bounds) {
+          const rect = viewer.camera.computeViewRectangle();
+          if (rect) {
+            bounds = {
+              minLat: Cesium.Math.toDegrees(rect.south),
+              maxLat: Cesium.Math.toDegrees(rect.north),
+              minLon: Cesium.Math.toDegrees(rect.west),
+              maxLon: Cesium.Math.toDegrees(rect.east)
+            };
+          }
+        }
+        if (!bounds) return;
+
+        const latStep = (bounds.maxLat - bounds.minLat) / rows;
+        const lonStep = (bounds.maxLon - bounds.minLon) / cols;
+        if (!Number.isFinite(latStep) || !Number.isFinite(lonStep) || latStep <= 0 || lonStep <= 0) return;
+
+        const colors = [
+          '#FFA000', '#1E88E5', '#E53935', '#00897B', '#8E24AA',
+          '#FB8C00', '#D81B60', '#039BE5', '#43A047', '#FDD835'
+        ].map(function (color) { return Cesium.Color.fromCssColorString(color); });
+
+        let colorIndex = 0;
+
+        // Líneas verticales internas (en medio)
+        for (let col = 1; col < cols; col += 1) {
+          const lon = bounds.minLon + col * lonStep;
+          const color = colors[colorIndex % colors.length];
+          colorIndex += 1;
+          operationGridEntities.push(viewer.entities.add({
+            polyline: {
+              positions: Cesium.Cartesian3.fromDegreesArray([lon, bounds.minLat, lon, bounds.maxLat]),
+              width: 2.5,
+              material: new Cesium.PolylineDashMaterialProperty({
+                color: color.withAlpha(0.9),
+                dashLength: 14
+              }),
+              clampToGround: false
+            }
+          }));
+        }
+
+        // Líneas horizontales internas (en medio)
+        for (let row = 1; row < rows; row += 1) {
+          const lat = bounds.minLat + row * latStep;
+          const color = colors[colorIndex % colors.length];
+          colorIndex += 1;
+          operationGridEntities.push(viewer.entities.add({
+            polyline: {
+              positions: Cesium.Cartesian3.fromDegreesArray([bounds.minLon, lat, bounds.maxLon, lat]),
+              width: 2.5,
+              material: new Cesium.PolylineDashMaterialProperty({
+                color: color.withAlpha(0.9),
+                dashLength: 14
+              }),
+              clampToGround: false
+            }
+          }));
+        }
+
+        const names = Array.isArray(gridObj.names)
+          ? gridObj.names
+          : (Array.isArray(gridObj.nombres) ? gridObj.nombres : []);
+
+        let index = 0;
+        for (let row = 0; row < rows; row += 1) {
+          const latTop = bounds.maxLat - row * latStep;
+          const latBottom = bounds.maxLat - (row + 1) * latStep;
+
+          for (let col = 0; col < cols; col += 1) {
+            const lonLeft = bounds.minLon + col * lonStep;
+            const lonRight = bounds.minLon + (col + 1) * lonStep;
+            const color = colors[index % colors.length];
+            const label = String(names[index] || '').trim() || operationGridDefaultName(index);
+
+            operationGridEntities.push(viewer.entities.add({
+              polygon: {
+                hierarchy: Cesium.Cartesian3.fromDegreesArray([
+                  lonLeft, latBottom,
+                  lonRight, latBottom,
+                  lonRight, latTop,
+                  lonLeft, latTop
+                ]),
+                material: color.withAlpha(0.06),
+                height: 0,
+                perPositionHeight: false
+              }
+            }));
+
+            operationGridEntities.push(viewer.entities.add({
+              position: new Cesium.CallbackProperty(function () {
+                const heading = Cesium.Math.zeroToTwoPi(viewer.camera.heading);
+                const quarter = Math.round(heading / Cesium.Math.PI_OVER_TWO) % 4;
+                if (quarter === 1) {
+                  return Cesium.Cartesian3.fromDegrees(lonRight, latTop);
+                }
+                if (quarter === 2) {
+                  return Cesium.Cartesian3.fromDegrees(lonRight, latBottom);
+                }
+                if (quarter === 3) {
+                  return Cesium.Cartesian3.fromDegrees(lonLeft, latBottom);
+                }
+                return Cesium.Cartesian3.fromDegrees(lonLeft, latTop);
+              }, false),
+              label: {
+                text: ' ' + label + ' ',
+                font: 'bold 13px monospace',
+                fillColor: Cesium.Color.WHITE,
+                backgroundColor: Cesium.Color.BLACK.withAlpha(0.72),
+                showBackground: true,
+                horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+                verticalOrigin: Cesium.VerticalOrigin.TOP,
+                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                pixelOffset: new Cesium.Cartesian2(5, 5),
+                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                scaleByDistance: SCALE_BY_DIST
+              }
+            }));
+
+            index += 1;
+          }
+        }
+      } catch (e) {
+        console.error('Error renderOperationGrid: ' + e.message);
+      }
+    }
+
+    window.loadOperationGrid = function (gridObj) {
+      try {
+        if (!gridObj) {
+          clearOperationGrid();
+          return;
+        }
+        renderOperationGrid(gridObj);
+      } catch (e) {
+        console.error('Error loadOperationGrid: ' + e.message);
+      }
+    };
+
+    window.addCoverageCircleToMap = function (id, centerLat, centerLon, radiusM, nombre, color, opacity, outlineWidth) {
+      try {
+        if (!viewer) return;
+
+        const entityId = 'area_' + id;
+        if (areaEntities.has(entityId)) {
+          viewer.entities.remove(areaEntities.get(entityId));
+          areaEntities.delete(entityId);
+        }
+
+        const hexColor = (color && color.startsWith('#')) ? color : '#FF4500';
+        const outline = Cesium.Color.fromCssColorString(hexColor);
+        const fill = outline.withAlpha(Number.isFinite(opacity) ? opacity : 0.35);
+
+        const entity = viewer.entities.add({
+          id: entityId,
+          position: Cesium.Cartesian3.fromDegrees(centerLon, centerLat, 2),
+          ellipse: {
+            semiMajorAxis: radiusM,
+            semiMinorAxis: radiusM,
+            material: fill,
+            outline: true,
+            outlineColor: outline,
+            outlineWidth: Number.isFinite(outlineWidth) ? outlineWidth : 3,
+            height: 0
+          },
+          label: nombre ? {
+            text: nombre,
+            font: '12px sans-serif',
+            fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: new Cesium.Cartesian2(0, -18),
+            heightReference: Cesium.HeightReference.NONE
+          } : undefined
+        });
+
+        areaEntities.set(entityId, entity);
+      } catch (e) {
+        console.error('Error addCoverageCircleToMap: ' + e.message);
+      }
+    };
+
+    window.loadCoverageCircles = function (circlesArray) {
+      try {
+        if (!Array.isArray(circlesArray)) return;
+        circlesArray.forEach(function (circle) {
+          addCoverageCircleToMap(
+            circle.id_area,
+            parseFloat(circle.center_lat),
+            parseFloat(circle.center_lon),
+            parseFloat(circle.radius_m),
+            circle.nombre || 'CÃ­rculo de cobertura',
+            circle.color || '#FF4500',
+            Number(circle.opacity ?? 0.35),
+            Number(circle.outline_width ?? 3)
+          );
+        });
+      } catch (e) {
+        console.error('Error loadCoverageCircles: ' + e.message);
+      }
+    };
+
+    window.removeCoverageCircleFromMap = function (id) {
+      try {
+        const entityId = 'area_' + id;
+        const entity = areaEntities.get(entityId);
+        if (entity) {
+          viewer.entities.remove(entity);
+          areaEntities.delete(entityId);
+        }
+      } catch (e) {
+        console.error('Error removeCoverageCircleFromMap: ' + e.message);
+      }
+    };
+
+    window.addAreaPolygonToMap = function (id, nombre, points, color, opacity, outlineWidth) {
+      try {
+        if (!viewer) return;
+
+        const entityId = 'area_' + id;
+        if (areaEntities.has(entityId)) {
+          viewer.entities.remove(areaEntities.get(entityId));
+          areaEntities.delete(entityId);
+        }
+        if (!Array.isArray(points) || points.length < 3) return;
+
+        const coords = points.map(function (point) {
+          return Cesium.Cartesian3.fromDegrees(Number(point.lon), Number(point.lat));
+        });
+        const hexColor = (color && color.startsWith('#')) ? color : '#FFD700';
+        const outline = Cesium.Color.fromCssColorString(hexColor);
+
+        let sumLat = 0;
+        let sumLon = 0;
+        points.forEach(function (point) {
+          sumLat += Number(point.lat) || 0;
+          sumLon += Number(point.lon) || 0;
+        });
+
+        const entity = viewer.entities.add({
+          id: entityId,
+          position: Cesium.Cartesian3.fromDegrees(sumLon / points.length, sumLat / points.length),
+          polygon: {
+            hierarchy: coords,
+            material: outline.withAlpha(Number.isFinite(opacity) ? opacity : 0.35),
+            outline: true,
+            outlineColor: outline,
+            outlineWidth: Number.isFinite(outlineWidth) ? outlineWidth : 3,
+            height: 0,
+            perPositionHeight: false
+          },
+          label: nombre ? {
+            text: nombre,
+            font: '12px sans-serif',
+            fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: new Cesium.Cartesian2(0, -18),
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+          } : undefined
+        });
+
+        areaEntities.set(entityId, entity);
+      } catch (e) {
+        console.error('Error addAreaPolygonToMap: ' + e.message);
+      }
+    };
+
+    window.syncAreas = function (circlesArray, polygonsArray) {
+      try {
+        const circles = Array.isArray(circlesArray) ? circlesArray : [];
+        const polygons = Array.isArray(polygonsArray) ? polygonsArray : [];
+        const incomingIds = new Set();
+
+        circles.forEach(function (circle) {
+          const id = Number(circle && circle.id_area);
+          if (Number.isFinite(id) && id > 0) incomingIds.add(id);
+        });
+        polygons.forEach(function (polygon) {
+          const id = Number(polygon && polygon.id_area);
+          if (Number.isFinite(id) && id > 0) incomingIds.add(id);
+        });
+
+        Array.from(areaEntities.keys()).forEach(function (entityId) {
+          const id = Number(String(entityId).replace('area_', ''));
+          if (!incomingIds.has(id)) {
+            const entity = areaEntities.get(entityId);
+            if (entity) viewer.entities.remove(entity);
+            areaEntities.delete(entityId);
+          }
+        });
+
+        loadCoverageCircles(circles);
+        loadAreaPolygons(polygons);
+      } catch (e) {
+        console.error('Error syncAreas: ' + e.message);
+      }
+    };
+
+    window.removeAreaFromMap = function (id) {
+      removeCoverageCircleFromMap(id);
+    };
+
+    // =========================
+    // Dibujo libre (lÃ¡piz / goma)
+    // =========================
+    const drawingEntities = new Map(); // localId â†’ entity
+
+    let _drawMode   = null;   // 'pencil' | 'eraser' | null
+    let _isDrawing  = false;
+    let _drawCoords = [];
+    let _previewEnt = null;
+    let _drawHandler = null;
+    let _drawCounter = 0;
+    let _drawDomHandlers = null;
+    let _pencilColor = '#00ffa6';
+
+    function _ensureMapNavigationForTouch() {
+      if (_drawMode !== null) return;
+      _setDrawCameraEnabled(true);
+    }
+
+    viewer.scene.canvas.addEventListener('touchstart', _ensureMapNavigationForTouch, { passive: true });
+    viewer.scene.canvas.addEventListener('pointerdown', _ensureMapNavigationForTouch, { passive: true });
+
+    function _normalizePencilColor(color) {
+      var value = String(color || '').trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(value)) return value;
+      if (/^#[0-9a-fA-F]{3}$/.test(value)) return value;
+      return '#00ffa6';
+    }
+
+    function _destroyDrawHandler() {
+      if (_drawHandler) { _drawHandler.destroy(); _drawHandler = null; }
+      _unbindPencilDomEvents();
+    }
+
+    function _setDrawCameraEnabled(enabled) {
+      if (!viewer || !viewer.scene || !viewer.scene.screenSpaceCameraController) return;
+      viewer.scene.screenSpaceCameraController.enableRotate    = enabled;
+      viewer.scene.screenSpaceCameraController.enableTranslate = enabled;
+      viewer.scene.screenSpaceCameraController.enableZoom      = enabled;
+    }
+
+    function _canvasPositionFromClient(clientX, clientY) {
+      if (!viewer || !viewer.scene || !viewer.scene.canvas) return null;
+      const rect = viewer.scene.canvas.getBoundingClientRect();
+      return new Cesium.Cartesian2(clientX - rect.left, clientY - rect.top);
+    }
+
+    function _coordFromCanvasPosition(position) {
+      if (!viewer || !position) return null;
+      const cart = viewer.camera.pickEllipsoid(position, viewer.scene.globe.ellipsoid);
+      if (!cart) return null;
+      const c = Cesium.Cartographic.fromCartesian(cart);
+      return {
+        lat: Cesium.Math.toDegrees(c.latitude),
+        lng: Cesium.Math.toDegrees(c.longitude)
+      };
+    }
+
+    function _renderPencilPreview() {
+      if (!viewer || _drawCoords.length < 2) return;
+      if (_previewEnt) viewer.entities.remove(_previewEnt);
+      _previewEnt = viewer.entities.add({
+        polyline: {
+          positions: _drawCoords.map(function (p) { return Cesium.Cartesian3.fromDegrees(p.lng, p.lat); }),
+          width: 4,
+          material: Cesium.Color.fromCssColorString(_pencilColor),
+          clampToGround: false
+        }
+      });
+    }
+
+    function _appendPencilPoint(position) {
+      const point = _coordFromCanvasPosition(position);
+      if (!point) return;
+
+      const last = _drawCoords[_drawCoords.length - 1];
+      if (last && Math.abs(last.lat - point.lat) < 0.0000001 && Math.abs(last.lng - point.lng) < 0.0000001) {
+        return;
+      }
+
+      _drawCoords.push(point);
+      _renderPencilPreview();
+    }
+
+    function _startPencilStroke(position) {
+      if (_drawMode !== 'pencil') return;
+      _isDrawing = true;
+      _drawCoords = [];
+      _setDrawCameraEnabled(false);
+      _appendPencilPoint(position);
+    }
+
+    function _finishPencilStroke() {
+      if (!_isDrawing) return;
+      _isDrawing = false;
+      _setDrawCameraEnabled(true);
+
+      if (_previewEnt) { viewer.entities.remove(_previewEnt); _previewEnt = null; }
+
+      if (_drawCoords.length >= 2) {
+        var localId = 'draw_' + (++_drawCounter) + '_' + Date.now();
+        var color   = _pencilColor;
+        var grosor  = 4;
+
+        var ent = viewer.entities.add({
+          id: localId,
+          polyline: {
+            positions: _drawCoords.map(function (p) { return Cesium.Cartesian3.fromDegrees(p.lng, p.lat); }),
+            width: grosor,
+            material: Cesium.Color.fromCssColorString(color),
+            clampToGround: false
+          },
+          properties: { tacticalType: 'freehand-drawing' }
+        });
+
+        drawingEntities.set(localId, ent);
+
+        if (typeof Android !== 'undefined' && typeof Android.onDrawingSaved === 'function') {
+          Android.onDrawingSaved(JSON.stringify({ localId: localId, coords: _drawCoords, color: color, grosor: grosor }));
+        }
+      }
+
+      _drawCoords = [];
+    }
+
+    function _bindPencilDomEvents() {
+      const canvas = viewer && viewer.scene && viewer.scene.canvas;
+      if (!canvas) return;
+      _unbindPencilDomEvents();
+
+      if (window.PointerEvent) {
+        const onPointerDown = function (ev) {
+          if (_drawMode !== 'pencil') return;
+          if (ev.button !== undefined && ev.button !== 0) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (canvas.setPointerCapture && ev.pointerId !== undefined) {
+            try { canvas.setPointerCapture(ev.pointerId); } catch (_) {}
+          }
+          _startPencilStroke(_canvasPositionFromClient(ev.clientX, ev.clientY));
+        };
+        const onPointerMove = function (ev) {
+          if (_drawMode !== 'pencil' || !_isDrawing) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          _appendPencilPoint(_canvasPositionFromClient(ev.clientX, ev.clientY));
+        };
+        const onPointerUp = function (ev) {
+          if (_drawMode !== 'pencil') return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (canvas.releasePointerCapture && ev.pointerId !== undefined) {
+            try { canvas.releasePointerCapture(ev.pointerId); } catch (_) {}
+          }
+          _finishPencilStroke();
+        };
+
+        canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+        canvas.addEventListener('pointermove', onPointerMove, { passive: false });
+        canvas.addEventListener('pointerup', onPointerUp, { passive: false });
+        canvas.addEventListener('pointercancel', onPointerUp, { passive: false });
+        _drawDomHandlers = { type: 'pointer', canvas, onPointerDown, onPointerMove, onPointerUp };
+        return;
+      }
+
+      const firstTouch = function (ev) {
+        return (ev.changedTouches && ev.changedTouches[0]) || (ev.touches && ev.touches[0]) || null;
+      };
+      const onTouchStart = function (ev) {
+        if (_drawMode !== 'pencil') return;
+        const touch = firstTouch(ev);
+        if (!touch) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        _startPencilStroke(_canvasPositionFromClient(touch.clientX, touch.clientY));
+      };
+      const onTouchMove = function (ev) {
+        if (_drawMode !== 'pencil' || !_isDrawing) return;
+        const touch = firstTouch(ev);
+        if (!touch) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        _appendPencilPoint(_canvasPositionFromClient(touch.clientX, touch.clientY));
+      };
+      const onTouchEnd = function (ev) {
+        if (_drawMode !== 'pencil') return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        _finishPencilStroke();
+      };
+
+      canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+      canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+      canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+      canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
+      _drawDomHandlers = { type: 'touch', canvas, onTouchStart, onTouchMove, onTouchEnd };
+    }
+
+    function _eraseAtCanvasPosition(position) {
+      if (_drawMode !== 'eraser' || !position) return false;
+      return _deleteDrawingEntity(_getDrawingEntityAtPosition(position));
+    }
+
+    function _bindEraserDomEvents() {
+      const canvas = viewer && viewer.scene && viewer.scene.canvas;
+      if (!canvas) return;
+      _unbindPencilDomEvents();
+      _setDrawCameraEnabled(false);
+
+      if (window.PointerEvent) {
+        const onPointerDown = function (ev) {
+          if (_drawMode !== 'eraser') return;
+          if (ev.button !== undefined && ev.button !== 0) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (canvas.setPointerCapture && ev.pointerId !== undefined) {
+            try { canvas.setPointerCapture(ev.pointerId); } catch (_) {}
+          }
+          _eraseAtCanvasPosition(_canvasPositionFromClient(ev.clientX, ev.clientY));
+        };
+        const onPointerMove = function (ev) {
+          if (_drawMode !== 'eraser' || ev.buttons !== 1) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          _eraseAtCanvasPosition(_canvasPositionFromClient(ev.clientX, ev.clientY));
+        };
+        const onPointerUp = function (ev) {
+          if (_drawMode !== 'eraser') return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (canvas.releasePointerCapture && ev.pointerId !== undefined) {
+            try { canvas.releasePointerCapture(ev.pointerId); } catch (_) {}
+          }
+        };
+
+        canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+        canvas.addEventListener('pointermove', onPointerMove, { passive: false });
+        canvas.addEventListener('pointerup', onPointerUp, { passive: false });
+        canvas.addEventListener('pointercancel', onPointerUp, { passive: false });
+        _drawDomHandlers = { type: 'eraser-pointer', canvas, onPointerDown, onPointerMove, onPointerUp };
+        return;
+      }
+
+      const firstTouch = function (ev) {
+        return (ev.changedTouches && ev.changedTouches[0]) || (ev.touches && ev.touches[0]) || null;
+      };
+      const onTouchStart = function (ev) {
+        if (_drawMode !== 'eraser') return;
+        const touch = firstTouch(ev);
+        if (!touch) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        _eraseAtCanvasPosition(_canvasPositionFromClient(touch.clientX, touch.clientY));
+      };
+      const onTouchMove = function (ev) {
+        if (_drawMode !== 'eraser') return;
+        const touch = firstTouch(ev);
+        if (!touch) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        _eraseAtCanvasPosition(_canvasPositionFromClient(touch.clientX, touch.clientY));
+      };
+      const onTouchEnd = function (ev) {
+        if (_drawMode !== 'eraser') return;
+        ev.preventDefault();
+        ev.stopPropagation();
+      };
+
+      canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+      canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+      canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+      canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
+      _drawDomHandlers = { type: 'eraser-touch', canvas, onTouchStart, onTouchMove, onTouchEnd };
+    }
+
+    function _unbindPencilDomEvents() {
+      if (!_drawDomHandlers) return;
+      const h = _drawDomHandlers;
+      if (h.type === 'pointer') {
+        h.canvas.removeEventListener('pointerdown', h.onPointerDown);
+        h.canvas.removeEventListener('pointermove', h.onPointerMove);
+        h.canvas.removeEventListener('pointerup', h.onPointerUp);
+        h.canvas.removeEventListener('pointercancel', h.onPointerUp);
+      } else if (h.type === 'touch') {
+        h.canvas.removeEventListener('touchstart', h.onTouchStart);
+        h.canvas.removeEventListener('touchmove', h.onTouchMove);
+        h.canvas.removeEventListener('touchend', h.onTouchEnd);
+        h.canvas.removeEventListener('touchcancel', h.onTouchEnd);
+      } else if (h.type === 'eraser-pointer') {
+        h.canvas.removeEventListener('pointerdown', h.onPointerDown);
+        h.canvas.removeEventListener('pointermove', h.onPointerMove);
+        h.canvas.removeEventListener('pointerup', h.onPointerUp);
+        h.canvas.removeEventListener('pointercancel', h.onPointerUp);
+      } else if (h.type === 'eraser-touch') {
+        h.canvas.removeEventListener('touchstart', h.onTouchStart);
+        h.canvas.removeEventListener('touchmove', h.onTouchMove);
+        h.canvas.removeEventListener('touchend', h.onTouchEnd);
+        h.canvas.removeEventListener('touchcancel', h.onTouchEnd);
+      }
+      _drawDomHandlers = null;
+      _setDrawCameraEnabled(true);
+    }
+
+    window.setPencilColor = function (color) {
+      _pencilColor = _normalizePencilColor(color);
+      if (_previewEnt && _previewEnt.polyline) {
+        _previewEnt.polyline.material = Cesium.Color.fromCssColorString(_pencilColor);
+      }
+    };
+
+    window.startPencilMode = function (color) {
+      if (color) window.setPencilColor(color);
+      _drawMode = 'pencil';
+      _destroyDrawHandler();
+      _bindPencilDomEvents();
+    };
+
+    window.stopPencilMode = function () {
+      _destroyDrawHandler();
+      _isDrawing = false;
+      _drawCoords = [];
+      if (_previewEnt) { viewer.entities.remove(_previewEnt); _previewEnt = null; }
+      _setDrawCameraEnabled(true);
+      if (_drawMode === 'pencil') _drawMode = null;
+    };
+
+    function _getDrawingEntityAtPosition(position) {
+      var picked = viewer.scene.pick(position);
+      if (picked && picked.id) {
+        var pickedType = picked.id.properties && picked.id.properties.tacticalType
+          ? (picked.id.properties.tacticalType.getValue ? picked.id.properties.tacticalType.getValue() : picked.id.properties.tacticalType)
+          : '';
+        if (pickedType === 'freehand-drawing') return picked.id;
+      }
+
+      var best = null;
+      var bestDistance = Infinity;
+      var thresholdPx = 34;
+      drawingEntities.forEach(function (entity) {
+        if (!entity || !entity.polyline || !entity.polyline.positions) return;
+        var positions = entity.polyline.positions.getValue
+          ? entity.polyline.positions.getValue(viewer.clock.currentTime)
+          : entity.polyline.positions;
+        if (!positions || positions.length < 2) return;
+
+        for (var i = 1; i < positions.length; i += 1) {
+          var a = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, positions[i - 1]);
+          var b = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, positions[i]);
+          if (!a || !b) continue;
+          var dx = b.x - a.x;
+          var dy = b.y - a.y;
+          var len2 = dx * dx + dy * dy;
+          if (len2 <= 0) continue;
+          var t = ((position.x - a.x) * dx + (position.y - a.y) * dy) / len2;
+          t = Math.max(0, Math.min(1, t));
+          var px = a.x + t * dx;
+          var py = a.y + t * dy;
+          var dist = Math.hypot(position.x - px, position.y - py);
+          if (dist < bestDistance) {
+            bestDistance = dist;
+            best = entity;
+          }
+        }
+      });
+      return bestDistance <= thresholdPx ? best : null;
+    }
+
+    function _deleteDrawingEntity(entity) {
+      if (!entity) return false;
+      var localId = entity.id;
+      viewer.entities.remove(entity);
+      drawingEntities.delete(localId);
+
+      if (typeof Android !== 'undefined' && typeof Android.onDrawingDeleted === 'function') {
+        Android.onDrawingDeleted(localId);
+      }
+      return true;
+    }
+
+    window.startEraserMode = function () {
+      _drawMode = 'eraser';
+      _destroyDrawHandler();
+      _bindEraserDomEvents();
+    };
+
+    window.stopEraserMode = function () {
+      _destroyDrawHandler();
+      if (_drawMode === 'eraser') _drawMode = null;
+      _setDrawCameraEnabled(true);
+    };
+
+    window.unlockMapNavigation = function () {
+      _drawMode = null;
+      _isDrawing = false;
+      _destroyDrawHandler();
+      if (_previewEnt) { viewer.entities.remove(_previewEnt); _previewEnt = null; }
+      _setDrawCameraEnabled(true);
+    };
+
+    window.loadDrawings = function (drawingsArray, replace) {
+      try {
+        if (!Array.isArray(drawingsArray)) return;
+        const incomingIds = new Set(
+          drawingsArray
+            .map(d => Number(d && d.id_dibujo))
+            .filter(id => Number.isFinite(id) && id > 0)
+            .map(id => 'draw_loaded_' + id)
+        );
+        if (replace) {
+          Array.from(drawingEntities.keys()).forEach(function (localId) {
+            if (!incomingIds.has(localId)) {
+              const entity = drawingEntities.get(localId);
+              if (entity) viewer.entities.remove(entity);
+              drawingEntities.delete(localId);
+            }
+          });
+        }
+        drawingsArray.forEach(function (d) {
+          if (!Array.isArray(d.coords) || d.coords.length < 2) return;
+          var localId = 'draw_loaded_' + d.id_dibujo;
+          if (drawingEntities.has(localId)) {
+            viewer.entities.remove(drawingEntities.get(localId));
+            drawingEntities.delete(localId);
+          }
+
+          var ent = viewer.entities.add({
+            id: localId,
+            polyline: {
+              positions: d.coords.map(function (p) { return Cesium.Cartesian3.fromDegrees(p.lng, p.lat); }),
+              width: d.grosor || 4,
+              material: Cesium.Color.fromCssColorString(d.color || '#00ffa6'),
+              clampToGround: false
+            },
+            properties: { tacticalType: 'freehand-drawing' }
+          });
+          drawingEntities.set(localId, ent);
+        });
+      } catch (e) {
+        console.error('Error loadDrawings: ' + e.message);
+      }
+    };
+
+    window.removeDrawingFromMap = function (idDibujo) {
+      try {
+        var localId = 'draw_loaded_' + idDibujo;
+        var ent = drawingEntities.get(localId);
+        if (ent) {
+          viewer.entities.remove(ent);
+          drawingEntities.delete(localId);
+        }
+      } catch (e) {
+        console.error('Error removeDrawingFromMap: ' + e.message);
+      }
+    };
+
+    function tacticalRouteCoordinates(geometry) {
+      if (!geometry) return [];
+      let geo = geometry;
+      if (typeof geo === 'string') {
+        try { geo = JSON.parse(geo); } catch (_) { return []; }
+      }
+
+      if (geo.type === 'LineString' && Array.isArray(geo.coordinates)) {
+        return geo.coordinates;
+      }
+
+      if (geo.type === 'MultiLineString' && Array.isArray(geo.coordinates)) {
+        var merged = [];
+        geo.coordinates.forEach(function (line) {
+          if (Array.isArray(line)) merged = merged.concat(line);
+        });
+        return merged;
+      }
+
+      return [];
+    }
+
+    window.drawTacticalRoute = function (rutaObj) {
+      try {
+        if (!viewer || !rutaObj) return;
+
+        const id = Number(rutaObj.id_ruta || rutaObj.id_elemento);
+        if (!Number.isFinite(id) || id <= 0) return;
+
+        const coords = tacticalRouteCoordinates(rutaObj.geometria || rutaObj.geometry || rutaObj.geojson)
+          .map(function (coord) {
+            return Cesium.Cartesian3.fromDegrees(Number(coord[0]), Number(coord[1]));
+          });
+        if (coords.length < 2) return;
+
+        if (tacticalRoutes.has(id)) {
+          viewer.entities.remove(tacticalRoutes.get(id));
+          tacticalRoutes.delete(id);
+        }
+
+        const color = (rutaObj.color && String(rutaObj.color).startsWith('#')) ? rutaObj.color : '#1E90FF';
+        const entity = viewer.entities.add({
+          id: 'ruta_operacion_' + id,
+          name: rutaObj.nombre || 'Linea tactica',
+          polyline: {
+            positions: coords,
+            width: Number(rutaObj.grosor || rutaObj.width || 4),
+            material: Cesium.Color.fromCssColorString(color),
+            clampToGround: false
+          },
+          properties: {
+            tacticalType: 'tactical-route',
+            id_ruta: id
+          }
+        });
+
+        tacticalRoutes.set(id, entity);
+      } catch (e) {
+        console.error('Error drawTacticalRoute: ' + e.message);
+      }
+    };
+
+    window.loadTacticalRoutes = function (routesArray, replace) {
+      try {
+        if (!Array.isArray(routesArray)) return;
+        const incomingIds = new Set(
+          routesArray
+            .map(route => Number(route && (route.id_ruta || route.id_elemento)))
+            .filter(id => Number.isFinite(id) && id > 0)
+        );
+        if (replace) {
+          Array.from(tacticalRoutes.keys()).forEach(function (id) {
+            if (!incomingIds.has(Number(id))) {
+              removeTacticalRouteFromMap(id);
+            }
+          });
+        }
+        routesArray.forEach(function (route) {
+          drawTacticalRoute(route);
+        });
+      } catch (e) {
+        console.error('Error loadTacticalRoutes: ' + e.message);
+      }
+    };
+
+    window.removeTacticalRouteFromMap = function (idRuta) {
+      try {
+        const id = Number(idRuta);
+        const entity = tacticalRoutes.get(id);
+        if (entity) {
+          viewer.entities.remove(entity);
+          tacticalRoutes.delete(id);
+        }
+      } catch (e) {
+        console.error('Error removeTacticalRouteFromMap: ' + e.message);
+      }
+    };
+
+    window.removeDrawingByLocalId = function (localId) {
+      try {
+        var ent = drawingEntities.get(localId);
+        if (ent) {
+          viewer.entities.remove(ent);
+          drawingEntities.delete(localId);
+        }
+      } catch (e) {
+        console.error('Error removeDrawingByLocalId: ' + e.message);
+      }
+    };
+
+    // Herramientas locales del menú móvil. Se mantienen separadas de los
+    // objetos operativos para que una medición nunca se envíe al backend.
+    let mobileToolHandler = null;
+    let mobileToolPoints = [];
+    const mobileToolEntities = [];
+
+    function mobilePick(position) {
+      if (!viewer || !position) return null;
+      try {
+        const cartesian = viewer.camera.pickEllipsoid(position, viewer.scene.globe.ellipsoid);
+        if (!cartesian) return null;
+        const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+        return {
+          cartesian: cartesian,
+          lon: Cesium.Math.toDegrees(cartographic.longitude),
+          lat: Cesium.Math.toDegrees(cartographic.latitude)
+        };
+      } catch (e) {
+        console.error("Error en mobilePick: " + e.message);
+        return null;
+      }
+    }
+
+    function mobileDistance(a, b) {
+      try {
+        const geodesic = new Cesium.EllipsoidGeodesic(
+          Cesium.Cartographic.fromDegrees(a.lon, a.lat),
+          Cesium.Cartographic.fromDegrees(b.lon, b.lat)
+        );
+        return geodesic.surfaceDistance || 0;
+      } catch (e) {
+        return 0;
+      }
+    }
+
+    function mobileArea(points) {
+      try {
+        const centerLat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
+        const metersLon = 111320 * Math.cos(Cesium.Math.toRadians(centerLat));
+        const metersLat = 110540;
+        let sum = 0;
+        points.forEach((p, index) => {
+          const next = points[(index + 1) % points.length];
+          sum += (p.lon * metersLon) * (next.lat * metersLat) - (next.lon * metersLon) * (p.lat * metersLat);
+        });
+        return Math.abs(sum) / 2;
+      } catch (e) {
+        return 0;
+      }
+    }
+
+    function addMobileEntity(options) {
+      try {
+        const entity = viewer.entities.add(options);
+        mobileToolEntities.push(entity);
+        return entity;
+      } catch (e) {
+        console.error("Error al agregar entidad movil: " + e.message);
+        return null;
+      }
+    }
+
+    function finishMobileTool(mode) {
+      try {
+        const cyan = Cesium.Color.fromCssColorString('#26D9E8');
+        const fill = cyan.withAlpha(0.22);
+        if ((mode === 'distance' || mode === 'line') && mobileToolPoints.length >= 2) {
+          const distance = mobileDistance(mobileToolPoints[0], mobileToolPoints[1]);
+          addMobileEntity({
+            polyline: {
+              positions: mobileToolPoints.map(p => p.cartesian),
+              width: 4,
+              material: cyan,
+              arcType: Cesium.ArcType.GEODESIC
+            }
+          });
+          if (mode === 'distance') {
+            const distFormatted = distance >= 1000
+              ? (distance / 1000).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' km'
+              : Math.round(distance).toLocaleString('es-MX') + ' m';
+            addMobileEntity({
+              position: mobileToolPoints[1].cartesian,
+              label: {
+                text: distFormatted,
+                font: 'bold 15px sans-serif',
+                fillColor: Cesium.Color.WHITE,
+                showBackground: true,
+                backgroundColor: Cesium.Color.fromCssColorString('#0B192C').withAlpha(0.92),
+                backgroundPadding: new Cesium.Cartesian2(10, 6),
+                pixelOffset: new Cesium.Cartesian2(0, -32),
+                disableDepthTestDistance: Number.POSITIVE_INFINITY
+              }
+            });
+          }
+        } else if ((mode === 'area' || mode === 'zone') && mobileToolPoints.length >= 3) {
+          const positions = mobileToolPoints.map(p => p.cartesian);
+          addMobileEntity({
+            polygon: {
+              hierarchy: new Cesium.PolygonHierarchy(positions),
+              material: fill,
+              outline: true,
+              outlineColor: cyan
+            }
+          });
+          if (mode === 'area') {
+            const area = mobileArea(mobileToolPoints);
+            const centerLat = mobileToolPoints.reduce((sum, p) => sum + p.lat, 0) / mobileToolPoints.length;
+            const centerLon = mobileToolPoints.reduce((sum, p) => sum + p.lon, 0) / mobileToolPoints.length;
+            const centerCartesian = Cesium.Cartesian3.fromDegrees(centerLon, centerLat);
+            const areaFormatted = area >= 1000000
+              ? (area / 1000000).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' km²'
+              : Math.round(area).toLocaleString('es-MX') + ' m²';
+            addMobileEntity({
+              position: centerCartesian,
+              label: {
+                text: areaFormatted,
+                font: 'bold 15px sans-serif',
+                fillColor: Cesium.Color.WHITE,
+                showBackground: true,
+                backgroundColor: Cesium.Color.fromCssColorString('#0B192C').withAlpha(0.92),
+                backgroundPadding: new Cesium.Cartesian2(10, 6),
+                disableDepthTestDistance: Number.POSITIVE_INFINITY
+              }
+            });
+          }
+        } else if (mode === 'rectangle' && mobileToolPoints.length >= 2) {
+          const a = mobileToolPoints[0], b = mobileToolPoints[1];
+          addMobileEntity({
+            rectangle: {
+              coordinates: Cesium.Rectangle.fromDegrees(
+                Math.min(a.lon, b.lon), Math.min(a.lat, b.lat),
+                Math.max(a.lon, b.lon), Math.max(a.lat, b.lat)
+              ),
+              material: fill,
+              outline: true,
+              outlineColor: cyan
+            }
+          });
+        } else if (mode === 'radius' && mobileToolPoints.length >= 2) {
+          const radius = mobileDistance(mobileToolPoints[0], mobileToolPoints[1]);
+          const radFormatted = radius >= 1000
+            ? (radius / 1000).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' km'
+            : Math.round(radius).toLocaleString('es-MX') + ' m';
+          addMobileEntity({
+            position: mobileToolPoints[0].cartesian,
+            ellipse: {
+              semiMajorAxis: radius,
+              semiMinorAxis: radius,
+              material: fill,
+              outline: true,
+              outlineColor: cyan
+            },
+            label: {
+              text: radFormatted,
+              font: 'bold 15px sans-serif',
+              fillColor: Cesium.Color.WHITE,
+              showBackground: true,
+              backgroundColor: Cesium.Color.fromCssColorString('#0B192C').withAlpha(0.92),
+              backgroundPadding: new Cesium.Cartesian2(10, 6),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Error finalizando herramienta movil: " + err.message);
+      } finally {
+        mobileToolPoints = [];
+        if (mobileToolHandler) {
+          mobileToolHandler.destroy();
+          mobileToolHandler = null;
+        }
+      }
+    }
+
+    window.startMobileMapTool = function (mode) {
+      mobileToolPoints = [];
+      if (mobileToolHandler) {
+        mobileToolHandler.destroy();
+        mobileToolHandler = null;
+      }
+
+      if (mode === 'radius') {
+        const cyan = Cesium.Color.fromCssColorString('#26D9E8');
+        const fill = cyan.withAlpha(0.22);
+        let centerPoint = null;
+        let currentRadius = 1;
+        let isDraggingRadius = false;
+        let dynamicCircleEntity = null;
+        const controller = viewer.scene.screenSpaceCameraController;
+
+        mobileToolHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+        function updateRadiusFromPosition(position) {
+          if (!centerPoint || !position) return;
+          const endPoint = mobilePick(position);
+          if (!endPoint) return;
+          currentRadius = Math.max(1, mobileDistance(centerPoint, endPoint));
+        }
+
+        // 1. Al presionar (LEFT_DOWN): fijar centro e iniciar arrastre del radio
+        mobileToolHandler.setInputAction(function (movement) {
+          const point = mobilePick(movement.position);
+          if (!point) return;
+          centerPoint = point;
+          mobileToolPoints = [centerPoint];
+          isDraggingRadius = true;
+          controller.enableInputs = false; // Desactivar paneo mientras se dibuja el radio
+
+          addMobileEntity({
+            position: centerPoint.cartesian,
+            point: {
+              pixelSize: 8,
+              color: Cesium.Color.fromCssColorString('#F3C84B'),
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 1.5
+            }
+          });
+
+          dynamicCircleEntity = addMobileEntity({
+            position: centerPoint.cartesian,
+            ellipse: {
+              semiMajorAxis: new Cesium.CallbackProperty(function () { return currentRadius; }, false),
+              semiMinorAxis: new Cesium.CallbackProperty(function () { return currentRadius; }, false),
+              material: fill,
+              outline: true,
+              outlineColor: cyan
+            },
+            label: {
+              text: new Cesium.CallbackProperty(function () {
+                return currentRadius >= 1000
+                  ? (currentRadius / 1000).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' km'
+                  : Math.round(currentRadius).toLocaleString('es-MX') + ' m';
+              }, false),
+              font: 'bold 15px sans-serif',
+              fillColor: Cesium.Color.WHITE,
+              showBackground: true,
+              backgroundColor: Cesium.Color.fromCssColorString('#0B192C').withAlpha(0.92),
+              backgroundPadding: new Cesium.Cartesian2(10, 6),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY
+            }
+          });
+        }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+        // 2. Al arrastrar (MOUSE_MOVE): redimensionar el círculo dinámicamente
+        mobileToolHandler.setInputAction(function (movement) {
+          if (!isDraggingRadius || !centerPoint) return;
+          updateRadiusFromPosition(movement.endPosition);
+        }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+        // 3. Al soltar (LEFT_UP): congelar el círculo en el radio final
+        mobileToolHandler.setInputAction(function (movement) {
+          if (!isDraggingRadius || !centerPoint) return;
+          if (movement && movement.position) {
+            updateRadiusFromPosition(movement.position);
+          }
+          isDraggingRadius = false;
+          controller.enableInputs = true; // Reactivar controles del mapa
+
+          if (dynamicCircleEntity) {
+            const finalRadius = currentRadius;
+            const radFormatted = finalRadius >= 1000
+              ? (finalRadius / 1000).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' km'
+              : Math.round(finalRadius).toLocaleString('es-MX') + ' m';
+
+            dynamicCircleEntity.ellipse.semiMajorAxis = finalRadius;
+            dynamicCircleEntity.ellipse.semiMinorAxis = finalRadius;
+            dynamicCircleEntity.label.text = radFormatted;
+          }
+
+          if (mobileToolHandler) {
+            mobileToolHandler.destroy();
+            mobileToolHandler = null;
+          }
+        }, Cesium.ScreenSpaceEventType.LEFT_UP);
+
+        return;
+      }
+
+      mobileToolHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+      const required = (mode === 'area' || mode === 'zone') ? 3 : 2;
+      mobileToolHandler.setInputAction(function (click) {
+        const point = mobilePick(click.position);
+        if (!point) return;
+        mobileToolPoints.push(point);
+        addMobileEntity({
+          position: point.cartesian,
+          point: {
+            pixelSize: 8,
+            color: Cesium.Color.fromCssColorString('#F3C84B'),
+            outlineColor: Cesium.Color.WHITE,
+            outlineWidth: 1
+          }
+        });
+        if (mobileToolPoints.length >= required) finishMobileTool(mode);
+      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    };
+
+    // -------------------------------------------------------------
+    // CONVERTIDOR Y Malla TÁCTICA MGRS
+    // -------------------------------------------------------------
+    function latLonToMGRS(lat, lon, precision) {
+      precision = precision || 5;
+      if (lat < -80 || lat > 84) return "";
+
+      var zone = Math.floor((lon + 180) / 6) + 1;
+      if (lat >= 56 && lat < 64 && lon >= 3 && lon < 12) zone = 32;
+      if (lat >= 72 && lat < 84) {
+        if (lon >= 0 && lon < 9) zone = 31;
+        else if (lon >= 9 && lon < 21) zone = 33;
+        else if (lon >= 21 && lon < 33) zone = 35;
+        else if (lon >= 33 && lon < 42) zone = 37;
+      }
+
+      var latBands = "CDEFGHJKLMNPQRSTUVWXX";
+      var band = latBands.charAt(Math.floor((lat + 80) / 8));
+      if (lat >= 80) band = 'X';
+
+      var radLat = lat * Math.PI / 180;
+      var radLon = lon * Math.PI / 180;
+      var a = 6378137.0;
+      var f = 1 / 298.257223563;
+      var b = a * (1 - f);
+      var e2 = (a * a - b * b) / (a * a);
+      var e2prime = (a * a - b * b) / (b * b);
+      var k0 = 0.9996;
+
+      var lon0 = (zone - 1) * 6 - 180 + 3;
+      var radLon0 = lon0 * Math.PI / 180;
+
+      var N = a / Math.sqrt(1 - e2 * Math.sin(radLat) * Math.sin(radLat));
+      var T = Math.tan(radLat) * Math.tan(radLat);
+      var C = e2prime * Math.cos(radLat) * Math.cos(radLat);
+      var A = Math.cos(radLat) * (radLon - radLon0);
+
+      var M = a * ((1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256) * radLat
+        - (3 * e2 / 8 + 3 * e2 * e2 / 32 + 45 * e2 * e2 * e2 / 1024) * Math.sin(2 * radLat)
+        + (15 * e2 * e2 / 256 + 45 * e2 * e2 * e2 / 1024) * Math.sin(4 * radLat)
+        - (35 * e2 * e2 * e2 / 3072) * Math.sin(6 * radLat));
+
+      var easting = k0 * N * (A + (1 - T + C) * Math.pow(A, 3) / 6
+        + (5 - 18 * T + T * T + 72 * C - 58 * e2prime) * Math.pow(A, 5) / 120) + 500000;
+
+      var northing = k0 * (M + N * Math.tan(radLat) * (A * A / 2
+        + (5 - T + 9 * C + 4 * C * C) * Math.pow(A, 4) / 24
+        + (61 - 58 * T + T * T + 600 * C - 330 * e2prime) * Math.pow(A, 6) / 720));
+      if (lat < 0) northing += 10000000;
+
+      var set = zone % 6;
+      if (set === 0) set = 6;
+
+      var e100k = Math.floor(easting / 100000);
+      var n100k = Math.floor(northing / 100000) % 20;
+
+      var colLetters = ["", "ABCDEFGH", "JKLMNPQR", "STUVWXYZ", "ABCDEFGH", "JKLMNPQR", "STUVWXYZ"][set];
+      var rowLetters = (set % 2 === 0)
+        ? "FGHJKLMNPQRSTUVABCDE"
+        : "ABCDEFGHJKLMNPQRSTUV";
+
+      var sqE = colLetters.charAt(e100k);
+      var sqN = rowLetters.charAt(n100k);
+
+      var eNum = Math.floor(easting % 100000);
+      var nNum = Math.floor(northing % 100000);
+
+      var eStr = String(eNum).padStart(5, '0').slice(0, precision);
+      var nStr = String(nNum).padStart(5, '0').slice(0, precision);
+
+      return zone + band + " " + sqE + sqN + " " + eStr + " " + nStr;
+    }
+
+    let isMgrsGridActive = false;
+    const mgrsGridEntities = [];
+    let mgrsBadgeElement = null;
+
+    function createMgrsBadgeIfNeeded() {
+      if (!mgrsBadgeElement) {
+        mgrsBadgeElement = document.createElement('div');
+        mgrsBadgeElement.id = 'mgrsBadge';
+        mgrsBadgeElement.style.cssText = `
+          position: absolute;
+          top: 14px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 9999;
+          background: rgba(8, 32, 55, 0.94);
+          border: 1.5px solid rgba(0, 210, 255, 0.85);
+          border-radius: 20px;
+          padding: 6px 18px;
+          color: #FFFFFF;
+          font-family: monospace, sans-serif;
+          font-size: 13px;
+          font-weight: bold;
+          letter-spacing: 0.8px;
+          box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+          display: none;
+          pointer-events: none;
+          white-space: nowrap;
+        `;
+        document.body.appendChild(mgrsBadgeElement);
+      }
+    }
+
+    function updateMgrsBadgeAndGrid() {
+      if (!isMgrsGridActive || !viewer) return;
+      createMgrsBadgeIfNeeded();
+
+      var centerCartesian = viewer.camera.pickEllipsoid(
+        new Cesium.Cartesian2(viewer.canvas.clientWidth / 2, viewer.canvas.clientHeight / 2),
+        viewer.scene.globe.ellipsoid
+      );
+
+      if (centerCartesian) {
+        var cartographic = Cesium.Cartographic.fromCartesian(centerCartesian);
+        var lat = Cesium.Math.toDegrees(cartographic.latitude);
+        var lon = Cesium.Math.toDegrees(cartographic.longitude);
+        var mgrsStr = latLonToMGRS(lat, lon, 5);
+        if (mgrsBadgeElement) {
+          mgrsBadgeElement.innerHTML = `<span style="color:#00D2FF;margin-right:8px;">CENTRO</span> ${mgrsStr}`;
+          mgrsBadgeElement.style.display = 'block';
+        }
+      }
+
+      while (mgrsGridEntities.length) {
+        viewer.entities.remove(mgrsGridEntities.pop());
+      }
+
+      var rect = viewer.camera.computeViewRectangle();
+      if (!rect) return;
+
+      var west = Cesium.Math.toDegrees(rect.west);
+      var south = Cesium.Math.toDegrees(rect.south);
+      var east = Cesium.Math.toDegrees(rect.east);
+      var north = Cesium.Math.toDegrees(rect.north);
+
+      var latSpan = Math.abs(north - south);
+
+      var step = 0.005; // ~500m
+      if (latSpan > 0.3) step = 0.02; // ~2km
+      if (latSpan > 1.2) step = 0.1; // ~10km
+      if (latSpan > 6.0) step = 0.5; // ~50km
+
+      var minLatStep = Math.floor(south / step) * step;
+      var maxLatStep = Math.ceil(north / step) * step;
+      var minLonStep = Math.floor(west / step) * step;
+      var maxLonStep = Math.ceil(east / step) * step;
+
+      var gridColor = Cesium.Color.fromCssColorString('#00D2FF').withAlpha(0.85);
+
+      for (var latVal = minLatStep; latVal <= maxLatStep; latVal += step) {
+        if (latVal >= -80 && latVal <= 84) {
+          mgrsGridEntities.push(viewer.entities.add({
+            polyline: {
+              positions: Cesium.Cartesian3.fromDegreesArray([west - 1, latVal, east + 1, latVal]),
+              width: 2.5,
+              material: gridColor,
+              clampToGround: false,
+              arcType: Cesium.ArcType.GEODESIC
+            }
+          }));
+        }
+      }
+
+      for (var lonVal = minLonStep; lonVal <= maxLonStep; lonVal += step) {
+        if (lonVal >= -180 && lonVal <= 180) {
+          mgrsGridEntities.push(viewer.entities.add({
+            polyline: {
+              positions: Cesium.Cartesian3.fromDegreesArray([lonVal, south - 1, lonVal, north + 1]),
+              width: 2.5,
+              material: gridColor,
+              clampToGround: false,
+              arcType: Cesium.ArcType.GEODESIC
+            }
+          }));
+        }
+      }
+    }
+
+    window.toggleMgrsGrid = function (active) {
+      if (typeof active === 'boolean') {
+        isMgrsGridActive = active;
+      } else {
+        isMgrsGridActive = !isMgrsGridActive;
+      }
+      createMgrsBadgeIfNeeded();
+
+      if (!isMgrsGridActive) {
+        if (mgrsBadgeElement) mgrsBadgeElement.style.display = 'none';
+        while (mgrsGridEntities.length) {
+          viewer.entities.remove(mgrsGridEntities.pop());
+        }
+      } else {
+        updateMgrsBadgeAndGrid();
+      }
+      return isMgrsGridActive;
+    };
+
+    // Actualizar MGRS al mover o zoom de la cámara
+    if (viewer && viewer.camera) {
+      if (viewer.camera.changed) viewer.camera.changed.addEventListener(function () { if (isMgrsGridActive) updateMgrsBadgeAndGrid(); });
+      if (viewer.camera.moveEnd) viewer.camera.moveEnd.addEventListener(function () { if (isMgrsGridActive) updateMgrsBadgeAndGrid(); });
+    }
+
+    // -------------------------------------------------------------
+    // MENSAJES GEO-ANCLADOS (GEO-MSG)
+    // -------------------------------------------------------------
+    let isGeoMsgMode = false;
+    let geoMsgDataUrl = null;
+
+    function getGeoMsgPinIcon() {
+      if (!geoMsgDataUrl) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 128;
+          canvas.height = 160;
+          const ctx = canvas.getContext('2d');
+
+          const cx = 64;
+          const cy = 54;
+          const r = 44;
+
+          // Pin Azul HD (Simetría Perfecta)
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, Math.PI * 0.82, Math.PI * 0.18, false);
+          ctx.lineTo(cx, 154);
+          ctx.closePath();
+
+          const grad = ctx.createLinearGradient(0, 10, 0, 154);
+          grad.addColorStop(0, '#2997FF');
+          grad.addColorStop(1, '#0066CC');
+          ctx.fillStyle = grad;
+          ctx.fill();
+          ctx.lineWidth = 5;
+          ctx.strokeStyle = '#FFFFFF';
+          ctx.stroke();
+
+          // Círculo Blanco Centrado
+          ctx.beginPath();
+          ctx.arc(cx, cy, 25, 0, 2 * Math.PI);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fill();
+
+          // Bocadillo de Mensaje Centrado
+          ctx.fillStyle = '#0066CC';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(50, 42, 28, 18, 4);
+          else ctx.rect(50, 42, 28, 18);
+          ctx.fill();
+
+          // Cola del bocadillo
+          ctx.beginPath();
+          ctx.moveTo(54, 60);
+          ctx.lineTo(50, 66);
+          ctx.lineTo(60, 60);
+          ctx.closePath();
+          ctx.fill();
+
+          // Líneas de texto
+          ctx.strokeStyle = '#FFFFFF';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(55, 48); ctx.lineTo(73, 48);
+          ctx.moveTo(55, 54); ctx.lineTo(67, 54);
+          ctx.stroke();
+
+          geoMsgDataUrl = canvas.toDataURL('image/png');
+        } catch (e) {
+          console.error("Error creando icono GeoMsg: " + e.message);
+        }
+      }
+      return geoMsgDataUrl;
+    }
+
+    window.startGeoMsgMode = function () {
+      isGeoMsgMode = true;
+    };
+
+    window.addGeoMsgToMap = function (id, lat, lon, text, author) {
+      try {
+        if (!viewer) return;
+        const entityId = 'geomsg_' + id;
+        const iconSrc = getGeoMsgPinIcon();
+
+        if (poiEntities.has(entityId)) {
+          viewer.entities.remove(poiEntities.get(entityId));
+          poiEntities.delete(entityId);
+        }
+
+        const entity = viewer.entities.add({
+          id: entityId,
+          position: Cesium.Cartesian3.fromDegrees(lon, lat),
+          billboard: {
+            image: iconSrc,
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            scale: 0.35,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          },
+          properties: {
+            poiId: id,
+            poiLat: lat,
+            poiLon: lon,
+            poiName: text,
+            poiTipo: 'GEO-MSG',
+            poiAuthor: author || 'Yo',
+            geoMsgText: text,
+            tacticalType: 'geomsg'
+          }
+        });
+
+        poiEntities.set(entityId, entity);
+      } catch (e) {
+        console.error("Error addGeoMsgToMap: " + e.message);
+      }
+    };
+
+    window.clearMobileMapTools = function () {
+      if (viewer && viewer.scene && viewer.scene.screenSpaceCameraController) {
+        viewer.scene.screenSpaceCameraController.enableInputs = true;
+      }
+      if (mobileToolHandler) { mobileToolHandler.destroy(); mobileToolHandler = null; }
+      mobileToolPoints = [];
+      while (mobileToolEntities.length) viewer.entities.remove(mobileToolEntities.pop());
+      if (typeof toggleMgrsGrid === 'function') toggleMgrsGrid(false);
+      if (typeof clearOperationGrid === 'function') clearOperationGrid();
+    };
+
+    window.setMobileBaseLayer = function (layer) { setBaseLayer(layer === 'map' ? 'osm' : 'satellite'); };
+  </script>
+</body>
+</html>

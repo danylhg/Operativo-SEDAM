@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="MapDrawerSection">
+        <item name="android:layout_width">match_parent</item><item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingTop">14dp</item><item name="android:paddingBottom">7dp</item>
+        <item name="android:textColor">#AFC2D8</item><item name="android:textSize">9sp</item><item name="android:letterSpacing">0.16</item>
+    </style>
+    <style name="MapDrawerRow">
+        <item name="android:layout_width">match_parent</item><item name="android:layout_height">38dp</item><item name="android:orientation">horizontal</item>
+    </style>
+    <style name="MapDrawerButton">
+        <item name="android:layout_width">0dp</item><item name="android:layout_height">match_parent</item><item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/bg_map_drawer_action</item><item name="android:gravity">center_vertical</item><item name="android:paddingHorizontal">8dp</item>
+        <item name="android:textColor">#EDF6FF</item><item name="android:textSize">9sp</item><item name="android:textStyle">bold</item><item name="android:clickable">true</item><item name="android:focusable">true</item>
+    </style>
+    <style name="MapDrawerButtonWide" parent="MapDrawerButton">
+        <item name="android:layout_width">match_parent</item><item name="android:layout_height">38dp</item><item name="android:layout_weight">0</item><item name="android:gravity">center</item>
+    </style>
+    <style name="MapDrawerTextAction">
+        <item name="android:layout_width">match_parent</item><item name="android:layout_height">58dp</item><item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:gravity">center_vertical</item><item name="android:paddingHorizontal">8dp</item><item name="android:textColor">#EDF6FF</item><item name="android:textSize">11sp</item>
+        <item name="android:lineSpacingExtra">3dp</item><item name="android:clickable">true</item><item name="android:focusable">true</item>
+    </style>
+    <style name="MapDrawerDivider">
+        <item name="android:layout_width">match_parent</item><item name="android:layout_height">1dp</item><item name="android:layout_marginTop">8dp</item><item name="android:background">#203D5B</item>
+    </style>
+</resources>

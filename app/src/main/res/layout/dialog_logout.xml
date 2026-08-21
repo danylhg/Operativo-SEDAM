@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_logout_dialog"
+    android:orientation="vertical"
+    android:padding="22dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tvLogoutAvatar"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:background="@drawable/bg_send_circle"
+            android:gravity="center"
+            android:textColor="#071A21"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="13dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cerrar sesi&#xF3;n"
+                android:textColor="#F1F7FA"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvLogoutUser"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:maxLines="1"
+                android:textColor="#7DB8C8"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:lineSpacingExtra="2dp"
+        android:text="La operaci&#xF3;n seguir&#xE1; activa. Vuelve a iniciar sesi&#xF3;n para regresar al mapa."
+        android:textColor="#C7D8DE"
+        android:textSize="14sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="22dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnCancelLogout"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_logout_cancel"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="Cancelar"
+            android:textColor="#D9E8EC"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnConfirmLogout"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_logout_confirm"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="Cerrar sesi&#xF3;n"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>

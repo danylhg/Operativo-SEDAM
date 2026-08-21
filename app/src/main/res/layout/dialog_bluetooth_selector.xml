@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@android:color/transparent">
+
+    <TextView
+        android:id="@+id/btnOptionPtt"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:background="@drawable/bg_ptt_dialog_button_neutral"
+        android:clickable="true"
+        android:drawableStart="@drawable/ic_radio_ptt"
+        android:drawablePadding="16dp"
+        android:drawableTint="#CBD5E1"
+        android:focusable="true"
+        android:gravity="center"
+        android:paddingHorizontal="28dp"
+        android:text="PTT-01    CONECTAR"
+        android:textColor="#F8FAFC"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+</FrameLayout>

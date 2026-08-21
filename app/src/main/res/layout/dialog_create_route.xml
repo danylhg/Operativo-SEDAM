@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_geo_msg_dialog"
+    android:orientation="vertical"
+    android:padding="22dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="CREAR RUTA"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="El origen será tu ubicación actual. Escribe el destino o selecciónalo directamente en el mapa."
+        android:textColor="#9BB0C7"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:text="COORDENADAS DEL DESTINO"
+        android:textColor="#F3C84B"
+        android:textSize="10sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/etRouteLatitude"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_geo_msg_input"
+            android:hint="Latitud"
+            android:inputType="numberDecimal|numberSigned"
+            android:paddingHorizontal="12dp"
+            android:textColor="#F8FAFC"
+            android:textColorHint="#71849A"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/etRouteLongitude"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_geo_msg_input"
+            android:hint="Longitud"
+            android:inputType="numberDecimal|numberSigned"
+            android:paddingHorizontal="12dp"
+            android:textColor="#F8FAFC"
+            android:textColorHint="#71849A"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/btnPickRouteDestination"
+        android:layout_width="match_parent"
+        android:layout_height="58dp"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/bg_route_map_picker"
+        android:clickable="true"
+        android:contentDescription="Seleccionar destino en el mapa"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="14dp">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_tool_poi"
+            android:tint="#67E8F9" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Seleccionar en el mapa"
+                android:textColor="#F4FBFF"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Toca el punto al que quieres llegar"
+                android:textColor="#A8C6D5"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="›"
+            android:textColor="#67E8F9"
+            android:textSize="24sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnCancelCreateRoute"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:paddingHorizontal="14dp"
+            android:text="CANCELAR"
+            android:textColor="#94A3B8"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnConfirmCreateRoute"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_marginStart="8dp"
+            android:gravity="center"
+            android:paddingHorizontal="14dp"
+            android:text="CREAR RUTA"
+            android:textColor="#F3C84B"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>

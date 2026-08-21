@@ -1,4 +1,11 @@
 pluginManagement {
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "com.android.application") {
+                useModule("com.android.tools.build:gradle:${requested.version}")
+            }
+        }
+    }
     repositories {
         google {
             content {
@@ -16,8 +23,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://jitpack.io")
     }
 }
 
-rootProject.name = "SEDAM Movil"
+rootProject.name = "Operaciones_Android"
 include(":app")
+include(":wear")

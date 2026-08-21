@@ -1,17 +1,16 @@
 *.iml
-.gradle/
+.gradle
+**/.idea/
 /local.properties
-/.idea/
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
 .DS_Store
 /build
 /captures
 .externalNativeBuild
 .cxx
 local.properties
-
-# Build outputs
-app/build/
-build/
-
-# La CA/cert del server NO se versiona (es material sensible del despliegue)
-app/src/main/res/raw/sedam_ca.pem

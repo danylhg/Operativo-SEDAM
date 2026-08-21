@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:paddingStart="24dp"
+    android:paddingTop="30dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="26dp"
+    android:background="@drawable/bg_voice_call_dialog">
+
+    <TextView
+        android:id="@+id/voiceCallAvatar"
+        android:layout_width="78dp"
+        android:layout_height="78dp"
+        android:gravity="center"
+        android:background="@drawable/bg_voice_call_avatar"
+        android:text="AG"
+        android:textColor="#EAF4FF"
+        android:textSize="24sp"
+        android:textStyle="bold"/>
+
+    <TextView
+        android:id="@+id/voiceCallTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:textColor="#F4F8FF"
+        android:textSize="20sp"
+        android:textStyle="bold"/>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <View
+            android:id="@+id/voiceCallStatusDot"
+            android:layout_width="7dp"
+            android:layout_height="7dp"
+            android:background="@drawable/bg_voice_call_status"/>
+
+        <TextView
+            android:id="@+id/voiceCallStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="#9DB2CC"
+            android:textSize="13sp"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="30dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageButton
+                android:id="@+id/voiceCallSecondary"
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:background="@drawable/bg_voice_call_control"
+                android:contentDescription="Silenciar"
+                android:padding="17dp"
+                android:src="@drawable/ic_mic"
+                android:tint="#F4F8FF"/>
+
+            <TextView
+                android:id="@+id/voiceCallSecondaryLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Silenciar"
+                android:textColor="#C9D8EA"
+                android:textSize="12sp"
+                android:textStyle="bold"/>
+        </LinearLayout>
+
+        <Space
+            android:layout_width="12dp"
+            android:layout_height="1dp"/>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageButton
+                android:id="@+id/voiceCallPrimary"
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:background="@drawable/bg_voice_call_control_end"
+                android:contentDescription="Finalizar"
+                android:padding="16dp"
+                android:src="@drawable/ic_call_end"
+                android:tint="#FFFFFF"/>
+
+            <TextView
+                android:id="@+id/voiceCallPrimaryLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Finalizar"
+                android:textColor="#F0C7CD"
+                android:textSize="12sp"
+                android:textStyle="bold"/>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

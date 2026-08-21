@@ -1,65 +1,62 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
+    id("org.jetbrains.kotlin.android")
 }
 
 android {
-    namespace = "mx.sedam.movil"
-    compileSdk = 35
+    namespace = "com.operaciones.operaciones_android"
+    compileSdk = 34
 
     defaultConfig {
-        applicationId = "mx.sedam.movil"
-        minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        applicationId = "com.operaciones.operaciones_android"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 100003
+        versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions { jvmTarget = "17" }
+
+    kotlinOptions {
+        jvmTarget = "11"
+    }
 
     buildFeatures {
-        compose = true
-        buildConfig = true
+        viewBinding = true
     }
 }
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.extended)
-    debugImplementation(libs.androidx.ui.tooling)
-
-    implementation(libs.androidx.security.crypto)
-    implementation(libs.kotlinx.coroutines.android)
-
-    // Mapa offline con cache de tiles en SQLite (cache.db integrado)
-    implementation(libs.osmdroid.android)
-
-    // Símbolos militares MIL-STD-2525 (renderer oficial armyc2)
-    implementation(libs.milsym.android.renderer)
-
-    // socket.io-client trae su propio org.json; Android ya lo incluye → se excluye
-    // para evitar "Duplicate class org.json".
-    implementation(libs.socketio) {
+    implementation(libs.androidx.appcompat)
+    implementation(libs.material)
+    implementation(libs.androidx.constraintlayout)
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.android.gms:play-services-wearable:20.0.1")
+    implementation("io.github.webrtc-sdk:android:144.7559.01")
+    implementation("com.github.pedroSG94.RootEncoder:library:2.7.2")
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    implementation("io.socket:socket.io-client:2.1.0") {
         exclude(group = "org.json", module = "json")
     }
+    implementation("androidx.core:core-ktx:1.12.0")
 }

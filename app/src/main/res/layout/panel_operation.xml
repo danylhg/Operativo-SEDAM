@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="20dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Título -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="DETALLE DE OPERACIÓN"
+            android:textColor="#3b82f6"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="24dp"/>
+
+        <!-- Nombre -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="NOMBRE"
+            android:textColor="#94a3b8"
+            android:textSize="10sp"
+            android:letterSpacing="0.05"/>
+        <TextView
+            android:id="@+id/opNombre"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Operación de Prueba"
+            android:textColor="#f8fafc"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="20dp"/>
+
+        <!-- Código -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CÓDIGO"
+            android:textColor="#94a3b8"
+            android:textSize="10sp"
+            android:letterSpacing="0.05"/>
+        <TextView
+            android:id="@+id/opCodigo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="OP-001"
+            android:textColor="#ffffff"
+            android:textSize="15sp"
+            android:layout_marginBottom="20dp"/>
+
+        <!-- Descripción -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="DESCRIPCIÓN"
+            android:textColor="#94a3b8"
+            android:textSize="10sp"
+            android:letterSpacing="0.05"/>
+        <TextView
+            android:id="@+id/opDescripcion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Descripción detallada de la operación."
+            android:textColor="#cbd5e1"
+            android:textSize="14sp"
+            android:lineSpacingExtra="4dp"
+            android:layout_marginBottom="20dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:baselineAligned="false"
+            android:layout_marginBottom="20dp">
+
+            <!-- Prioridad -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="PRIORIDAD"
+                    android:textColor="#94a3b8"
+                    android:textSize="10sp"/>
+                <TextView
+                    android:id="@+id/opPrioridad"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ALTA"
+                    android:textColor="#ef4444"
+                    android:textStyle="bold"
+                    android:textSize="14sp"/>
+            </LinearLayout>
+
+            <!-- Estado -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ESTADO"
+                    android:textColor="#94a3b8"
+                    android:textSize="10sp"/>
+                <TextView
+                    android:id="@+id/opEstado"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ACTIVA"
+                    android:textColor="#22c55e"
+                    android:textStyle="bold"
+                    android:textSize="14sp"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Fecha Inicio -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="FECHA DE INICIO"
+            android:textColor="#94a3b8"
+            android:textSize="10sp"
+            android:letterSpacing="0.05"/>
+        <TextView
+            android:id="@+id/opFechaInicio"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="01/01/2025 08:00 AM"
+            android:textColor="#cbd5e1"
+            android:textSize="14sp"
+            android:layout_marginBottom="20dp"/>
+
+        <Button
+            android:id="@+id/btnSimulacion"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/bg_quick_reply_selected"
+            android:text="ACTIVAR SIMULACION"
+            android:textAllCaps="false"
+            android:textColor="#ffffff"
+            android:textStyle="bold"
+            android:visibility="gone"/>
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

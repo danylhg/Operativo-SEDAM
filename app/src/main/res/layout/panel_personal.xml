@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingHorizontal="12dp"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="PERSONAL ASIGNADO"
+        android:textColor="#94a3b8"
+        android:textSize="10sp"
+        android:letterSpacing="0.15"
+        android:paddingTop="8dp"
+        android:paddingBottom="6dp"/>
+
+    <!-- layout_height="0dp" + layout_weight="1" para que el ScrollView
+         ocupe el espacio restante y el scroll funcione correctamente -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:id="@+id/personalList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"/>
+
+    </ScrollView>
+</LinearLayout>

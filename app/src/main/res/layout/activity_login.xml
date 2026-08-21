@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_login_gradient">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingHorizontal="36dp"
+            android:paddingTop="24dp"
+            android:paddingBottom="24dp">
+
+            <!-- Spacer top -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"/>
+
+            <!-- Logo SEDAM -->
+            <ImageView
+                android:layout_width="132dp"
+                android:layout_height="132dp"
+                android:src="@drawable/logo_sedam_sinfondo"
+                android:scaleType="fitCenter"
+                android:layout_marginBottom="18dp"
+                android:contentDescription="Logo SEDAM"/>
+
+            <!-- Título: Sistema de Operaciones -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Sistema de"
+                android:textColor="#f3f7ff"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.12"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Operaciones"
+                android:textColor="#f3f7ff"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginBottom="8dp"/>
+
+            <!-- Subtítulo -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="INGRESA TUS CREDENCIALES PARA CONTINUAR"
+                android:textColor="#88a8b6cf"
+                android:textSize="10sp"
+                android:letterSpacing="0.08"
+                android:gravity="center"
+                android:layout_marginBottom="28dp"/>
+
+            <!-- Contenedor acotado para el formulario (340dp de ancho) -->
+            <LinearLayout
+                android:layout_width="340dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="12dp">
+
+                <!-- Label: USUARIO -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="USUARIO"
+                    android:textColor="#a8b6cf"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="6dp"/>
+
+                <!-- Input: usuario -->
+                <EditText
+                    android:id="@+id/inputNumControl"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:background="@drawable/bg_login_input"
+                    android:paddingHorizontal="14dp"
+                    android:textColor="#f3f7ff"
+                    android:textColorHint="#7F9CB8"
+                    android:hint=""
+                    android:textSize="14sp"
+                    android:inputType="text"
+                    android:singleLine="true"
+                    android:imeOptions="actionNext"
+                    android:layout_marginBottom="14dp"/>
+
+                <!-- Label: CONTRASEÑA -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="CONTRASEÑA"
+                    android:textColor="#a8b6cf"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="6dp"/>
+
+                <!-- Input: contraseña -->
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginBottom="8dp">
+
+                    <EditText
+                        android:id="@+id/inputPassword"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_login_input"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="48dp"
+                        android:textColor="#f3f7ff"
+                        android:textColorHint="#7F9CB8"
+                        android:hint=""
+                        android:textSize="14sp"
+                        android:inputType="textPassword"
+                        android:singleLine="true"
+                        android:imeOptions="actionDone"/>
+
+                    <ImageButton
+                        android:id="@+id/btnTogglePassword"
+                        android:layout_width="42dp"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="end|center_vertical"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Mostrar contraseña"
+                        android:padding="10dp"
+                        android:src="@drawable/ic_eye"
+                        android:tint="#B8C8DF"/>
+                </FrameLayout>
+
+                <!-- Error -->
+                <TextView
+                    android:id="@+id/tvError"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#f87171"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:padding="6dp"
+                    android:visibility="gone"
+                    android:layout_marginBottom="4dp"/>
+
+                <!-- Progress -->
+                <ProgressBar
+                    android:id="@+id/loginProgress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:indeterminateTint="#3b82f6"
+                    android:visibility="gone"
+                    android:layout_marginBottom="4dp"/>
+
+                <!-- Botón login -->
+                <Button
+                    android:id="@+id/btnLogin"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:text="Iniciar sesión"
+                    android:textColor="#ffffff"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_login_button"
+                    android:stateListAnimator="@null"
+                    android:layout_marginTop="8dp"/>
+            </LinearLayout>
+
+            <!-- Spacer bottom -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"/>
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Botón dirección API (esquina superior derecha) -->
+    <Button
+        android:id="@+id/btnApiAddress"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="0dp"
+        android:text="DIRECCIÓN"
+        android:textColor="#a8b6cf"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:backgroundTint="#17345e"
+        android:alpha="0.7"/>
+</FrameLayout>

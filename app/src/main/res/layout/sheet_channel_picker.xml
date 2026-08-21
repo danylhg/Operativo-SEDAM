@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#0D2A33"
+    android:paddingBottom="16dp">
+
+    <!-- Handle -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp"
+        android:background="#214F5F"/>
+
+    <!-- Título -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="DESTINO DEL MENSAJE"
+        android:textColor="#4E8BA0"
+        android:textSize="10sp"
+        android:letterSpacing="0.12"
+        android:paddingHorizontal="16dp"
+        android:paddingBottom="6dp"/>
+
+    <!-- Lista de canales (filas generadas en código) -->
+    <LinearLayout
+        android:id="@+id/sheetChannelList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"/>
+
+    <!-- Selector de target específico -->
+    <Spinner
+        android:id="@+id/sheetTargetSpinner"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="6dp"
+        android:visibility="gone"
+        android:popupBackground="#0D2A33"/>
+
+    <!-- Botón aplicar -->
+    <Button
+        android:id="@+id/sheetApplyBtn"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="14dp"
+        android:text="Aplicar"
+        android:textColor="#ffffff"
+        android:backgroundTint="#1E6F86"
+        android:stateListAnimator="@null"/>
+
+</LinearLayout>

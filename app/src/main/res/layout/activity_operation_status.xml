@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0a0f1e">
+
+    <!-- Header: info del usuario -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#0d1526"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="14dp"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvUserName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#e2e8f0"
+                android:textSize="15sp"
+                android:textStyle="bold"/>
+
+            <LinearLayout
+                android:id="@+id/userMeta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tvUserRole"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#2563eb"
+                    android:textSize="11sp"
+                    android:textStyle="bold"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=" · "
+                    android:textColor="#475569"
+                    android:textSize="11sp"/>
+
+                <TextView
+                    android:id="@+id/tvUserHierarchy"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#64748b"
+                    android:textSize="11sp"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnLogout"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Salir"
+            android:textSize="11sp"
+            android:textColor="#94a3b8"
+            android:backgroundTint="#1e293b"/>
+    </LinearLayout>
+
+    <!-- Contenido principal (scrollable) -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="32dp"
+        android:clipToPadding="false">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
+
+            <!-- Ícono de estado -->
+            <ImageView
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:layout_marginBottom="18dp"
+                android:background="@drawable/bg_operation_status_icon"
+                android:contentDescription="Estado de la operación"
+                android:padding="16dp"
+                android:src="@drawable/ic_nav_operation"
+                android:tint="#78AFA8" />
+
+            <!-- Título de estado -->
+            <TextView
+                android:id="@+id/tvStatusTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#e2e8f0"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginBottom="8dp"/>
+
+            <!-- Mensaje de estado -->
+            <TextView
+                android:id="@+id/tvStatusMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#64748b"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.5"
+                android:layout_marginBottom="32dp"/>
+
+            <!-- Card de operación (visible si hay una asignada) -->
+            <LinearLayout
+                android:id="@+id/cardOperation"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="#0d1526"
+                android:padding="20dp"
+                android:layout_marginBottom="24dp"
+                android:visibility="gone">
+
+                <!-- Nombre de la operación -->
+                <TextView
+                    android:id="@+id/tvOperationName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#e2e8f0"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.05"
+                    android:layout_marginBottom="12dp"/>
+
+                <!-- Prioridad -->
+                <TextView
+                    android:id="@+id/tvOperationPriority"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="12dp"/>
+
+                <!-- Separador -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="#1e293b"
+                    android:layout_marginBottom="12dp"/>
+
+                <!-- Zona -->
+                <TextView
+                    android:id="@+id/tvOperationZone"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#94a3b8"
+                    android:textSize="13sp"
+                    android:layout_marginBottom="6dp"/>
+
+                <!-- Fecha -->
+                <TextView
+                    android:id="@+id/tvOperationDate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#94a3b8"
+                    android:textSize="13sp"
+                    android:layout_marginBottom="16dp"/>
+
+                <!-- Mensaje principal -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="MENSAJE PRINCIPAL"
+                    android:textColor="#475569"
+                    android:textSize="10sp"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="6dp"/>
+
+                <TextView
+                    android:id="@+id/tvMainMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#93c5fd"
+                    android:textSize="13sp"
+                    android:fontFamily="monospace"
+                    android:lineSpacingMultiplier="1.4"/>
+
+            </LinearLayout>
+
+            <!-- Botón verificar -->
+            <Button
+                android:id="@+id/btnRefresh"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Comprobar operación"
+                android:textAllCaps="false"
+                android:textColor="#F1F7FA"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_logout_confirm"/>
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

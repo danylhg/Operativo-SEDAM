@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.SedamWear" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/sedam_bg</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/sedam_primary</item>
+        <item name="android:navigationBarColor">@color/sedam_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

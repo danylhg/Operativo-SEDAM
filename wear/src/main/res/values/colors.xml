@@ -1,0 +1,9 @@
+<resources>
+    <color name="sedam_bg">#050608</color>
+    <color name="sedam_panel">#151922</color>
+    <color name="sedam_panel_alt">#202633</color>
+    <color name="sedam_primary">#1FA37A</color>
+    <color name="sedam_danger">#C94B4B</color>
+    <color name="sedam_text">#F2F5F7</color>
+    <color name="sedam_muted">#A8B3BD</color>
+</resources>
