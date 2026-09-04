@@ -1,0 +1,1 @@
+DB CONFIG TEST: { host: 'localhost', port: 5432, user: 'postgres', database: 'ops_db' }

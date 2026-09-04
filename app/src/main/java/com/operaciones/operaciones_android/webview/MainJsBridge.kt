@@ -15,6 +15,9 @@ class MainJsBridge(
 ) {
 
     @JavascriptInterface
+    fun getCurrentUserLabel(): String = activity.getMapDataCurrentUserLabel()
+
+    @JavascriptInterface
     fun onMapTapped(lat: Double, lon: Double): Boolean {
         // El menú de creación de Waypoints/Blancos solo se muestra al mantener presionado (Long Press)
         return false
@@ -52,6 +55,23 @@ class MainJsBridge(
     }
 
     @JavascriptInterface
+    fun onPoiPublishRequested(idPoi: Int) {
+        activity.runOnUiThread { activity.publishPoiFromBridge(idPoi) }
+    }
+
+    @JavascriptInterface
+    fun onPoiVisibilityToggled(poiId: Int, isPublic: Boolean) {
+        if (poiId > 0) {
+            activity.onPoiVisibilityToggled(poiId, isPublic)
+        }
+    }
+
+    @JavascriptInterface
+    fun onPoiEditRequested(payloadJson: String) {
+        activity.runOnUiThread { activity.editPoiFromBridge(payloadJson) }
+    }
+
+    @JavascriptInterface
     fun onMapSelectionCleared() {
         activity.runOnUiThread {
             activity.clearSelectedMapObject()
@@ -77,6 +97,16 @@ class MainJsBridge(
     }
 
     @JavascriptInterface
+    fun getMyLocation(): String {
+        val pair = activity.getLastKnownLocationPair()
+        return if (pair != null) {
+            "{\"lat\":${pair.first},\"lon\":${pair.second}}"
+        } else {
+            "{}"
+        }
+    }
+
+    @JavascriptInterface
     fun getUserRole(): String = activity.getCurrentUserRoleForBridge()
 
     @JavascriptInterface
@@ -84,6 +114,12 @@ class MainJsBridge(
 
     @JavascriptInterface
     fun getOperationId(): Int = activity.getCurrentOperationIdForBridge()
+
+    @JavascriptInterface
+    fun getCurrentUserId(): Int = activity.getCurrentUserIdForBridge()
+
+    @JavascriptInterface
+    fun getCurrentUserTable(): String = activity.getCurrentUserTableForBridge()
 
     @JavascriptInterface
     fun onRouteCreated(payloadJson: String) {

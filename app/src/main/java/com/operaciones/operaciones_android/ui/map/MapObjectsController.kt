@@ -67,6 +67,7 @@ class MapObjectsController(
         fun showMapEquipoInfo(idEquipo: Int, screenX: Double?, screenY: Double?, viewportWidth: Double?, viewportHeight: Double?)
         fun selectMapEquipo(idEquipo: Int?)
         fun selectMapDispositivo(idDispositivo: Int?)
+        fun syncMapData(force: Boolean = false)
     }
 
     private data class SelectedMapObject(
@@ -752,6 +753,156 @@ class MapObjectsController(
         Toast.makeText(activity, "Dibujo eliminado.", Toast.LENGTH_SHORT).show()
     }
 
+    fun editPoiFromBridge(payloadJson: String) {
+        val payload = runCatching { JSONObject(payloadJson) }.getOrNull() ?: return
+        val poiId = payload.optInt("id", -1)
+        if (poiId <= 0) return
+        activity.runOnUiThread {
+            val isTarget = payload.optBoolean("isTarget")
+            val lat = payload.optDouble("lat")
+            val lon = payload.optDouble("lon")
+            val name = payload.optString("name")
+            val rawIdentity = payload.optString("identity").trim()
+            val rawOption = payload.optString("option").trim()
+            val sidc = payload.optString("sidc", "").trim().uppercase()
+
+            val identity = if (rawIdentity.isNotBlank() && rawIdentity != "Desconocido") {
+                rawIdentity
+            } else if (sidc.length > 1) {
+                when (sidc[1]) {
+                    'F' -> "Amigo"
+                    'H' -> "Hostil"
+                    'N' -> "Neutral"
+                    'U' -> "Desconocido"
+                    else -> if (isTarget) "Desconocido" else "Amigo"
+                }
+            } else {
+                if (isTarget) "Desconocido" else "Amigo"
+            }
+
+            val option = if (isTarget) {
+                if (rawOption.isNotBlank() && rawOption != "Tierra") rawOption
+                else if (sidc.length > 2) {
+                    when (sidc[2]) {
+                        'A' -> "Aire"
+                        'U' -> "Submarino"
+                        'S' -> "Superficie"
+                        else -> "Tierra"
+                    }
+                } else "Tierra"
+            } else {
+                when {
+                    sidc.contains("GPOW") || rawOption.equals("Ruta", ignoreCase = true) -> "Ruta"
+                    sidc.contains("GPPW") || rawOption.equals("Acción", ignoreCase = true) || rawOption.equals("Accion", ignoreCase = true) -> "Acción"
+                    else -> "Referencia"
+                }
+            }
+
+            mapActionController.showEditPointForm(poiId, isTarget, lat, lon, name, identity, option)
+        }
+    }
+
+    override fun updatePoi(
+        poiId: Int,
+        nombre: String,
+        tipoPoi: String,
+        color: String,
+        iconoSrc: String?
+    ) {
+        val operationId = host.getMapOperationId()
+        if (operationId <= 0) return
+        val token = host.getMapToken()
+        if (token.isBlank()) return
+
+        val currentUser = host.getMapCurrentUser()
+        val rank = abbreviateRank(currentUser.jerarquia)
+        val rawName = currentUser.nombreCompleto.ifBlank { currentUser.username }.trim()
+        val cleanName = rawName.replace(Regex("""\s*\([^)]*\)"""), "").trim()
+        val editorName = listOf(rank, cleanName)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { currentUser.username }
+
+        val body = JSONObject()
+            .put("nombre", nombre)
+            .put("tipo_poi", tipoPoi)
+            .put("color", color)
+            .put("icono_src", iconoSrc)
+            .put("sidc", iconoSrc?.takeIf { it.startsWith("S") || it.startsWith("G") })
+            .put("editor_nombre", editorName)
+            .put("editorLabel", editorName)
+            .put("modificado_por", editorName)
+
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/ops/$operationId/pois/$poiId")
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("Content-Type", "application/json")
+            .put(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                activity.runOnUiThread {
+                    Toast.makeText(activity, "Error de red: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val success = response.isSuccessful
+                val bodyStr = response.body?.string().orEmpty()
+                response.close()
+                activity.runOnUiThread {
+                    if (success) {
+                        Toast.makeText(activity, "Punto actualizado", Toast.LENGTH_SHORT).show()
+                        cesiumWebController.evaluate("if(typeof hideTargetPopup==='function') hideTargetPopup();")
+                        host.syncMapData(true)
+                    } else {
+                        Toast.makeText(activity, "Error: ${response.code} - $bodyStr", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        })
+    }
+
+    fun setPoiVisibility(idPoi: Int, isPublic: Boolean) {
+        val operationId = host.getMapOperationId()
+        val token = host.getMapToken()
+        if (operationId <= 0 || idPoi <= 0 || token.isBlank()) return
+
+        val endpointAction = if (isPublic) "publicar" else "privatizar"
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/ops/$operationId/pois/$idPoi/$endpointAction")
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("Content-Type", "application/json")
+            .patch("{}".toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                activity.runOnUiThread {
+                    Toast.makeText(activity, "Error de conexión al cambiar visibilidad.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            override fun onResponse(call: Call, response: Response) {
+                val success = response.isSuccessful
+                response.close()
+                activity.runOnUiThread {
+                    if (success) {
+                        Toast.makeText(activity, if (isPublic) "POI hecho público" else "POI hecho privado", Toast.LENGTH_SHORT).show()
+                        host.syncMapData(true)
+                    } else {
+                        Toast.makeText(activity, "No se pudo cambiar la visibilidad.", Toast.LENGTH_LONG).show()
+                        host.syncMapData(true)
+                    }
+                }
+            }
+        })
+    }
+
+    fun publishPoiById(idPoi: Int) {
+        setPoiVisibility(idPoi, true)
+    }
+
     private fun deleteMapObjectFromBackend(
         url: String,
         successMessage: String,
@@ -920,6 +1071,14 @@ class MapObjectsController(
             iconoSrc?.takeIf { it.startsWith("S") || it.startsWith("G") }
         }
 
+        val creatorRank = abbreviateRank(currentUser.jerarquia)
+        val rawCreatorName = currentUser.nombreCompleto.ifBlank { currentUser.username }.trim()
+        val cleanCreatorName = rawCreatorName.replace(Regex("""\s*\([^)]*\)"""), "").trim()
+        val creatorName = listOf(creatorRank, cleanCreatorName)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { currentUser.username }
+
         activity.runOnUiThread {
             localTempId?.let { cesiumWebController.removePoiFromMap(it) }
             if (idPoi > 0) {
@@ -931,7 +1090,9 @@ class MapObjectsController(
                     tipoPoi = poiTipo,
                     color = poiColor,
                     iconoSrc = poiIconoSrc,
-                    sidc = poiSidc
+                    sidc = poiSidc,
+                    creatorLabel = creatorName,
+                    editorLabel = ""
                 )
             }
 
@@ -971,6 +1132,41 @@ class MapObjectsController(
         }
         updateObjectToolSelection(label)
         Toast.makeText(activity, "$label activo.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun abbreviateRank(rank: String): String {
+        val r = rank.trim().lowercase()
+        return when {
+            r.contains("capitán de navío") || r.contains("capitan de navio") -> "Cap. Nav."
+            r.contains("capitán de fragata") || r.contains("capitan de fragata") -> "Cap. Frag."
+            r.contains("capitán de corbeta") || r.contains("capitan de corbeta") -> "Cap. Corb."
+            r.contains("capitán 1/o") || r.contains("capitan 1/o") || r.contains("capitán primero") -> "Cap. 1/o"
+            r.contains("capitán 2/o") || r.contains("capitan 2/o") || r.contains("capitán segundo") -> "Cap. 2/o"
+            r.contains("capitán") || r.contains("capitan") || r == "cap" || r == "cap." -> "Cap."
+            r.contains("teniente de navío") || r.contains("teniente de navio") -> "Tte. Nav."
+            r.contains("teniente de fragata") || r.contains("teniente de fragata") -> "Tte. Frag."
+            r.contains("teniente de corbeta") || r.contains("teniente de corbeta") -> "Tte. Corb."
+            r.contains("primer teniente") || r.contains("1er teniente") -> "1er. Tte."
+            r.contains("segundo teniente") || r.contains("2do teniente") -> "2do. Tte."
+            r.contains("subteniente") || r == "subtte" || r == "subtte." -> "Subtte."
+            r.contains("teniente") || r == "tte" || r == "tte." -> "Tte."
+            r.contains("sargento 1/o") || r.contains("sargento primero") -> "Sgto. 1/o"
+            r.contains("sargento 2/o") || r.contains("sargento segundo") -> "Sgto. 2/o"
+            r.contains("sargento") || r == "sgto" || r == "sgto." -> "Sgto."
+            r.contains("cabo") || r == "cbo" || r == "cbo." -> "Cbo."
+            r.contains("marinero") || r == "mro" || r == "mro." -> "Mro."
+            r.contains("soldado") || r == "sld" || r == "sld." -> "Sld."
+            r.contains("general de división") || r.contains("general de division") -> "Gral. Div."
+            r.contains("general de brigada") -> "Gral. Brig."
+            r.contains("general brigadier") -> "Gral. Bgda."
+            r.contains("general") || r == "gral" || r == "gral." -> "Gral."
+            r.contains("almirante") || r == "alm" || r == "alm." -> "Alm."
+            r.contains("vicealmirante") || r == "valm" || r == "valm." -> "Valm."
+            r.contains("contralmirante") || r == "calm" || r == "calm." -> "Calm."
+            r.contains("coronel") || r == "cnel" || r == "cnel." -> "Cnel."
+            r.contains("mayor") || r == "my" || r == "my." -> "My."
+            else -> ""
+        }
     }
 
     private fun showFreeDrawingToolbar() {

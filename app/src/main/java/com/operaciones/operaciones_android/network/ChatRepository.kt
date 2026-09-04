@@ -16,9 +16,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 
 class ChatRepository(
-    private val http: OkHttpClient = OkHttpClient()
+    private val http: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.MINUTES)
+        .writeTimeout(5, TimeUnit.MINUTES)
+        .callTimeout(10, TimeUnit.MINUTES)
+        .build()
 ) {
 
     fun getMessages(
@@ -147,6 +153,7 @@ class ChatRepository(
         destinoId: String? = null,
         destinoLabel: String? = null,
         durationMs: Long? = null,
+        caption: String? = null,
         onSuccess: (JSONObject) -> Unit,
         onError: (String) -> Unit
     ) {
@@ -162,6 +169,7 @@ class ChatRepository(
             append("${ApiConfig.BASE_URL}/ops/$operationId/chat/attachments?")
             append("tipo_mensaje=${query.optString("tipo_mensaje").urlEncode()}")
             append("&destinatario_rol=${query.optString("destinatario_rol").urlEncode()}")
+            caption?.takeIf { it.isNotBlank() }?.let { append("&contenido=${it.urlEncode()}") }
             query.optString("destino_tipo", "").takeIf { it.isNotBlank() }?.let {
                 append("&destino_tipo=${it.urlEncode()}")
             }
@@ -181,6 +189,7 @@ class ChatRepository(
             .addHeader("X-Attachment-Kind", attachmentKind)
             .apply {
                 durationMs?.takeIf { it >= 0 }?.let { addHeader("X-Duration-Ms", it.toString()) }
+                caption?.takeIf { it.isNotBlank() }?.let { addHeader("X-Attachment-Caption", it) }
             }
             .build()
 

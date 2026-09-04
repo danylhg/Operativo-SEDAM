@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Login - Sistema de Operaciones</title>
+  <link rel="stylesheet" href="css/login.css?v=1.1-loading" />
+  <script src="js/api_config.js"></script>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card" aria-labelledby="loginTitle">
+      <div class="icon">
+        <div class="logo-ring">
+          <img src="img/logo_sedam_sinfondo.png" alt="Logo SEDAM" class="logoSedam" onerror="this.hidden=true; this.nextElementSibling.hidden=false;" />
+          <span class="logoFallback" hidden aria-hidden="true">SEDAM</span>
+        </div>
+      </div>
+
+      <h1 id="loginTitle"><span>Sistema de</span><span>Operaciones</span></h1>
+      <p class="sub">Ingresa tus credenciales para continuar</p>
+
+      <div class="field">
+        <label for="username">Usuario</label>
+        <input id="username" name="username" autocomplete="username" />
+      </div>
+
+      <div class="field">
+        <label for="password">Contrase&ntilde;a</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" />
+      </div>
+
+      <button id="btnLogin" type="button">Iniciar sesi&oacute;n</button>
+      <p id="msg" class="msg" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script src="js/login.js?v=1.2-loading"></script>
+</body>
+</html>
+  

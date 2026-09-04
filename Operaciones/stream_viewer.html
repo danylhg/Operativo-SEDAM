@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visor WebRTC</title>
+  <script src="js/api_config.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070b13;
+      --panel: #101827;
+      --panel-2: #152236;
+      --line: #263348;
+      --text: #e5edf7;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --ok: #22c55e;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .status {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    section {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .controls {
+      padding: 14px;
+    }
+
+    label {
+      display: block;
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    input {
+      width: 100%;
+      margin-top: 5px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0b1220;
+      color: var(--text);
+      padding: 10px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+    }
+
+    button {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+    }
+
+    button.primary {
+      background: #0c4a6e;
+      border-color: #0369a1;
+    }
+
+    button.stop {
+      margin-top: 8px;
+      background: #4c121b;
+      border-color: #7f1d1d;
+    }
+
+    .recording-bar {
+      margin-top: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .recording-bar small {
+      min-height: 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .streams {
+      border-top: 1px solid var(--line);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .stream-row {
+      text-align: left;
+      background: #0b1220;
+    }
+
+    .stream-row strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .stream-row span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .recordings-panel {
+      border-top: 1px solid var(--line);
+      padding: 12px 10px 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .recordings-title {
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .recordings-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .recording-empty {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .recording-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0b1220;
+      padding: 9px;
+    }
+
+    .recording-info {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .recording-info strong {
+      color: var(--text);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .recording-info span,
+    .recording-info small {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    button.recording-play {
+      width: auto;
+      min-width: 88px;
+      padding: 8px 10px;
+      white-space: nowrap;
+    }
+
+    .video-wrap {
+      min-height: 540px;
+      display: grid;
+      background: #020617;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      min-height: 540px;
+      background: #020617;
+      object-fit: contain;
+    }
+
+    .log {
+      max-height: 160px;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+      padding: 10px 12px;
+      color: var(--muted);
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 840px) {
+      header,
+      .layout {
+        display: block;
+      }
+
+      .status {
+        text-align: left;
+        margin-top: 8px;
+      }
+
+      section + section {
+        margin-top: 14px;
+      }
+
+      .video-wrap,
+      video {
+        min-height: 320px;
+      }
+
+      .recording-item {
+        grid-template-columns: 1fr;
+      }
+
+      button.recording-play {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Visor WebRTC</h1>
+      <div id="status" class="status">Listo</div>
+    </header>
+
+    <div class="layout">
+      <section>
+        <div class="controls">
+          <label>
+            API
+            <input id="apiBase" autocomplete="off" />
+          </label>
+          <label>
+            Operacion
+            <input id="opId" autocomplete="off" />
+          </label>
+          <label>
+            Token
+            <input id="token" autocomplete="off" />
+          </label>
+          <button id="refreshBtn" class="primary">Buscar transmisiones activas</button>
+          <button id="stopBtn" class="stop">Desconectar visor</button>
+          <div class="recording-bar">
+            <small id="recordingStatus">Grabacion automatica al recibir video.</small>
+          </div>
+        </div>
+        <div id="streams" class="streams"></div>
+        <div class="recordings-panel">
+          <h2 class="recordings-title">Grabaciones guardadas</h2>
+          <div id="recordings" class="recordings-list">
+            <div class="recording-empty">Selecciona una operacion para ver grabaciones.</div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="video-wrap">
+          <video id="remoteVideo" autoplay playsinline controls></video>
+        </div>
+        <div id="log" class="log"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const fallbackApiBase = location.protocol.startsWith("http")
+      ? `${location.protocol}//${location.hostname}:3001`
+      : "http://192.168.202.103:3001";
+
+    const ui = {
+      apiBase: document.getElementById("apiBase"),
+      opId: document.getElementById("opId"),
+      token: document.getElementById("token"),
+      refreshBtn: document.getElementById("refreshBtn"),
+      stopBtn: document.getElementById("stopBtn"),
+      recordingStatus: document.getElementById("recordingStatus"),
+      streams: document.getElementById("streams"),
+      recordings: document.getElementById("recordings"),
+      video: document.getElementById("remoteVideo"),
+      status: document.getElementById("status"),
+      log: document.getElementById("log"),
+    };
+
+    let socket = null;
+    let peerConnection = null;
+    let remoteStream = null;
+    let activeStream = null;
+    let publisherSocketId = "";
+    let pendingCandidates = [];
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordingStartedAt = 0;
+    let recordingStopPromise = null;
+    let recordingPlaybackUrl = "";
+    let recordingStartTimer = null;
+    let autoRefreshTimer = null;
+    const LIVE_PLAYOUT_DELAY_SECONDS = 0.45;
+    const RECORDING_START_DELAY_MS = 3000;
+    const RECORDING_TIMESLICE_MS = 5000;
+
+    ui.apiBase.value = localStorage.getItem("API_BASE") || fallbackApiBase;
+    ui.opId.value = localStorage.getItem("active_operation_id") || "";
+    ui.token.value = localStorage.getItem("token") || "";
+
+    function setStatus(text, kind = "") {
+      ui.status.textContent = text;
+      ui.status.style.color = kind === "ok" ? "var(--ok)" : kind === "error" ? "var(--danger)" : "var(--muted)";
+    }
+
+    function log(text) {
+      const stamp = new Date().toLocaleTimeString();
+      ui.log.textContent += `[${stamp}] ${text}\n`;
+      ui.log.scrollTop = ui.log.scrollHeight;
+    }
+
+    function apiBase() {
+      return ui.apiBase.value.trim().replace(/\/$/, "");
+    }
+
+    function authHeaders() {
+      const token = ui.token.value.trim();
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    }
+
+    async function loadSocketIo() {
+      if (window.io) return;
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = `${apiBase()}/socket.io/socket.io.js`;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error("No se pudo cargar Socket.IO"));
+        document.head.appendChild(script);
+      });
+    }
+
+    async function fetchJson(path) {
+      const res = await fetch(`${apiBase()}${path}`, { headers: authHeaders() });
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
+      if (!res.ok || json.ok === false) throw new Error(json.mensaje || `HTTP ${res.status}`);
+      return json;
+    }
+
+    async function loadAndRenderRecordings(opId = Number(ui.opId.value)) {
+      if (!opId) {
+        renderRecordings([]);
+        return [];
+      }
+
+      ui.recordings.innerHTML = '<div class="recording-empty">Cargando grabaciones...</div>';
+
+      try {
+        const data = await fetchJson(`/ops/${opId}/streams/recordings`);
+        const items = data.items || [];
+        renderRecordings(items);
+        return items;
+      } catch (err) {
+        ui.recordings.innerHTML = `<div class="recording-empty">No se pudieron cargar las grabaciones: ${escapeHtml(err.message)}</div>`;
+        log(`Grabaciones error: ${err.message}`);
+        return [];
+      }
+    }
+
+    function renderRecordings(items) {
+      ui.recordings.innerHTML = "";
+
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.className = "recording-empty";
+        empty.textContent = "Sin grabaciones guardadas para esta operacion.";
+        ui.recordings.appendChild(empty);
+        return;
+      }
+
+      items.forEach((recording) => {
+        const row = document.createElement("article");
+        row.className = "recording-item";
+        row.innerHTML = `
+          <div class="recording-info">
+            <strong>Stream #${escapeHtml(recording.id_stream)}</strong>
+            <span>${escapeHtml(recording.stream_label || recording.stream_kind || "Grabacion")}</span>
+            <small>${escapeHtml(formatDateTime(recording.created_at))} | ${escapeHtml(formatBytes(recording.size_bytes))} | ${escapeHtml(formatDuration(recording.duration_ms))}</small>
+          </div>
+        `;
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "recording-play";
+        button.textContent = "Reproducir";
+        button.addEventListener("click", () => playRecording(recording, button));
+        row.appendChild(button);
+        ui.recordings.appendChild(row);
+      });
+    }
+
+    async function playRecording(recording, button) {
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = "Cargando";
+
+      try {
+        await stopViewer(false);
+        const res = await fetch(`${apiBase()}${recording.download_url}`, { headers: authHeaders() });
+        if (!res.ok) {
+          const text = await res.text();
+          const json = text ? safeJson(text) : {};
+          throw new Error(json.mensaje || `HTTP ${res.status}`);
+        }
+
+        const blob = await res.blob();
+        clearRecordingPlayback();
+        recordingPlaybackUrl = URL.createObjectURL(blob);
+        ui.video.srcObject = null;
+        ui.video.src = recordingPlaybackUrl;
+        ui.video.controls = true;
+        ui.video.play().catch(() => {});
+        setStatus(`Reproduciendo grabacion #${recording.id_recording}`, "ok");
+        log(`Reproduciendo grabacion #${recording.id_recording}`);
+      } catch (err) {
+        button.textContent = "Error";
+        setStatus(`No se pudo reproducir: ${err.message}`, "error");
+        log(`Reproduccion grabacion error: ${err.message}`);
+      } finally {
+        window.setTimeout(() => {
+          button.disabled = false;
+          button.textContent = originalText;
+        }, 900);
+      }
+    }
+
+    function clearRecordingPlayback() {
+      if (recordingPlaybackUrl) {
+        URL.revokeObjectURL(recordingPlaybackUrl);
+        recordingPlaybackUrl = "";
+      }
+      ui.video.removeAttribute("src");
+      ui.video.load();
+    }
+
+    function playLiveVideo() {
+      ui.video.play().catch((err) => {
+        log(`Autoplay video: ${err.message}`);
+      });
+    }
+
+    function configureLiveVideoElement() {
+      ui.video.autoplay = true;
+      ui.video.playsInline = true;
+      ui.video.controls = true;
+      ui.video.defaultPlaybackRate = 1;
+      ui.video.playbackRate = 1;
+      ui.video.onloadedmetadata = playLiveVideo;
+      ui.video.onplaying = () => {
+        if (activeStream) setStatus("Video en vivo", "ok");
+      };
+      ui.video.onwaiting = () => {
+        if (activeStream) setStatus("Ajustando buffer de video...");
+      };
+      ui.video.onstalled = () => {
+        if (activeStream) setStatus("Recuperando video...");
+      };
+      ui.video.onpause = () => {
+        if (activeStream && !recordingPlaybackUrl) window.setTimeout(playLiveVideo, 150);
+      };
+    }
+
+    function applyReceiverPlaybackSmoothing(pc) {
+      pc.getReceivers().forEach((receiver) => {
+        if (!receiver.track || receiver.track.kind !== "video") return;
+        if (!("playoutDelayHint" in receiver)) return;
+        try {
+          receiver.playoutDelayHint = LIVE_PLAYOUT_DELAY_SECONDS;
+        } catch (err) {
+          log(`No se pudo ajustar buffer WebRTC: ${err.message}`);
+        }
+      });
+    }
+
+    function formatDateTime(value) {
+      if (!value) return "--:--:--";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "--:--:--";
+      return date.toLocaleString("es-MX", {
+        hour12: false,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function formatBytes(value) {
+      const bytes = Number(value || 0);
+      if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+      if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function formatDuration(value) {
+      const ms = Number(value || 0);
+      if (!Number.isFinite(ms) || ms <= 0) return "--:--";
+      const totalSeconds = Math.round(ms / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = String(totalSeconds % 60).padStart(2, "0");
+      return `${minutes}:${seconds}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#039;",
+      }[char]));
+    }
+
+    function safeJson(text) {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return {};
+      }
+    }
+
+    async function refreshStreams() {
+      await loadAndRenderStreams({ autoConnect: !activeStream });
+    }
+
+    async function loadAndRenderStreams({ autoConnect = false } = {}) {
+      ui.streams.innerHTML = "";
+      setStatus("Buscando transmisiones...");
+
+      const opId = Number(ui.opId.value);
+      if (!opId) {
+        setStatus("Falta id de operacion", "error");
+        return;
+      }
+
+      localStorage.setItem("API_BASE", apiBase());
+      localStorage.setItem("active_operation_id", String(opId));
+      if (ui.token.value.trim()) localStorage.setItem("token", ui.token.value.trim());
+
+      await loadAndRenderRecordings(opId);
+
+      try {
+        const data = await fetchJson(`/ops/${opId}/streams?status=ACTIVE`);
+        const items = data.items || [];
+        if (!items.length) {
+          ui.streams.textContent = "No hay transmisiones activas.";
+          setStatus("Sin transmisiones activas");
+          return [];
+        }
+
+        items.forEach((stream) => {
+          const row = document.createElement("button");
+          row.className = "stream-row";
+          row.innerHTML = `
+            <strong>#${stream.id_stream} - ${stream.label || "Android"}</strong>
+            <span>${stream.kind || "AUDIO_VIDEO"} | viewers: ${stream.viewer_count || 0}</span>
+          `;
+          row.onclick = () => watchStream(stream);
+          ui.streams.appendChild(row);
+        });
+        setStatus(`${items.length} transmision(es) activa(s)`, "ok");
+        if (autoConnect && !activeStream && items[0]) {
+          await watchStream(items[0]);
+        }
+        return items;
+      } catch (err) {
+        setStatus(err.message, "error");
+        log(`ERROR: ${err.message}`);
+        return [];
+      }
+    }
+
+    async function watchStream(stream) {
+      if (isSameActiveStream(stream)) {
+        setStatus(`Ya estas viendo stream #${stream.id_stream}`, "ok");
+        log(`Stream #${stream.id_stream} ya esta activo; no se reconecta.`);
+        return;
+      }
+
+      await stopViewer();
+      activeStream = stream;
+      let streamStopHandled = false;
+      setStatus(`Conectando a stream #${stream.id_stream}...`);
+      log(`Conectando viewer a stream #${stream.id_stream}`);
+
+      try {
+        await loadSocketIo();
+        const config = await fetchJson(`/ops/${stream.id_operacion}/streams/webrtc-config`);
+        const iceServers = config.config?.iceServers?.length
+          ? config.config.iceServers
+          : [{ urls: "stun:stun.l.google.com:19302" }];
+
+        socket = window.io(apiBase(), { transports: ["websocket", "polling"] });
+
+        socket.on("connect", () => {
+          log(`Socket viewer conectado: ${socket.id}`);
+          socket.emit("join_operacion", { id_operacion: Number(stream.id_operacion) });
+          socket.emit("stream_join", {
+            id_operacion: Number(stream.id_operacion),
+            id_stream: Number(stream.id_stream),
+            role: "viewer",
+          }, (ack) => {
+            if (!ack?.ok) {
+              setStatus(ack?.mensaje || "No se pudo unir al stream", "error");
+              log(`stream_join fallo: ${ack?.mensaje || "sin detalle"}`);
+              return;
+            }
+            setStatus("Esperando oferta WebRTC...");
+            log("stream_join OK");
+          });
+        });
+
+        socket.on("connect_error", (err) => {
+          setStatus(`Socket error: ${err.message}`, "error");
+          log(`Socket error: ${err.message}`);
+        });
+
+        socket.on("media_stream_waiting_for_publisher", () => {
+          setStatus("Stream activo, esperando publisher...");
+          log("El backend aun no ve publisher_socket_id.");
+        });
+
+        socket.on("media_stream_stopped", (payload = {}) => {
+          if (payload.id_stream && Number(payload.id_stream) !== Number(stream.id_stream)) return;
+          if (streamStopHandled) return;
+          streamStopHandled = true;
+          setStatus("Transmision detenida", "error");
+          log("media_stream_stopped");
+          stopViewer(false);
+        });
+
+        socket.on("webrtc_offer", async (payload) => {
+          if (Number(payload.id_stream) !== Number(stream.id_stream)) return;
+          publisherSocketId = payload.from_socket_id || payload.from || "";
+          log(`Oferta recibida desde ${publisherSocketId}`);
+
+          if (peerConnection) {
+            peerConnection.close();
+            peerConnection = null;
+          }
+          peerConnection = createPeerConnection(iceServers, stream);
+          await peerConnection.setRemoteDescription({
+            type: payload.type || "offer",
+            sdp: payload.sdp,
+          });
+          applyReceiverPlaybackSmoothing(peerConnection);
+
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+
+          socket.emit("webrtc_answer", {
+            id_operacion: Number(stream.id_operacion),
+            id_stream: Number(stream.id_stream),
+            to: publisherSocketId,
+            type: answer.type,
+            sdp: answer.sdp,
+          });
+
+          for (const candidate of pendingCandidates) {
+            await peerConnection.addIceCandidate(candidate);
+          }
+          pendingCandidates = [];
+          setStatus("Conectando media...");
+        });
+
+        socket.on("webrtc_ice_candidate", async (payload) => {
+          if (Number(payload.id_stream) !== Number(stream.id_stream)) return;
+          const raw = payload.candidate || payload;
+          if (!raw?.candidate) return;
+          const candidate = new RTCIceCandidate(raw);
+          if (!peerConnection?.remoteDescription) {
+            pendingCandidates.push(candidate);
+            return;
+          }
+          await peerConnection.addIceCandidate(candidate);
+        });
+      } catch (err) {
+        setStatus(err.message, "error");
+        log(`ERROR: ${err.message}`);
+        stopViewer(false);
+      }
+    }
+
+    function isSameActiveStream(stream) {
+      return Boolean(
+        activeStream
+        && Number(activeStream.id_operacion) === Number(stream.id_operacion)
+        && Number(activeStream.id_stream) === Number(stream.id_stream)
+      );
+    }
+
+    function createPeerConnection(iceServers, stream) {
+      clearRecordingPlayback();
+      remoteStream = new MediaStream();
+      configureLiveVideoElement();
+      ui.video.srcObject = remoteStream;
+
+      const pc = new RTCPeerConnection({ iceServers });
+
+      pc.ontrack = (event) => {
+        event.streams?.[0]?.getTracks().forEach((track) => {
+          if (!remoteStream.getTracks().some((current) => current.id === track.id)) {
+            remoteStream.addTrack(track);
+          }
+        });
+        applyReceiverPlaybackSmoothing(pc);
+        playLiveVideo();
+        setStatus("Video recibido", "ok");
+        log(`Track remoto: ${event.track.kind}`);
+        scheduleRecordingStart(stream);
+      };
+
+      pc.onicecandidate = (event) => {
+        if (!event.candidate || !publisherSocketId || !socket) return;
+        socket.emit("webrtc_ice_candidate", {
+          id_operacion: Number(stream.id_operacion),
+          id_stream: Number(stream.id_stream),
+          to: publisherSocketId,
+          candidate: event.candidate.toJSON(),
+        });
+      };
+
+      pc.onconnectionstatechange = () => {
+        log(`PC state: ${pc.connectionState}`);
+        if (pc.connectionState === "connected") setStatus("Conectado", "ok");
+        if (pc.connectionState === "disconnected") {
+          setStatus("Reconectando video...");
+        }
+        if (["failed", "closed"].includes(pc.connectionState)) {
+          setStatus(`PeerConnection: ${pc.connectionState}`, "error");
+        }
+      };
+
+      return pc;
+    }
+
+    function selectRecorderMimeType() {
+      const candidates = [
+        "video/webm;codecs=vp8,opus",
+        "video/webm;codecs=vp9,opus",
+        "video/webm",
+      ];
+      return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+    }
+
+    function setRecordingStatus(text, kind = "") {
+      ui.recordingStatus.textContent = text;
+      ui.recordingStatus.style.color = kind === "ok" ? "var(--ok)" : kind === "error" ? "var(--danger)" : "var(--muted)";
+    }
+
+    function scheduleRecordingStart(stream = activeStream) {
+      if (recordingStartTimer || mediaRecorder || recordingStopPromise) return;
+      setRecordingStatus("Grabacion lista; esperando video estable...");
+      recordingStartTimer = window.setTimeout(() => {
+        recordingStartTimer = null;
+        startRecordingIfPossible(stream);
+      }, RECORDING_START_DELAY_MS);
+    }
+
+    function startRecordingIfPossible(stream = activeStream) {
+      if (!stream || !remoteStream) return;
+      if (!window.MediaRecorder) {
+        setRecordingStatus("Este navegador no soporta MediaRecorder.", "error");
+        return;
+      }
+      if (mediaRecorder && mediaRecorder.state !== "inactive") return;
+      const kind = String(stream.kind || "AUDIO_VIDEO").toUpperCase();
+      const hasLiveVideo = remoteStream.getVideoTracks().some((track) => track.readyState === "live");
+      const hasLiveAudio = remoteStream.getAudioTracks().some((track) => track.readyState === "live");
+      if (kind !== "AUDIO" && !hasLiveVideo) return;
+      if (kind === "AUDIO" && !hasLiveAudio) return;
+
+      const mimeType = selectRecorderMimeType();
+      recordedChunks = [];
+      recordingStartedAt = Date.now();
+
+      try {
+        mediaRecorder = new MediaRecorder(remoteStream, mimeType ? { mimeType } : undefined);
+      } catch (err) {
+        setRecordingStatus(`No se pudo iniciar grabacion: ${err.message}`, "error");
+        log(`MediaRecorder error: ${err.message}`);
+        return;
+      }
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) recordedChunks.push(event.data);
+      };
+
+      mediaRecorder.onstart = () => {
+        setRecordingStatus("Grabando stream recibido...", "ok");
+        log("Grabacion iniciada en visor");
+      };
+
+      mediaRecorder.onerror = (event) => {
+        const message = event.error?.message || "Error desconocido";
+        setRecordingStatus(`Error grabando: ${message}`, "error");
+        log(`Grabacion error: ${message}`);
+      };
+
+      mediaRecorder.start(RECORDING_TIMESLICE_MS);
+    }
+
+    function stopRecordingAndUpload() {
+      if (recordingStopPromise) return recordingStopPromise;
+      if (!mediaRecorder || mediaRecorder.state === "inactive") return Promise.resolve(null);
+
+      const recorder = mediaRecorder;
+      recordingStopPromise = new Promise((resolve) => {
+        recorder.onstop = async () => {
+          const durationMs = Math.max(0, Date.now() - recordingStartedAt);
+          const type = recorder.mimeType || "video/webm";
+          const blob = new Blob(recordedChunks, { type });
+          mediaRecorder = null;
+          recordingStopPromise = null;
+          recordedChunks = [];
+
+          if (!blob.size) {
+            setRecordingStatus("Grabacion vacia, no se subio.", "error");
+            resolve(null);
+            return;
+          }
+
+          try {
+            setRecordingStatus("Subiendo grabacion al backend...");
+            const recording = await uploadRecording(blob, durationMs);
+            setRecordingStatus(`Guardado: ${Math.round(blob.size / 1024)} KB`, "ok");
+            log(`Grabacion guardada: ${recording.download_url}`);
+            await loadAndRenderRecordings(recording.id_operacion);
+            resolve(recording);
+          } catch (err) {
+            setRecordingStatus(`No se pudo subir: ${err.message}`, "error");
+            log(`Upload grabacion error: ${err.message}`);
+            resolve(null);
+          }
+        };
+        recorder.stop();
+      });
+
+      return recordingStopPromise;
+    }
+
+    async function uploadRecording(blob, durationMs) {
+      const stream = activeStream;
+      if (!stream) throw new Error("No hay stream activo para asociar la grabacion");
+
+      const contentType = String(blob.type || "video/webm").split(";")[0].trim() || "video/webm";
+      const res = await fetch(
+        `${apiBase()}/ops/${stream.id_operacion}/streams/${stream.id_stream}/recordings?duration_ms=${Math.round(durationMs)}`,
+        {
+          method: "POST",
+          headers: {
+            ...authHeaders(),
+            "Content-Type": contentType,
+          },
+          body: blob,
+        }
+      );
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
+      if (!res.ok || json.ok === false) throw new Error(json.mensaje || `HTTP ${res.status}`);
+      return json.recording;
+    }
+
+    async function stopViewer(clearStatus = true) {
+      if (recordingStartTimer) {
+        window.clearTimeout(recordingStartTimer);
+        recordingStartTimer = null;
+      }
+      await stopRecordingAndUpload();
+      pendingCandidates = [];
+      publisherSocketId = "";
+
+      if (activeStream && socket?.connected) {
+        socket.emit("stream_leave", {
+          id_operacion: Number(activeStream.id_operacion),
+          id_stream: Number(activeStream.id_stream),
+          role: "viewer",
+        });
+      }
+
+      peerConnection?.close();
+      peerConnection = null;
+
+      if (remoteStream) {
+        remoteStream.getTracks().forEach((track) => track.stop());
+        remoteStream = null;
+      }
+
+      clearRecordingPlayback();
+      ui.video.srcObject = null;
+      socket?.disconnect();
+      socket = null;
+      activeStream = null;
+
+      if (clearStatus) setStatus("Desconectado");
+    }
+
+    ui.refreshBtn.addEventListener("click", refreshStreams);
+    ui.stopBtn.addEventListener("click", () => stopViewer());
+    window.addEventListener("beforeunload", () => {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+      stopViewer(false);
+    });
+
+    loadAndRenderStreams({ autoConnect: true });
+    autoRefreshTimer = window.setInterval(() => {
+      if (!activeStream && !recordingPlaybackUrl) loadAndRenderStreams({ autoConnect: true });
+    }, 5000);
+  </script>
+</body>
+</html>

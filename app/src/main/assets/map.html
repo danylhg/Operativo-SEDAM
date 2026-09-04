@@ -37,7 +37,7 @@
       z-index: 18;
       width: 210px;
       padding: 11px 12px 10px;
-      border: 1px solid rgba(196, 156, 55, .42);
+      border: 1px solid rgba(56, 189, 248, .42);
       border-radius: 10px;
       background: rgba(5, 25, 47, .96);
       color: #f5f8fc;
@@ -54,16 +54,28 @@
       width: 14px;
       height: 14px;
       background: #061a30;
-      border-right: 1px solid rgba(196, 156, 55, .42);
-      border-bottom: 1px solid rgba(196, 156, 55, .42);
+      border-right: 1px solid rgba(56, 189, 248, .42);
+      border-bottom: 1px solid rgba(56, 189, 248, .42);
       transform: translateX(-50%) rotate(45deg);
     }
     .targetPopupName { font-size: 13px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .targetPopupType { margin-top: 2px; color: #9bb0c7; font-size: 10px; }
     .targetPopupRule { height: 1px; margin: 9px 0 8px; background: rgba(129, 157, 187, .18); }
-    .targetPopupMetrics { color: #e6c34b; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+    .targetPopupMetrics { display:none; color: #bff3ff; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
     .targetPopupCoords { display: flex; align-items: center; gap: 6px; margin-top: 7px; color: #9bb0c7; font: 10px ui-monospace, monospace; }
     .targetPopupCopy { margin-left: auto; border: 0; background: transparent; padding: 2px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .targetPopupActions { display:flex; gap:7px; margin-top:10px; }
+    .targetPopupAction { flex:1; min-height:32px; border:1px solid rgba(56,189,248,.35); border-radius:7px; background:rgba(14,116,144,.35); color:#dbeafe; font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:6px; }
+    #targetPopupEdit { border-color:rgba(56,189,248,.72); background:rgba(14,116,144,.48); color:#dff8ff; box-shadow:inset 0 0 0 1px rgba(56,189,248,.12); }
+    #targetPopupDelete { border-color:rgba(248,113,113,.7); background:rgba(127,29,29,.38); color:#fecaca; box-shadow:inset 0 0 0 1px rgba(248,113,113,.12); }
+    #targetPopupEdit:active { background:rgba(8,145,178,.7); }
+    #targetPopupDelete:active { background:rgba(185,28,28,.65); }
+    .targetPopupVisibility { position:absolute; top:31px; right:34px; display:flex; align-items:center; gap:5px; color:#9bb0c7; font-size:9px; }
+    .targetPopupSwitch { width:30px; height:17px; appearance:none; border-radius:10px; background:#334155; position:relative; outline:0; }
+    .targetPopupSwitch::after { content:""; position:absolute; width:13px; height:13px; top:2px; left:2px; border-radius:50%; background:#cbd5e1; transition:.15s; }
+    .targetPopupSwitch:checked { background:#0891b2; }
+    .targetPopupSwitch:checked::after { left:15px; background:#fff; }
+    #routePopup { padding-bottom: 43px; border-color: rgba(56, 189, 248, .42); background: rgba(7, 31, 56, .97); }
     .targetPopupRoute {
       width: 100%;
       min-height: 38px;
@@ -161,6 +173,41 @@
       color: #bff3ff;
     }
 
+  
+    .routePopupEta {
+      margin-top: 8px;
+      padding: 6px 9px;
+      border-radius: 8px;
+      background: rgba(0, 210, 255, 0.12);
+      border: 1px solid rgba(0, 210, 255, 0.35);
+      font-size: 11px;
+      font-weight: 700;
+      color: #bff3ff;
+      line-height: 1.35;
+    }
+    .poiActionBtn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      border: 1px solid rgba(129, 157, 187, 0.3);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.85);
+      color: #e2e8f0;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .poiActionBtn.deleteBtn {
+      border-color: rgba(239, 68, 68, 0.45);
+      background: rgba(239, 68, 68, 0.18);
+      color: #fca5a5;
+    }
+    .poiActionBtn.deleteBtn:active {
+      background: rgba(239, 68, 68, 0.35);
+    }
+
   </style>
 </head>
 
@@ -169,6 +216,7 @@
   <div id="targetPopup" class="targetPopup" role="dialog" aria-label="Información del blanco">
     <button id="targetPopupClose" class="targetPopupClose" type="button" aria-label="Cerrar/Borrar">✕</button>
     <div id="targetPopupName" class="targetPopupName"></div>
+    <div class="targetPopupVisibility"><span id="targetPopupVisibilityLabel">Privado</span><input id="targetPopupVisibility" class="targetPopupSwitch" type="checkbox" aria-label="Cambiar visibilidad"></div>
     <div id="targetPopupType" class="targetPopupType"></div>
     <div class="targetPopupRule"></div>
     <div class="targetPopupMetrics">▲ RUMBO 0° N &nbsp;·&nbsp; VEL. 0.0 km/h</div>
@@ -179,9 +227,29 @@
         <svg width="14" height="14" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; display: inline-block;"><rect x="5.5" y="5.5" width="10" height="10" rx="1.5" stroke="#e6c34b" stroke-width="1.8"/><path d="M3.5 12.5H2.5C1.94772 12.5 1.5 12.0523 1.5 11.5V2.5C1.5 1.94772 1.94772 1.5 2.5 1.5H11.5C12.0523 1.5 12.5 1.94772 12.5 2.5V3.5" stroke="#e6c34b" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button>
     </div>
-    <button id="targetPopupRoute" class="targetPopupRoute" type="button">
+    <button id="targetPopupRoute" class="targetPopupRoute" type="button" style="display:none;">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="6" cy="18" r="2.5" stroke="currentColor" stroke-width="2"/><path d="M8.5 18h2.2c1.7 0 2.7-1 2.7-2.5V8.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17 3.5a3.5 3.5 0 0 0-3.5 3.5c0 2.6 3.5 6 3.5 6s3.5-3.4 3.5-6A3.5 3.5 0 0 0 17 3.5Z" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="7" r="1" fill="currentColor"/></svg>
       IR DESDE MI UBICACIÓN
+    </button>
+    <div class="targetPopupActions"><button id="targetPopupEdit" class="targetPopupAction" type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg> EDITAR</button><button id="targetPopupDelete" class="targetPopupAction" type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> ELIMINAR</button></div>
+  </div>
+
+  <!-- Modal EXCLUSIVO e INDEPENDIENTE para Rutas de Navegación -->
+  <div id="routePopup" class="targetPopup" role="dialog" aria-label="Información de la ruta" style="display:none;">
+    <button id="routePopupClose" class="targetPopupClose" type="button" aria-label="Cerrar">✕</button>
+    <div id="routePopupTitle" class="targetPopupName" style="padding-right:20px;">Ruta de navegación</div>
+    <div id="routePopupCreator" class="targetPopupType" style="margin-top:2px;white-space:normal;"></div>
+    <div class="targetPopupRule"></div>
+    <div class="targetPopupCoords">
+      <svg width="11" height="14" viewBox="0 0 14 18" fill="#9bb0c7" style="vertical-align: middle; flex-shrink: 0; display: inline-block;"><path fill-rule="evenodd" clip-rule="evenodd" d="M7 0C3.13401 0 0 3.13401 0 7C0 12.25 7 18 7 18C7 18 14 12.25 14 7C14 3.13401 10.866 0 7 0ZM7 9.5C5.61929 9.5 4.5 8.38071 4.5 7C4.5 5.61929 5.61929 4.5 7 4.5C8.38071 4.5 9.5 5.61929 9.5 7C9.5 8.38071 8.38071 9.5 7 9.5Z"/></svg>
+      <span id="routePopupCoords"></span>
+      <button id="routePopupCopy" class="targetPopupCopy" type="button" aria-label="Copiar coordenadas">
+        <svg width="14" height="14" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; display: inline-block;"><rect x="5.5" y="5.5" width="10" height="10" rx="1.5" stroke="#38bdf8" stroke-width="1.8"/><path d="M3.5 12.5H2.5C1.94772 12.5 1.5 12.0523 1.5 11.5V2.5C1.5 1.94772 1.94772 1.5 2.5 1.5H11.5C12.0523 1.5 12.5 1.94772 12.5 2.5V3.5" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div id="routePopupEta" style="display:block;margin-top:8px;color:#bff3ff;font-size:11px;font-weight:700;line-height:1.35;"></div>
+    <button id="routePopupDeleteBtn" class="poiActionBtn deleteBtn" type="button" aria-label="Eliminar ruta" title="Eliminar ruta" style="position:absolute;bottom:5px;right:8px;width:30px;height:27px;min-height:27px;margin:0;padding:0;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
     </button>
   </div>
 
@@ -210,6 +278,7 @@
     let startEntity = null;
     let endEntity = null;
     let routeEntity = null;
+    let routePickEntity = null;
     let selectedRouteVehicleId = "global";
 
     let remoteRoutes = new Map();
@@ -490,8 +559,12 @@
       if (/^#[0-9A-F]{6}$/i.test(explicit) && explicit.toUpperCase() !== "#1E90FF") {
         return explicit;
       }
+      const creator = route && (route.creador_nombre || route.routeCreator || route.creador || route.createdBy);
+      const creatorKey = String(creator || '').toLowerCase();
+      if (creatorKey.includes('pineda')) return '#9333EA';
+      if (creatorKey.includes('campos')) return '#F97316';
       const vehicleId = route && route.id_vehiculo != null ? String(route.id_vehiculo) : "global";
-      return stableRouteColorHex(vehicleId);
+      return stableRouteColorHex(creator || vehicleId);
     }
 
     function navigationRouteMaterial(alpha) {
@@ -598,7 +671,10 @@
 
     function getEntityProperty(entity, key) {
       try {
-        if (!entity || !entity.properties || !entity.properties[key]) return "";
+        if (!entity) return "";
+        if (!entity.properties || !entity.properties[key]) {
+          return entity[key] != null ? entity[key] : "";
+        }
         const prop = entity.properties[key];
         return prop.getValue ? prop.getValue() : prop;
       } catch (_) {
@@ -625,6 +701,340 @@
       return '';
     }
 
+    
+    let lastKnownUserLocation = null;
+    let activeRoutePopupEntity = null;
+    let activeRoutePopupScreenPos = null;
+
+    function formatAbbreviatedPersonLabel(rawText) {
+      if (!rawText) return '';
+      let text = String(rawText).trim();
+      text = text.replace(/\s*\([^)]*\)/g, '').trim();
+
+      const rankReplacements = [
+        [/\bCapit[aá]n\s+de\s+Nav[ií]o\b/gi, 'Cap. Nav.'],
+        [/\bCapit[aá]n\s+de\s+Fragata\b/gi, 'Cap. Frag.'],
+        [/\bCapit[aá]n\s+de\s+Corbeta\b/gi, 'Cap. Corb.'],
+        [/\bCapit[aá]n\s+1(?:\/o|\.º|\.o|er|ro)?\b/gi, 'Cap. 1/o'],
+        [/\bCapit[aá]n\s+2(?:\/o|\.º|\.o|do|ndo)?\b/gi, 'Cap. 2/o'],
+        [/\bCapit[aá]n\b/gi, 'Cap.'],
+        [/\bTeniente\s+de\s+Nav[ií]o\b/gi, 'Tte. Nav.'],
+        [/\bTeniente\s+de\s+Fragata\b/gi, 'Tte. Frag.'],
+        [/\bTeniente\s+de\s+Corbeta\b/gi, 'Tte. Corb.'],
+        [/\bSubteniente\b/gi, 'Subtte.'],
+        [/\bTeniente\b/gi, 'Tte.'],
+        [/\bSargento\s+1(?:\/o|\.º|\.o|er|ro)?\b/gi, 'Sgto. 1/o'],
+        [/\bSargento\s+2(?:\/o|\.º|\.o|do|ndo)?\b/gi, 'Sgto. 2/o'],
+        [/\bSargento\b/gi, 'Sgto.'],
+        [/\bCabo\b/gi, 'Cbo.'],
+        [/\bMarinero\b/gi, 'Mro.'],
+        [/\bSoldado\b/gi, 'Sld.'],
+        [/\bGeneral\s+de\s+Divisi[oó]n\b/gi, 'Gral. Div.'],
+        [/\bGeneral\s+de\s+Brigada\b/gi, 'Gral. Bgda.'],
+        [/\bGeneral\s+Brigadier\b/gi, 'Gral. Bgda.'],
+        [/\bGeneral\b/gi, 'Gral.'],
+        [/\bAlmirante\b/gi, 'Alm.'],
+        [/\bVicealmirante\b/gi, 'Valm.'],
+        [/\bContralmirante\b/gi, 'Calm.'],
+        [/\bCoronel\b/gi, 'Cnel.'],
+        [/\bMayor\b/gi, 'My.']
+      ];
+      rankReplacements.forEach(function (pair) {
+        text = text.replace(pair[0], pair[1]);
+      });
+
+      text = text.replace(/\b(CET|ADMIN|OPERADOR|USUARIO)\b\s*/gi, '').trim();
+      return text.trim();
+    }
+
+    function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
+      if (!Number.isFinite(lat1) || !Number.isFinite(lon1) || !Number.isFinite(lat2) || !Number.isFinite(lon2)) return 0;
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function getUserCurrentLocation() {
+      if (lastKnownUserLocation && Number.isFinite(lastKnownUserLocation.lat) && Number.isFinite(lastKnownUserLocation.lon)) {
+        return lastKnownUserLocation;
+      }
+
+      if (window.Android && typeof Android.getMyLocation === 'function') {
+        try {
+          const locStr = Android.getMyLocation();
+          if (locStr) {
+            const locObj = typeof locStr === 'string' ? JSON.parse(locStr) : locStr;
+            if (locObj && Number.isFinite(Number(locObj.lat)) && Number.isFinite(Number(locObj.lon))) {
+              lastKnownUserLocation = { lat: Number(locObj.lat), lon: Number(locObj.lon) };
+              return lastKnownUserLocation;
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (userMarker && userMarker.position) {
+        const userPos = userMarker.position.getValue ? userMarker.position.getValue(viewer.clock.currentTime) : userMarker.position;
+        if (userPos) {
+          const carto = Cesium.Cartographic.fromCartesian(userPos);
+          if (carto) {
+            lastKnownUserLocation = {
+              lat: Cesium.Math.toDegrees(carto.latitude),
+              lon: Cesium.Math.toDegrees(carto.longitude)
+            };
+            return lastKnownUserLocation;
+          }
+        }
+      }
+
+      if (startPoint && Number.isFinite(startPoint.lat) && Number.isFinite(startPoint.lon)) {
+        return startPoint;
+      }
+
+      return null;
+    }
+
+    function getCurrentRouteCreatorLabel() {
+      try {
+        if (window.Android && typeof Android.getCurrentUserLabel === 'function') return String(Android.getCurrentUserLabel() || '').trim();
+      } catch (e) {}
+      return '';
+    }
+
+    function normalizeCreator(value) {
+      return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
+    function getDestinationCoordsFromEntity(entity) {
+      if (!entity) return null;
+
+      let lat = Number(getEntityProperty(entity, 'routeDestinationLat') ??
+                       getEntityProperty(entity, 'destino_lat') ??
+                       getEntityProperty(entity, 'poiLat'));
+      let lon = Number(getEntityProperty(entity, 'routeDestinationLon') ??
+                       getEntityProperty(entity, 'destino_lon') ??
+                       getEntityProperty(entity, 'poiLon'));
+
+      if (Number.isFinite(lat) && Number.isFinite(lon) && (Math.abs(lat) > 0.000001 || Math.abs(lon) > 0.000001)) {
+        return { lat, lon };
+      }
+
+      const entityId = String(entity.id || '');
+      if (entityId.indexOf('remote_route_') === 0) {
+        const routeId = Number(entityId.replace('remote_route_destination_', '').replace('remote_route_', ''));
+        if (Number.isFinite(routeId) && remoteRoutes.has(routeId)) {
+          const parentLine = remoteRoutes.get(routeId);
+          if (parentLine && parentLine !== entity) {
+            const parentCoords = getDestinationCoordsFromEntity(parentLine);
+            if (parentCoords) return parentCoords;
+          }
+        }
+      }
+
+      if (entity._destinationEntity && entity._destinationEntity.position) {
+        const pos = entity._destinationEntity.position.getValue
+          ? entity._destinationEntity.position.getValue(viewer.clock.currentTime)
+          : entity._destinationEntity.position;
+        if (pos) {
+          const carto = Cesium.Cartographic.fromCartesian(pos);
+          if (carto) {
+            const dLat = Cesium.Math.toDegrees(carto.latitude);
+            const dLon = Cesium.Math.toDegrees(carto.longitude);
+            if (Number.isFinite(dLat) && Number.isFinite(dLon) && (Math.abs(dLat) > 0.000001 || Math.abs(dLon) > 0.000001)) {
+              return { lat: dLat, lon: dLon };
+            }
+          }
+        }
+      }
+
+      if (entity.position) {
+        const pos = entity.position.getValue
+          ? entity.position.getValue(viewer.clock.currentTime)
+          : entity.position;
+        if (pos) {
+          const carto = Cesium.Cartographic.fromCartesian(pos);
+          if (carto) {
+            const dLat = Cesium.Math.toDegrees(carto.latitude);
+            const dLon = Cesium.Math.toDegrees(carto.longitude);
+            if (Number.isFinite(dLat) && Number.isFinite(dLon) && (Math.abs(dLat) > 0.000001 || Math.abs(dLon) > 0.000001)) {
+              return { lat: dLat, lon: dLon };
+            }
+          }
+        }
+      }
+
+      if (entity.polyline && entity.polyline.positions) {
+        const positions = entity.polyline.positions.getValue
+          ? entity.polyline.positions.getValue(viewer.clock.currentTime)
+          : entity.polyline.positions;
+        if (Array.isArray(positions) && positions.length > 0) {
+          const lastPos = positions[positions.length - 1];
+          if (lastPos) {
+            const carto = Cesium.Cartographic.fromCartesian(lastPos);
+            if (carto) {
+              const dLat = Cesium.Math.toDegrees(carto.latitude);
+              const dLon = Cesium.Math.toDegrees(carto.longitude);
+              if (Number.isFinite(dLat) && Number.isFinite(dLon) && (Math.abs(dLat) > 0.000001 || Math.abs(dLon) > 0.000001)) {
+                return { lat: dLat, lon: dLon };
+              }
+            }
+          }
+        }
+      }
+
+      if (endPoint && Number.isFinite(endPoint.lat) && Number.isFinite(endPoint.lon)) {
+        return { lat: endPoint.lat, lon: endPoint.lon };
+      }
+
+      return null;
+    }
+
+    function updateRoutePopupPosition(screenPosition) {
+      const popup = document.getElementById('routePopup');
+      if (!popup || popup.style.display === 'none') return;
+
+      if (screenPosition) {
+        activeRoutePopupScreenPos = screenPosition;
+      }
+
+      let pos = screenPosition || activeRoutePopupScreenPos;
+      if (!pos && activeRoutePopupEntity && viewer) {
+        let cartesian = null;
+        if (activeRoutePopupEntity.position) {
+          cartesian = activeRoutePopupEntity.position.getValue ? activeRoutePopupEntity.position.getValue(viewer.clock.currentTime) : activeRoutePopupEntity.position;
+        } else if (activeRoutePopupEntity._destinationEntity && activeRoutePopupEntity._destinationEntity.position) {
+          const destPos = activeRoutePopupEntity._destinationEntity.position;
+          cartesian = destPos.getValue ? destPos.getValue(viewer.clock.currentTime) : destPos;
+        }
+        if (cartesian) {
+          pos = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, cartesian);
+        }
+      }
+      if (!pos) return;
+
+      const viewportWidth = (viewer && viewer.canvas) ? viewer.canvas.clientWidth : window.innerWidth;
+      const viewportHeight = (viewer && viewer.canvas) ? viewer.canvas.clientHeight : window.innerHeight;
+      const width = popup.offsetWidth || 240;
+      const height = popup.offsetHeight || 140;
+
+      const posX = pos.x != null ? pos.x : pos.left || (viewportWidth / 2);
+      const posY = pos.y != null ? pos.y : pos.top || (viewportHeight / 2);
+
+      let left = posX - width / 2;
+      let top = posY - height - 18;
+
+      if (top < 16) {
+        top = posY + 20;
+      }
+
+      const maxTop = Math.max(16, viewportHeight - height - 75);
+      top = Math.max(16, Math.min(maxTop, top));
+      left = Math.max(12, Math.min(viewportWidth - width - 12, left));
+
+      popup.style.left = Math.round(left) + 'px';
+      popup.style.top = Math.round(top) + 'px';
+    }
+
+    function showRoutePopup(entity, screenPosition) {
+      if (!entity) { hideRoutePopup(); return; }
+      const popup = document.getElementById('routePopup');
+      if (!popup) return;
+
+      hideTargetPopup();
+
+      const entityId = String(entity.id || '');
+      const routeCreator = String(getEntityProperty(entity, 'routeCreator') || getEntityProperty(entity, 'creador_nombre') || getEntityProperty(entity, 'creador') || getEntityProperty(entity, 'createdBy') || '').trim();
+      const routeCreatorRank = String(getEntityProperty(entity, 'routeCreatorRank') || getEntityProperty(entity, 'creador_puesto') || getEntityProperty(entity, 'cargo') || getEntityProperty(entity, 'creatorRank') || '').trim();
+
+      const destCoords = getDestinationCoordsFromEntity(entity);
+      const destinationLat = destCoords ? destCoords.lat : null;
+      const destinationLon = destCoords ? destCoords.lon : null;
+
+      let coords = (Number.isFinite(destinationLat) && Number.isFinite(destinationLon))
+        ? destinationLat.toFixed(5) + ', ' + destinationLon.toFixed(5) : '';
+
+      const creatorEl = document.getElementById('routePopupCreator');
+      if (creatorEl) {
+        let creatorName = routeCreator;
+        // Algunas rutas recibidas por socket traen únicamente el username (ej. gpineda).
+        // En ese caso usamos la etiqueta completa del usuario actual.
+        const isLocalRoute = entity === routeEntity || entity === endEntity || String(entity.id || '').indexOf('route_navigation') === 0;
+        if (isLocalRoute && creatorName && !/\s/.test(creatorName)) {
+          creatorName = getCurrentRouteCreatorLabel() || creatorName;
+        }
+        const creatorText = formatAbbreviatedPersonLabel([routeCreatorRank, creatorName].filter(Boolean).join(' '));
+        creatorEl.textContent = creatorText ? 'Creada por: ' + creatorText : 'Creada por: Usuario';
+      }
+
+      const coordsEl = document.getElementById('routePopupCoords');
+      if (coordsEl) coordsEl.textContent = coords;
+      popup.dataset.coords = coords;
+      const durationSeconds = Number(getEntityProperty(entity, 'routeDurationS') || 0);
+      const routeEta = document.getElementById('routePopupEta');
+      if (routeEta) {
+        routeEta.style.display = 'block';
+
+        const userLoc = getUserCurrentLocation();
+
+        if (userLoc && Number.isFinite(destinationLat) && Number.isFinite(destinationLon)) {
+          const distM = calculateDistanceMeters(userLoc.lat, userLoc.lon, destinationLat, destinationLon);
+          const distKm = (distM / 1000).toFixed(1);
+
+          if (distM < 50) {
+            routeEta.textContent = '⏱ En el destino (< 50 m)';
+          } else {
+            routeEta.textContent = '⏱ Calculando tiempo desde mi ubicación…';
+            getOsrmRoute(userLoc, { lat: destinationLat, lon: destinationLon })
+              .then(function (routeFromHere) {
+                const totalSec = Number(routeFromHere.duration || 0);
+                const minutes = Math.max(1, Math.round(totalSec / 60));
+                const finalKm = ((Number(routeFromHere.distance) || distM) / 1000).toFixed(1);
+                const timeFormatted = minutes >= 60 ? (Math.floor(minutes / 60) + ' h ' + (minutes % 60) + ' min') : (minutes + ' min');
+                routeEta.textContent = '⏱ Tiempo: ' + timeFormatted + ' (' + finalKm + ' km)';
+              })
+              .catch(function () {
+                const estMinutes = Math.max(1, Math.round(((distM / 1000) / 40) * 60));
+                const timeFormatted = estMinutes >= 60 ? (Math.floor(estMinutes / 60) + ' h ' + (estMinutes % 60) + ' min') : (estMinutes + ' min');
+                routeEta.textContent = '⏱ Tiempo estimado: ~' + timeFormatted + ' (' + distKm + ' km)';
+              });
+          }
+        } else if (durationSeconds > 0) {
+          const savedMinutes = Math.max(1, Math.round(durationSeconds / 60));
+          const timeFormatted = savedMinutes >= 60 ? (Math.floor(savedMinutes / 60) + ' h ' + (savedMinutes % 60) + ' min') : (savedMinutes + ' min');
+          routeEta.textContent = '⏱ Duración de ruta: ' + timeFormatted;
+        } else {
+          routeEta.textContent = '⏱ Tiempo: Ubicación no disponible';
+        }
+      }
+
+      const routeDelBtn = document.getElementById('routePopupDeleteBtn');
+      if (routeDelBtn) {
+        const routeId = Number(getEntityProperty(entity, 'routeId') || entityId.replace('remote_route_destination_', '').replace('remote_route_', ''));
+        routeDelBtn.dataset.routeId = String(routeId);
+        const currentLabel = normalizeCreator(getCurrentRouteCreatorLabel());
+        const creatorLabel = normalizeCreator([routeCreatorRank, routeCreator].filter(Boolean).join(' '));
+        const isOwnRoute = entity === routeEntity || entity === endEntity ||
+          (currentLabel && creatorLabel && (creatorLabel === currentLabel || creatorLabel.includes(currentLabel) || currentLabel.includes(creatorLabel)));
+        routeDelBtn.style.display = isOwnRoute ? 'inline-flex' : 'none';
+      }
+
+      activeRoutePopupEntity = entity;
+      popup.style.display = 'block';
+      updateRoutePopupPosition(screenPosition);
+    }
+
+    function hideRoutePopup() {
+      const popup = document.getElementById('routePopup');
+      if (popup) popup.style.display = 'none';
+      activeRoutePopupEntity = null;
+      activeRoutePopupScreenPos = null;
+    }
+
     function updatePopupPosition(screenPosition) {
       const popup = document.getElementById('targetPopup');
       if (!popup || popup.style.display === 'none') return;
@@ -643,12 +1053,25 @@
       const width = popup.offsetWidth || 210;
       const height = popup.offsetHeight || 96;
 
-      popup.style.left = Math.max(8, Math.min(viewportWidth - width - 8, pos.x - width / 2)) + 'px';
-      popup.style.top = Math.max(8, Math.min(viewportHeight - height - 16, pos.y - height - 22)) + 'px';
+      const posX = pos.x != null ? pos.x : pos.left || (viewportWidth / 2);
+      const posY = pos.y != null ? pos.y : pos.top || (viewportHeight / 2);
+
+      let left = posX - width / 2;
+      let top = posY - height - 18;
+
+      if (top < 16) top = posY + 20;
+
+      const maxTop = Math.max(16, viewportHeight - height - 75);
+      top = Math.max(16, Math.min(maxTop, top));
+      left = Math.max(8, Math.min(viewportWidth - width - 8, left));
+
+      popup.style.left = Math.round(left) + 'px';
+      popup.style.top = Math.round(top) + 'px';
     }
 
     function showTargetPopup(entity, screenPosition) {
       if (!entity) { hideTargetPopup(); return; }
+      hideRoutePopup();
       const popup = document.getElementById('targetPopup');
       if (!popup) return;
 
@@ -688,7 +1111,11 @@
 
       const platform = targetPlatformFromSidc(sidc);
       const tipo = String(getEntityProperty(entity, 'poiTipo') || getEntityProperty(entity, 'trackingKind') || '').trim();
-      const creator = String(getEntityProperty(entity, 'poiCreator') || '').trim();
+      const creator = String(getEntityProperty(entity, 'poiCreator') || getEntityProperty(entity, 'creador_nombre') || '').trim();
+      const creatorRank = String(getEntityProperty(entity, 'poiCreatorRank') || getEntityProperty(entity, 'creador_puesto') || '').trim();
+      const currentCreator = getCurrentRouteCreatorLabel();
+      const normalizeCreator = function (value) { return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim(); };
+      const isOwner = !!creator && !!currentCreator && (normalizeCreator(creator) === normalizeCreator(currentCreator) || normalizeCreator(creator).includes(normalizeCreator(currentCreator)) || normalizeCreator(currentCreator).includes(normalizeCreator(creator)));
       const normTipo = tipo.toUpperCase();
 
       if (normTipo === 'GEO-MSG' || getEntityProperty(entity, 'tacticalType') === 'geomsg' || (entity.id && String(entity.id).startsWith('geomsg_'))) {
@@ -725,7 +1152,7 @@
         normTipo === 'DISPOSITIVO'
       );
 
-      let subtitle = '';
+      let subtitle = [creatorRank, creator].filter(Boolean).join(' ') || 'Usuario';
       if (isBlanco) {
         subtitle = platform || (tipo && normTipo !== 'MIL' ? tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase() : '') || 'Transmitiendo';
         if (creator && !subtitle.includes(creator)) {
@@ -738,6 +1165,7 @@
         }
       }
 
+      subtitle = [creatorRank, creator].filter(Boolean).join(' ') || 'Usuario';
       const nameEl = document.getElementById('targetPopupName');
       if (nameEl) nameEl.textContent = name;
       const typeEl = document.getElementById('targetPopupType');
@@ -756,6 +1184,16 @@
       const coordsEl = document.getElementById('targetPopupCoords');
       if (coordsEl) coordsEl.textContent = coords;
       popup.dataset.coords = coords;
+      popup.dataset.poiId = String(getEntityProperty(entity, 'poiId') || String(entity.id || '').replace('poi_', ''));
+      popup.dataset.poiIsTarget = String(isBlanco);
+      popup.dataset.poiLat = String(lat);
+      popup.dataset.poiLon = String(lon);
+      popup.dataset.poiName = String(name || '');
+      popup.dataset.poiSidc = sidc;
+      const visibilitySwitch = document.getElementById('targetPopupVisibility');
+      if (visibilitySwitch && visibilitySwitch.parentElement) {
+        visibilitySwitch.parentElement.style.display = isOwner ? 'flex' : 'none';
+      }
       popup.style.display = 'block';
 
       activePopupEntity = entity;
@@ -763,6 +1201,29 @@
     }
 
     const popupCloseBtn = document.getElementById('targetPopupClose');
+    const visibilitySwitch = document.getElementById('targetPopupVisibility');
+    if (visibilitySwitch) visibilitySwitch.addEventListener('change', function () {
+      const label = document.getElementById('targetPopupVisibilityLabel');
+      const visibility = visibilitySwitch.checked ? 'PUBLICO' : 'PRIVADO';
+      if (label) label.textContent = visibilitySwitch.checked ? 'Público' : 'Privado';
+      if (window.Android && typeof Android.onPoiVisibilityToggled === 'function') {
+        Android.onPoiVisibilityToggled(Number(document.getElementById('targetPopup').dataset.poiId || 0), visibilitySwitch.checked);
+      }
+    });
+    const targetPopupEdit = document.getElementById('targetPopupEdit');
+    if (targetPopupEdit) targetPopupEdit.addEventListener('click', function () {
+      const popup = document.getElementById('targetPopup');
+      if (window.Android && typeof Android.onPoiEditRequested === 'function') Android.onPoiEditRequested(JSON.stringify({
+        id: Number(popup.dataset.poiId || 0), isTarget: popup.dataset.poiIsTarget === 'true',
+        lat: Number(popup.dataset.poiLat), lon: Number(popup.dataset.poiLon),
+        name: popup.dataset.poiName || '', sidc: popup.dataset.poiSidc || ''
+      }));
+    });
+    const targetPopupDelete = document.getElementById('targetPopupDelete');
+    if (targetPopupDelete) targetPopupDelete.addEventListener('click', function () {
+      if (activePopupEntity && window.Android && typeof Android.onMapObjectDeleteRequested === 'function') Android.onMapObjectDeleteRequested(JSON.stringify({ kind: 'poi', id: Number(getEntityProperty(activePopupEntity, 'poiId') || String(activePopupEntity.id || '').replace('poi_', '')) }));
+      hideTargetPopup();
+    });
     if (popupCloseBtn) {
       popupCloseBtn.addEventListener('click', function (event) {
         event.stopPropagation();
@@ -804,7 +1265,48 @@
 
     const popupRouteBtn = document.getElementById('targetPopupRoute');
     if (popupRouteBtn) {
-      popupRouteBtn.addEventListener('click', function (event) {
+      
+    const routePopupCloseBtn = document.getElementById('routePopupClose');
+    if (routePopupCloseBtn) {
+      routePopupCloseBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        hideRoutePopup();
+      });
+    }
+
+    const routePopupCopyBtn = document.getElementById('routePopupCopy');
+    if (routePopupCopyBtn) {
+      routePopupCopyBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        const popup = document.getElementById('routePopup');
+        const coords = (popup && popup.dataset.coords) || '';
+        if (coords) {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(coords);
+          }
+          notifyAndroid("Coordenadas copiadas: " + coords);
+        }
+      });
+    }
+
+    const routePopupDeleteBtn = document.getElementById('routePopupDeleteBtn');
+    if (routePopupDeleteBtn) {
+      routePopupDeleteBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        const routeId = Number(routePopupDeleteBtn.dataset.routeId);
+        if (Number.isFinite(routeId) && routeId > 0) {
+          hideRoutePopup();
+          if (window.Android && typeof Android.onMapObjectDeleteRequested === "function") {
+            Android.onMapObjectDeleteRequested(JSON.stringify({ kind: "route", id: routeId }));
+          } else {
+            window.removeRemoteRoute(routeId);
+            notifyAndroid("Ruta eliminada");
+          }
+        }
+      });
+    }
+
+    popupRouteBtn.addEventListener('click', function (event) {
         event.stopPropagation();
         const popup = document.getElementById('targetPopup');
         const lat = Number(popup && popup.dataset.routeLat);
@@ -834,19 +1336,74 @@
     }
 
     function isIgnoredSelectionEntity(entity) {
+      if (!entity) return true;
+      if (entity === userMarker) return true;
+      if (entity._isGrid || entity._isCompass || entity._isZone) return true;
+      const entityId = String(entity.id || "");
+      if (entityId.indexOf("grid_") === 0 || entityId.indexOf("rose_") === 0 || entityId.indexOf("zone_") === 0) return true;
       const tacticalType = String(getEntityProperty(entity, "tacticalType") || "");
       const trackingKind = String(getEntityProperty(entity, "trackingKind") || "");
-      return tacticalType === "tracking-heading" || trackingKind === "heading";
+      if (tacticalType === "tracking-heading" || trackingKind === "heading" || tacticalType === "grid" || tacticalType === "zone") return true;
+      return false;
     }
 
     function getSelectableEntityAt(position) {
-      const pickedItems = viewer.scene.drillPick?.(position, 12) || [];
-      for (const picked of pickedItems) {
-        if (picked?.id && !isIgnoredSelectionEntity(picked.id)) return picked.id;
-      }
+      if (!viewer || !viewer.scene) return null;
 
-      const picked = viewer.scene.pick(position);
-      return picked?.id && !isIgnoredSelectionEntity(picked.id) ? picked.id : null;
+      try {
+        const pickedItems = viewer.scene.drillPick ? viewer.scene.drillPick(position, 10) : [];
+        
+        // 1. POIs / Blancos / Waypoints tienen máxima prioridad
+        for (const picked of pickedItems) {
+          const ent = picked && picked.id;
+          if (ent && !isIgnoredSelectionEntity(ent)) {
+            const entId = String(ent.id || "");
+            const poiTipo = String(getEntityProperty(ent, "poiTipo") || "");
+            if (entId.indexOf("poi_") === 0 || entId.indexOf("geomsg_") === 0 || poiTipo === "POI" || poiTipo === "MIL" || poiTipo === "GEO-MSG") {
+              return ent;
+            }
+          }
+        }
+
+        // 2. Tracking de personal / vehículos / equipos
+        for (const picked of pickedItems) {
+          const ent = picked && picked.id;
+          if (ent && !isIgnoredSelectionEntity(ent)) {
+            const trackingKind = String(getEntityProperty(ent, "trackingKind") || "");
+            if (isTrackingKind(trackingKind)) {
+              return ent;
+            }
+          }
+        }
+
+        // 3. Rutas de navegación
+        for (const picked of pickedItems) {
+          const ent = picked && picked.id;
+          if (ent && !isIgnoredSelectionEntity(ent)) {
+            const entId = String(ent.id || "");
+            if (entId.indexOf("remote_route_") === 0 || ent === routeEntity || ent === endEntity || getEntityProperty(ent, "tacticalType") === "navigation-route") {
+              return ent;
+            }
+          }
+        }
+
+      } catch (e) {}
+
+      try {
+        const picked = viewer.scene.pick(position);
+        if (picked && picked.id && !isIgnoredSelectionEntity(picked.id)) {
+          const ent = picked.id;
+          const entId = String(ent.id || "");
+          if (entId.indexOf("poi_") === 0 || entId.indexOf("geomsg_") === 0 ||
+              entId.indexOf("area_") === 0 || entId.indexOf("estructura_") === 0 ||
+              entId.indexOf("remote_route_") === 0 || ent === routeEntity || ent === endEntity ||
+              isTrackingKind(String(getEntityProperty(ent, "trackingKind") || ""))) {
+            return ent;
+          }
+        }
+      } catch (e) {}
+
+      return null;
     }
 
     function getSelectableObjectAt(position) {
@@ -868,8 +1425,22 @@
       if (entityId.indexOf("estructura_") === 0) {
         return { kind: "structure", id: Number(entityId.replace("estructura_", "")), label: label || "Estructura" };
       }
-      if (entityId.indexOf("remote_route_") === 0) {
-        return { kind: "route", id: Number(entityId.replace("remote_route_", "")), label: label || "Ruta" };
+      if (entityId.indexOf("remote_route_") === 0 ||
+          entityId.indexOf("route_") === 0 ||
+          entity === routeEntity ||
+          entity === endEntity ||
+          getEntityProperty(entity, "routeOriginLat") != null ||
+          getEntityProperty(entity, "routeDestinationLat") != null ||
+          getEntityProperty(entity, "tacticalType") === "navigation-route" ||
+          getEntityProperty(entity, "tacticalType") === "routeDestination" ||
+          getEntityProperty(entity, "poiTipo") === "RUTA") {
+        const routeId = Number(getEntityProperty(entity, "routeId") || entityId.replace("remote_route_destination_", "").replace("remote_route_", ""));
+        return {
+          kind: "route",
+          id: Number.isFinite(routeId) && routeId > 0 ? routeId : 1,
+          localId: entityId,
+          label: label || "Ruta de navegación"
+        };
       }
       if (entityId.indexOf("ruta_operacion_") === 0) {
         return { kind: "tactical_route", id: Number(entityId.replace("ruta_operacion_", "")), label: label || "Linea tactica" };
@@ -970,6 +1541,13 @@
         selectionIndicator: false
       });
 
+      // Desactiva el zoom automático de Cesium al dar doble toque/clic.
+      if (viewer.cesiumWidget && viewer.cesiumWidget.screenSpaceEventHandler) {
+        viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(
+          Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
+        );
+      }
+
       viewer.scene.renderError.addEventListener(function (sceneOrError, possibleError) {
         const actualError = possibleError || sceneOrError;
         const details = actualError && typeof actualError === 'object'
@@ -984,6 +1562,7 @@
       viewer.scene.sun.show = false;
       viewer.scene.moon.show = false;
       const dpr = window.devicePixelRatio || 1.0;
+      // Equilibrio entre nitidez y rendimiento en dispositivos móviles.
       viewer.resolutionScale = Math.min(dpr, 1.5);
       viewer.scene.highDynamicRange = false;
       viewer.scene.fxaa = false;
@@ -1099,10 +1678,20 @@
                 selectedObject.kind === "dispositivo"
               );
               const pickedEntity = getSelectableEntityAt(movement.position);
-              if (pickedEntity && !isTrackingPersonOrDevice) {
-                showTargetPopup(pickedEntity, movement.position);
+              if (pickedEntity) {
+                if (selectedObject.kind === "route") {
+                  hideTargetPopup();
+                  showRoutePopup(pickedEntity, movement.position);
+                } else if (selectedObject.kind === "poi" || selectedObject.kind === "geomsg") {
+                  hideRoutePopup();
+                  showTargetPopup(pickedEntity, movement.position);
+                } else {
+                  hideTargetPopup();
+                  hideRoutePopup();
+                }
               } else {
                 hideTargetPopup();
+                hideRoutePopup();
               }
               notifyMapObjectSelected(selectedObject);
               return;
@@ -1111,6 +1700,7 @@
 
           setSelectedTracking(null, null);
           hideTargetPopup();
+          hideRoutePopup();
           notifyMapSelectionCleared();
 
           // Click normal, se mantiene tu flujo actual
@@ -1124,6 +1714,15 @@
       // Pulsación prolongada (Touch y Click sostenido) para crear Waypoints o Blancos.
       let mapLongPressTimer = null;
       let mapLongPressStart = null;
+      let mapLongPressCameraLocked = false;
+      const lockMapCameraForLongPress = function () {
+        if (viewer && viewer.scene && viewer.scene.screenSpaceCameraController) {
+          viewer.scene.screenSpaceCameraController.enableRotate = false;
+          viewer.scene.screenSpaceCameraController.enableTranslate = false;
+          viewer.scene.screenSpaceCameraController.enableZoom = false;
+          mapLongPressCameraLocked = true;
+        }
+      };
       const mapCanvas = viewer.scene.canvas;
 
       function triggerLongPressAt(clientX, clientY) {
@@ -1147,24 +1746,42 @@
         if (mapLongPressTimer) clearTimeout(mapLongPressTimer);
         mapLongPressTimer = null;
         mapLongPressStart = null;
+        if (mapLongPressCameraLocked && viewer && viewer.scene && viewer.scene.screenSpaceCameraController) {
+          viewer.scene.screenSpaceCameraController.enableRotate = true;
+          viewer.scene.screenSpaceCameraController.enableTranslate = true;
+          viewer.scene.screenSpaceCameraController.enableZoom = true;
+          mapLongPressCameraLocked = false;
+        }
       };
 
       mapCanvas.addEventListener('touchstart', function (event) {
         if (_drawMode || mobileToolHandler || !event.touches || event.touches.length !== 1) return;
         const touch = event.touches[0];
+        lockMapCameraForLongPress();
         mapLongPressStart = { x: touch.clientX, y: touch.clientY };
         mapLongPressTimer = setTimeout(function () {
+          if (viewer && viewer.scene && viewer.scene.screenSpaceCameraController) {
+            viewer.scene.screenSpaceCameraController.enableRotate = false;
+            viewer.scene.screenSpaceCameraController.enableTranslate = false;
+            viewer.scene.screenSpaceCameraController.enableZoom = false;
+            mapLongPressCameraLocked = true;
+          }
           triggerLongPressAt(touch.clientX, touch.clientY);
-          cancelMapLongPress();
         }, 400);
       }, { passive: true });
 
       mapCanvas.addEventListener('mousedown', function (event) {
         if (_drawMode || mobileToolHandler || event.button !== 0) return;
+        lockMapCameraForLongPress();
         mapLongPressStart = { x: event.clientX, y: event.clientY };
         mapLongPressTimer = setTimeout(function () {
+          if (viewer && viewer.scene && viewer.scene.screenSpaceCameraController) {
+            viewer.scene.screenSpaceCameraController.enableRotate = false;
+            viewer.scene.screenSpaceCameraController.enableTranslate = false;
+            viewer.scene.screenSpaceCameraController.enableZoom = false;
+            mapLongPressCameraLocked = true;
+          }
           triggerLongPressAt(event.clientX, event.clientY);
-          cancelMapLongPress();
         }, 400);
       }, { passive: true });
 
@@ -1304,6 +1921,9 @@
     window.updateMyPosition = function (lat, lon, showMarker) {
       try {
         if (!viewer) return;
+        if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lon))) {
+          lastKnownUserLocation = { lat: Number(lat), lon: Number(lon) };
+        }
         if (userMarker) viewer.entities.remove(userMarker);
         userMarker = null;
 
@@ -2221,26 +2841,7 @@
         viewer.entities.remove(startEntity);
       }
 
-      startEntity = viewer.entities.add({
-        position: Cesium.Cartesian3.fromDegrees(lon, lat),
-        point: {
-          pixelSize: 12,
-          color: Cesium.Color.LIME,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          scaleByDistance: SCALE_BY_DIST
-        },
-        label: {
-          text: "ORIGEN",
-          font: "14px sans-serif",
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 3,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(0, -24),
-          scaleByDistance: SCALE_BY_DIST
-        }
-      });
+      startEntity = null;
     }
 
     function setEndPoint(lat, lon) {
@@ -2257,23 +2858,14 @@
       }
 
       endEntity = viewer.entities.add({
+        id: "route_destination",
         position: Cesium.Cartesian3.fromDegrees(lon, lat),
-        point: {
-          pixelSize: 12,
-          color: Cesium.Color.YELLOW,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          scaleByDistance: SCALE_BY_DIST
-        },
-        label: {
-          text: "DESTINO",
-          font: "14px sans-serif",
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 3,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(0, -24),
-          scaleByDistance: SCALE_BY_DIST
+        billboard: {
+          image: getDestinationPinIcon(),
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          scale: 0.35,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY
         }
       });
     }
@@ -2360,7 +2952,7 @@
       const id = Number(idVehiculo);
       selectedRouteVehicleId = Number.isFinite(id) && id > 0 ? String(id) : "global";
       if (routeEntity && routeEntity.polyline) {
-        routeEntity.polyline.material = navigationRouteMaterial(0.96);
+        routeEntity.polyline.material = Cesium.Color.fromCssColorString(routeColorFromData({ routeCreator: getCurrentRouteCreatorLabel() || 'Usuario' })).withAlpha(0.96);
       }
     };
 
@@ -2424,15 +3016,47 @@
       if (routeEntity) {
         viewer.entities.remove(routeEntity);
       }
+      if (routePickEntity) {
+        viewer.entities.remove(routePickEntity);
+        routePickEntity = null;
+      }
 
       routeEntity = viewer.entities.add({
+        id: "route_navigation",
         polyline: {
           positions,
           width: 5,
-          material: navigationRouteMaterial(0.96),
+          material: Cesium.Color.fromCssColorString(routeColorFromData({ routeCreator: getCurrentRouteCreatorLabel() || 'Usuario' })).withAlpha(0.96),
           clampToGround: false
         }
       });
+      routeEntity.routeDurationS = lastRoute ? Number(lastRoute.duration) || 0 : 0;
+      routeEntity.routeDestinationLat = endPoint ? endPoint.lat : null;
+      routeEntity.routeDestinationLon = endPoint ? endPoint.lon : null;
+      routeEntity.routeCreator = getCurrentRouteCreatorLabel() || "Usuario";
+      if (endEntity) {
+        endEntity.routeDurationS = routeEntity.routeDurationS;
+        endEntity.routeDestinationLat = endPoint ? endPoint.lat : null;
+        endEntity.routeDestinationLon = endPoint ? endPoint.lon : null;
+        endEntity.routeCreator = routeEntity.routeCreator;
+        endEntity._destinationEntity = endEntity;
+      }
+
+      // Área táctil invisible: facilita seleccionar la ruta sin engrosarla visualmente.
+      routePickEntity = viewer.entities.add({
+        id: "route_navigation_pick",
+        polyline: {
+          positions: positions,
+          width: 18,
+          material: Cesium.Color.WHITE.withAlpha(0.001),
+          clampToGround: false
+        }
+      });
+      routePickEntity.routeDestinationLat = routeEntity.routeDestinationLat;
+      routePickEntity.routeDestinationLon = routeEntity.routeDestinationLon;
+      routePickEntity.routeDurationS = routeEntity.routeDurationS;
+      routePickEntity.routeCreator = routeEntity.routeCreator;
+      routePickEntity.routeCreatorRank = routeEntity.routeCreatorRank;
     }
 
     async function calculateRouteSilently() {
@@ -2538,6 +3162,8 @@
     // Rutas Remotas (SincronizaciÃ³n)
     // =========================
     function routeScopeKey(route) {
+      const creator = route && (route.creador_nombre || route.routeCreator || route.creador || route.createdBy);
+      if (creator && String(creator).trim()) return "creator:" + String(creator).trim().toLowerCase();
       const vehicleId = Number(route && route.id_vehiculo);
       return Number.isFinite(vehicleId) && vehicleId > 0
         ? "vehicle:" + vehicleId
@@ -2545,10 +3171,7 @@
     }
 
     function selectedRouteScopeKey() {
-      const vehicleId = Number(selectedRouteVehicleId);
-      return Number.isFinite(vehicleId) && vehicleId > 0
-        ? "vehicle:" + vehicleId
-        : "global";
+      return "creator:" + String(getCurrentRouteCreatorLabel() || "Usuario").trim().toLowerCase();
     }
 
     function clearRemoteRoutesForScope(scope) {
@@ -2557,6 +3180,7 @@
         const entity = entry[1];
         if (entity && entity._routeScope === scope) {
           viewer.entities.remove(entity);
+          if (entity._destinationEntity) viewer.entities.remove(entity._destinationEntity);
           remoteRoutes.delete(id);
         }
       });
@@ -2567,6 +3191,7 @@
       if (replace) {
         Array.from(remoteRoutes.values()).forEach(function (entity) {
           viewer.entities.remove(entity);
+          if (entity._destinationEntity) viewer.entities.remove(entity._destinationEntity);
         });
         remoteRoutes.clear();
       }
@@ -2613,10 +3238,38 @@
           polyline: {
             positions: coords,
             width: 4,
-            material: navigationRouteMaterial(0.9),
+            material: Cesium.Color.fromCssColorString(routeColorFromData(rutaObj)).withAlpha(0.9),
             clampToGround: false
           }
         });
+        lineEntity.routeCreator = rutaObj.routeCreator || rutaObj.creador_nombre || rutaObj.creador || rutaObj.createdBy || rutaObj.usuario_nombre || rutaObj.nombre_usuario || '';
+        lineEntity.routeCreatorRank = rutaObj.routeCreatorRank || rutaObj.creador_puesto || rutaObj.cargo || rutaObj.creatorRank || rutaObj.usuario_cargo || rutaObj.cargo_usuario || '';
+        lineEntity.routeDurationS = Number(rutaObj.duracion_s || rutaObj.duration || rutaObj.routeDurationS || 0);
+        lineEntity.routeDestinationLat = Number(rutaObj.destino_lat || rutaObj.destination_lat || 0);
+        lineEntity.routeDestinationLon = Number(rutaObj.destino_lon || rutaObj.destination_lon || 0);
+        const lastCoord = geojson.coordinates[geojson.coordinates.length - 1];
+        const destinationLat = Number(rutaObj.destino_lat || rutaObj.destination_lat || (lastCoord && lastCoord[1]));
+        const destinationLon = Number(rutaObj.destino_lon || rutaObj.destination_lon || (lastCoord && lastCoord[0]));
+        if (Number.isFinite(destinationLat) && Number.isFinite(destinationLon)) {
+          const destinationEntity = viewer.entities.add({
+            id: "remote_route_destination_" + id,
+            position: Cesium.Cartesian3.fromDegrees(destinationLon, destinationLat),
+            billboard: {
+              image: getDestinationPinIcon(),
+              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+              scale: 0.35,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY
+            }
+          });
+          destinationEntity.routeId = Number(id);
+          destinationEntity.routeCreator = lineEntity.routeCreator;
+          destinationEntity.routeCreatorRank = lineEntity.routeCreatorRank;
+          destinationEntity.routeDurationS = lineEntity.routeDurationS;
+          destinationEntity.routeDestinationLat = destinationLat;
+          destinationEntity.routeDestinationLon = destinationLon;
+          lineEntity._destinationEntity = destinationEntity;
+        }
         lineEntity._routeScope = scope;
         remoteRoutes.set(Number(id), lineEntity);
       }
@@ -2627,6 +3280,7 @@
       const lineEntity = remoteRoutes.get(normalizedId) || remoteRoutes.get(id_ruta);
       if (lineEntity) {
         viewer.entities.remove(lineEntity);
+        if (lineEntity._destinationEntity) viewer.entities.remove(lineEntity._destinationEntity);
         remoteRoutes.delete(normalizedId);
         remoteRoutes.delete(id_ruta);
       }
@@ -4553,6 +5207,46 @@
         }
       }
       return geoMsgDataUrl;
+    }
+
+    function getDestinationPinIcon() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 160;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, 128, 160);
+
+      const gradient = ctx.createLinearGradient(0, 8, 0, 148);
+      gradient.addColorStop(0, '#38BDF8');
+      gradient.addColorStop(1, '#1261B5');
+      ctx.beginPath();
+      ctx.moveTo(64, 148);
+      ctx.bezierCurveTo(58, 138, 20, 91, 20, 54);
+      ctx.arc(64, 54, 44, Math.PI, 0, false);
+      ctx.bezierCurveTo(108, 91, 70, 138, 64, 148);
+      ctx.closePath();
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      ctx.lineWidth = 0;
+
+      ctx.beginPath();
+      ctx.arc(64, 54, 24, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#1261B5';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(64, 54, 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(4, 35, 75, 0.55)';
+      ctx.beginPath();
+      ctx.ellipse(64, 153, 22, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      return canvas.toDataURL('image/png');
     }
 
     window.startGeoMsgMode = function () {

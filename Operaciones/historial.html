@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Historial de Operaciones</title>
+  <script src="js/api_config.js"></script>
+  <script src="js/auth_check.js"></script>
+  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/Widgets/widgets.css"/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@400;700&display=swap"/>
+  <link rel="stylesheet" href="css/dashboard.css"/>
+  <link rel="stylesheet" href="css/historial.css"/>
+</head>
+<body>
+  <header class="topbar historyTopbar">
+    <div class="topbarLeft">
+      <span class="brandDot"></span>
+      <strong id="historyTitle">Historial de Operación</strong>
+      <span id="historyStatusBadge" class="historyStatusBadge">Cargando</span>
+      <span id="historyWho" class="who"></span>
+    </div>
+    <div class="topbarRight historyTopbarActions">
+      <button id="backBtn" class="topBtn historyBackBtn" type="button" aria-label="Volver al menu">
+        <svg class="historyBackIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M19 12H5"></path>
+          <path d="m12 5-7 7 7 7"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="mapStage">
+    <div id="historyMap" class="mapBox"></div>
+
+    <button id="historyFilterToggleBtn" class="historyFilterToggleBtn" type="button" aria-label="Mostrar filtros">
+      <svg class="historyFilterIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="4" y1="6" x2="20" y2="6"></line>
+        <line x1="4" y1="12" x2="16" y2="12"></line>
+        <line x1="4" y1="18" x2="12" y2="18"></line>
+      </svg>
+      <span class="historyFilterBtnText">Filtros</span>
+    </button>
+
+    <div id="historyMapFilters" class="historyMapFilters" aria-label="Filtros del mapa">
+      <label><input type="checkbox" data-history-layer="personal" checked> Personal</label>
+      <label><input type="checkbox" data-history-layer="vehiculos" checked> Vehiculos</label>
+      <label><input type="checkbox" data-history-layer="pois" checked> Puntos de interes</label>
+      <label><input type="checkbox" data-history-layer="areas" checked> Areas</label>
+      <label><input type="checkbox" data-history-layer="estructuras" checked> Estructuras</label>
+      <label><input type="checkbox" data-history-layer="rutas" checked> Rutas</label>
+      <label><input type="checkbox" data-history-layer="dibujos" checked> Dibujos</label>
+    </div>
+  </main>
+
+  <aside id="historyInfoPanel" class="glassPanel open historyInfoPanel">
+    <div class="historyTimeRow">
+      <div id="historyTimeDate" class="historyTimeDate">--/--/----</div>
+      <div class="historyTimeRange">
+        <span id="historyCurrentTime">--:--:--</span>
+        <span class="historyTimeSeparator">/</span>
+        <span id="historyTotalTime">--:--:--</span>
+      </div>
+      <span id="historyEventCounter">0 eventos</span>
+    </div>
+
+    <div class="panelTabs">
+      <button class="tabBtn active" type="button" data-tab="info">Información</button>
+      <button class="tabBtn" type="button" data-tab="chat">Conversaciones</button>
+    </div>
+
+    <div class="tabContent" id="infoTab">
+      <div id="historyInfoContent" class="historyInfoContent">
+        <div class="historyLoading">Cargando operación...</div>
+      </div>
+    </div>
+
+    <div class="tabContent hidden" id="chatTab">
+      <!-- Vista 1: Lista de Chats -->
+      <div id="historyChatList" class="historyChatList">
+        <!-- Renderizado dinámicamente -->
+      </div>
+
+      <!-- Vista 2: Conversación Activa -->
+      <div id="historyChatActive" class="historyChatActive hidden">
+        <div class="historyActiveChatHeader">
+          <button id="historyChatBackBtn" class="historyChatBackBtn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            Chats
+          </button>
+          <span id="historyChatActiveTitle" class="historyChatActiveTitle"></span>
+        </div>
+        <div id="historyChatMessages" class="chatMessages historyChatMessages">
+          <!-- Renderizado dinámicamente -->
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <section id="historyTimeline" class="historyTimeline" aria-label="Timeline de reproducción">
+    <div class="historyTimelineControls">
+      <button id="historyPrevEvent" class="historyTimelineBtn" type="button" title="Evento relevante anterior" aria-label="Evento relevante anterior">
+        <svg class="historyControlIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M11 7 6 12l5 5V7Z"></path>
+          <path d="M18 7l-5 5 5 5V7Z"></path>
+        </svg>
+      </button>
+      <button id="historyPlayPause" class="historyTimelineBtn historyPlayBtn" type="button" aria-label="Reproducir">
+        <svg class="historyControlIcon historyPlayIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M8 5v14l11-7L8 5Z"></path>
+        </svg>
+      </button>
+      <button id="historyNextEvent" class="historyTimelineBtn" type="button" title="Evento relevante siguiente" aria-label="Evento relevante siguiente">
+        <svg class="historyControlIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="m13 7 5 5-5 5V7Z"></path>
+          <path d="m6 7 5 5-5 5V7Z"></path>
+        </svg>
+      </button>
+      <select id="historySpeed" class="historySpeedSelect" title="Velocidad">
+        <option value="1">1x</option>
+        <option value="2">2x</option>
+        <option value="5">5x</option>
+      </select>
+      <div class="historyTimelineClock" aria-live="polite">
+        <span id="historyElapsedTime">00:00:00</span>
+        <span class="historyTimeSeparator">/</span>
+        <span id="historyDurationTime">00:00:00</span>
+      </div>
+    </div>
+    <div class="historyTimelineMain">
+      <input id="historyTimeRange" class="historyScrubber" type="range" min="0" max="1" value="0" step="1"/>
+    </div>
+  </section>
+
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/Cesium.js"></script>
+  <script src="https://unpkg.com/milsymbol@2.2.0/dist/milsymbol.js"></script>
+  <script type="module" src="js/historial/main.js?v=20260723-map-data-safe-zoom"></script>
+</body>
+</html>

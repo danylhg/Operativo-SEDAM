@@ -1,0 +1,990 @@
+DOCUMENTACION DE ENDPOINTS PARA POSTMAN
+Proyecto: Operaciones API
+Fecha de revision: 2026-05-04
+Base URL local: http://localhost:3001
+
+============================================================
+CONFIGURACION EN POSTMAN
+============================================================
+
+Environment sugerido:
+
+base_url = http://localhost:3001
+token = pegar aqui el JWT devuelto por /auth/login
+op_id = 2
+op_code = OP-NORTE-002
+id_personal = 2
+id_vehiculo = 11
+id_equipo = 8
+
+Headers para rutas protegidas:
+
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+Login usado para pruebas:
+
+POST {{base_url}}/auth/login
+Body:
+{
+  "username": "admin",
+  "password": "1234"
+}
+
+Respuesta esperada:
+- 200 OK
+- Copiar "token" al environment de Postman.
+
+Nota:
+- No se documenta el valor real de /config/cesium-token porque es sensible.
+- No encontre Newman/Postman CLI instalado, asi que las pruebas se hicieron con requests HTTP equivalentes a Postman.
+
+============================================================
+RESUMEN DE PRUEBAS SEGURAS EJECUTADAS
+============================================================
+
+Operacion usada para pruebas: id=2, codigo=OP-NORTE-002, estado=PLANIFICADA.
+Personal usado: id_personal=2.
+Vehiculo usado: id_vehiculo=11.
+Equipo usado: id_equipo=8.
+
+OK 200  GET  /health
+OK 200  GET  /db-test
+OK 200  POST /auth/login
+OK 200  GET  /me
+OK 200  GET  /config/cesium-token
+OK 200  GET  /ops
+OK 200  GET  /ops/2
+OK 200  GET  /ops/by-codigo/OP-NORTE-002
+OK 200  GET  /catalog/personal?rol=CUT
+OK 200  GET  /catalog/personal?rol=CET
+OK 200  GET  /catalog/personal?rol=CELL
+OK 200  GET  /catalog/vehiculos
+OK 200  GET  /catalog/equipos
+OK 200  GET  /ops/2/personal
+OK 200  GET  /ops/personal/2
+OK 200  GET  /ops/2/vehiculos-asignados
+OK 200  GET  /ops/2/equipos-asignados
+OK 200  GET  /ops/2/zona
+OK 200  GET  /ops/2/mapa
+OK 200  GET  /ops/2/pois
+OK 200  GET  /ops/2/areas
+OK 200  GET  /ops/2/edificios
+OK 200  GET  /ops/2/rutas
+OK 200  GET  /ops/2/rutas/navegacion
+OK 200  GET  /ops/2/dibujos
+OK 200  GET  /ops/2/chat
+OK 200  GET  /ops/2/chat/messages
+OK 200  GET  /ops/2/avisos
+OK 200  GET  /ops/2/tracking/personal
+OK 200  GET  /ops/2/tracking/personal/2/historial
+OK 200  GET  /ops/2/tracking/vehiculos
+OK 200  GET  /ops/2/tracking/vehiculos/11/historial
+OK 200  GET  /ops/2/replay
+OK 200  POST /validate/disponibilidad
+OK 400  GET  /route/osrm
+        Resultado esperado sin query params. La ruta valida que falten startLon, startLat, endLon, endLat.
+
+HISTORICO: FALLO 400 POST /validate/disponibilidad
+Body probado:
+{
+  "personal_ids": [2],
+  "vehiculo_ids": [11],
+  "equipo_ids": [8]
+}
+
+Respuesta:
+{
+  "ok": false,
+  "mensaje": "Formato de dato invalido.",
+  "detalle": "la sintaxis de entrada no es valida para el enum estado_operacion_enum: FINALIZADA",
+  "pg_code": "22P02"
+}
+
+Diagnostico:
+La ruta incluye FINALIZADA en un filtro SQL:
+estado NOT IN ('CANCELADA', 'CERRADA', 'FINALIZADA')
+pero ese valor no existe en el enum estado_operacion_enum.
+
+Estado actual 2026-05-04:
+- Corregido en api/routes/validation.routes.js.
+- Los 3 filtros ahora usan: o.estado IN ('PLANIFICADA', 'ACTIVA')
+- Reprobado despues de reiniciar API: OK 200.
+
+Respuesta actual de prueba:
+{
+  "ok": true,
+  "disponible": false,
+  "conflictos": {
+    "personal": ["id_personal=2 ocupado en OP-NORTE-002"],
+    "vehiculos": ["id_vehiculo=11 ocupado en OP-NORTE-002"],
+    "equipos": ["id_equipo=8 ocupado en OP-PRUEBA-001"]
+  }
+}
+
+Enum canonico de operacion:
+- PLANIFICADA
+- ACTIVA
+- CERRADA
+- CANCELADA
+
+Notas:
+- TERMINADA no existe en el enum real.
+- FINALIZADA no existe en el enum real.
+
+============================================================
+SISTEMA Y AUTH
+============================================================
+
+GET /health
+Auth: no
+Uso: health check basico de la API.
+Prueba: OK 200.
+
+GET /db-test
+Auth: no
+Uso: confirma conexion con PostgreSQL.
+Prueba: OK 200.
+
+POST /auth/login
+Auth: no
+Body:
+{
+  "username": "admin",
+  "password": "1234"
+}
+Uso: devuelve JWT.
+Prueba: OK 200.
+
+GET /me
+Auth: si
+Uso: devuelve usuario actual segun token.
+Prueba: OK 200.
+
+GET /config/cesium-token
+Auth: si
+Uso: devuelve token Cesium usado por frontend.
+Prueba: OK 200. No pegar token en documentacion.
+
+============================================================
+OPERACIONES
+============================================================
+
+GET /ops
+Auth: si
+Uso: lista operaciones.
+Prueba: OK 200.
+
+GET /ops/:id
+Auth: si
+Ejemplo: GET /ops/{{op_id}}
+Uso: detalle de operacion por id.
+Prueba: OK 200 con /ops/2.
+
+GET /ops/by-codigo/:codigo
+Auth: si
+Ejemplo: GET /ops/by-codigo/{{op_code}}
+Uso: detalle de operacion por codigo.
+Prueba: OK 200 con OP-NORTE-002.
+
+POST /ops
+Auth: si
+Body:
+{
+  "nombre": "Operacion prueba",
+  "descripcion": "Creada desde Postman",
+  "prioridad": "MEDIA",
+  "fecha_inicio": "2026-05-04T10:00:00.000Z"
+}
+Notas:
+- prioridad valida: BAJA, MEDIA, ALTA.
+- genera codigo OP-{timestamp}.
+Prueba: no ejecutada, crea datos.
+
+PUT /ops/:id
+Auth: si
+Body:
+{
+  "nombre": "Operacion editada",
+  "descripcion": "Actualizada desde Postman",
+  "prioridad": "ALTA",
+  "fecha_inicio": "2026-05-04T10:00:00.000Z"
+}
+Notas:
+- solo deja editar operaciones PLANIFICADA.
+- este endpoint guarda la cabecera que se edita desde asignacion cuando se entra desde dashboard.
+- al volver al dashboard, la UI debe esperar este PUT antes de navegar para que GET /ops/:id/mapa ya traiga la fecha nueva.
+Prueba: OK con /ops/2. Se cambio temporalmente fecha_inicio a 2025-09-29T12:00:00.000Z, GET /ops/2/mapa devolvio esa fecha y despues se restauro a 2025-07-01T14:00:00.000Z.
+
+PATCH /ops/:id/estado
+Auth: si
+Body:
+{
+  "estado": "ACTIVA"
+}
+Estados validos: PLANIFICADA, ACTIVA, CERRADA, CANCELADA.
+Transiciones:
+- PLANIFICADA -> ACTIVA o CANCELADA
+- ACTIVA -> CERRADA o CANCELADA
+Prueba: no ejecutada, cambia estado y puede activar/cerrar chat.
+
+============================================================
+CATALOGOS
+============================================================
+
+GET /catalog/personal?rol=CUT
+GET /catalog/personal?rol=CET
+GET /catalog/personal?rol=CELL
+Auth: si
+Query:
+- rol obligatorio: CUT, CET, CELL
+- exclude_op opcional
+Prueba: OK 200 para los 3 roles.
+
+POST /catalog/personal
+Auth: si
+Body:
+{
+  "rol": "CELL",
+  "nombre": "Nombre",
+  "apellido": "Apellido",
+  "puesto": "Cabo",
+  "apodo": "Apodo",
+  "username": "usuario.prueba",
+  "password": "1234"
+}
+Notas:
+- rol valido: CUT, CET, CELL.
+- si no mandas password, genera temporal.
+Prueba: no ejecutada, crea personal.
+
+PUT /catalog/personal/:id
+Auth: si
+Body parcial:
+{
+  "apodo": "Nuevo apodo",
+  "nombre": "Nuevo",
+  "apellido": "Apellido",
+  "puesto": "Mayor",
+  "activo": true,
+  "username": "nuevo.username",
+  "password": "1234"
+}
+Prueba: no ejecutada, modifica personal.
+
+DELETE /catalog/personal/:id
+Auth: si
+Query:
+- hard=1 opcional para borrado fisico.
+Notas:
+- sin hard desactiva activo=false.
+Prueba: no ejecutada, borra/desactiva personal.
+
+GET /catalog/vehiculos
+Auth: si
+Uso: lista vehiculos.
+Prueba: OK 200.
+
+POST /catalog/vehiculos
+Auth: si
+Body:
+{
+  "codigo_interno": "VH-POSTMAN-001",
+  "tipo": "Camioneta",
+  "alias": "Unidad Postman",
+  "imagen_veh": null,
+  "capacidad": 5,
+  "estado": "DISPONIBLE"
+}
+Estados validos: DISPONIBLE, ASIGNADO, MANTENIMIENTO, BAJA.
+Prueba: no ejecutada, crea vehiculo.
+
+PUT /catalog/vehiculos/:id
+Auth: si
+Body parcial:
+{
+  "codigo_interno": "VH-EDIT-001",
+  "tipo": "Camioneta",
+  "alias": "Alias editado",
+  "capacidad": 4,
+  "estado": "DISPONIBLE"
+}
+Prueba: no ejecutada, modifica vehiculo.
+
+DELETE /catalog/vehiculos/:id
+Auth: si
+Prueba: no ejecutada, borra vehiculo.
+
+GET /catalog/equipos
+Auth: si
+Uso: lista equipos.
+Prueba: OK 200.
+
+POST /catalog/equipos
+Auth: si
+Body comunicacion:
+{
+  "numero_serie": "EQ-COM-POSTMAN-001",
+  "nombre": "Radio prueba",
+  "categoria": "COMUNICACION",
+  "estado": "DISPONIBLE",
+  "imagen_eq": null,
+  "marca": "Marca",
+  "modelo": "Modelo",
+  "detalles": "Notas"
+}
+Body tactico:
+{
+  "numero_serie": "EQ-TAC-POSTMAN-001",
+  "nombre": "Equipo tactico prueba",
+  "categoria": "TACTICO",
+  "estado": "DISPONIBLE",
+  "imagen_eq": null,
+  "tipo_tactico": "GENERAL",
+  "calibre": null,
+  "nivel": null,
+  "detalles": "Notas"
+}
+Categorias validas: COMUNICACION, TACTICO.
+Prueba: no ejecutada, crea equipo.
+
+PUT /catalog/equipos/:id
+Auth: si
+Body: igual a POST /catalog/equipos.
+Prueba: no ejecutada, modifica equipo.
+
+DELETE /catalog/equipos/:id
+Auth: si
+Prueba: no ejecutada, borra equipo.
+
+============================================================
+ASIGNACIONES DE OPERACION
+============================================================
+
+GET /ops/personal/:id_personal
+Auth: si
+Uso: obtiene operacion activa/planificada asignada al personal.
+Prueba: OK 200 con /ops/personal/2.
+
+GET /ops/:id/personal
+Auth: si
+Uso: personal asignado a la operacion.
+Prueba: OK 200.
+
+POST /ops/:id/personal
+Auth: si
+Body:
+{
+  "asignado_por": 1,
+  "items": [
+    {
+      "id_personal": 2,
+      "rol_en_operacion": "CET",
+      "estado_asignacion": "ASIGNADO"
+    }
+  ]
+}
+Prueba: no ejecutada, modifica asignaciones.
+
+POST /ops/:id/mando
+Auth: si
+Body:
+{
+  "asignado_por": 1,
+  "items": [
+    {
+      "id_cet": 2,
+      "id_cell": 8
+    }
+  ]
+}
+Notas:
+- reemplaza por completo el mando de la operacion.
+Prueba: no ejecutada, modifica asignaciones.
+
+POST /ops/:id/grupos
+Auth: si
+Body minimo:
+{
+  "asignado_por": 1,
+  "grupos": [
+    {
+      "flotilla": "Flotilla Alfa",
+      "nombre": "Celula 1",
+      "id_cet": 2,
+      "cet_nombre": "CET ejemplo",
+      "integrantes": [8, 9],
+      "vehiculos": [
+        {
+          "id_vehiculo": 11,
+          "id_personal": 8
+        }
+      ]
+    }
+  ],
+  "directos": {
+    "2": [10]
+  }
+}
+Notas:
+- reconstruye la jerarquia completa de grupos.
+Prueba: no ejecutada, destructiva sobre grupos/asignaciones.
+
+GET /ops/:id/vehiculos-asignados
+Auth: si
+Prueba: OK 200.
+
+POST /ops/:id/vehiculos
+Auth: si
+Body:
+{
+  "asignado_por": 1,
+  "items": [
+    {
+      "id_vehiculo": 11,
+      "id_personal": 2,
+      "id_grupo_operacion": null,
+      "nivel_asignacion": "OPERACION"
+    }
+  ]
+}
+Notas:
+- reemplaza las asignaciones de vehiculos de la operacion.
+Prueba: no ejecutada, modifica asignaciones.
+
+GET /ops/:id/equipos-asignados
+Auth: si
+Prueba: OK 200.
+
+POST /ops/:id/equipos
+Auth: si
+Body:
+{
+  "asignado_por": 1,
+  "items": [
+    {
+      "id_equipo": 8,
+      "cantidad": 1,
+      "tipo_destino": "PERSONAL",
+      "id_personal": 2
+    }
+  ]
+}
+Destinos validos:
+- PERSONAL: requiere id_personal
+- VEHICULO: requiere id_vehiculo, el vehiculo debe estar asignado
+- GRUPO: requiere id_grupo_operacion
+Notas:
+- reemplaza el set de equipos de la operacion.
+Prueba: no ejecutada, modifica asignaciones.
+
+============================================================
+CHAT Y AVISOS
+============================================================
+
+GET /ops/:id/chat
+Auth: si
+Uso: feed legacy con filtro de visibilidad por rol.
+Prueba: OK 200.
+
+POST /ops/:id/chat
+Auth: si
+Body:
+{
+  "contenido": "Mensaje desde Postman",
+  "tipo_mensaje": "NORMAL",
+  "destinatario_rol": "GLOBAL",
+  "destino_tipo": null,
+  "destino_id": null,
+  "destino_label": null
+}
+tipo_mensaje valido: NORMAL, URGENTE, SISTEMA.
+Prueba: no ejecutada, crea mensaje.
+
+GET /ops/:id/chat/messages
+Auth: si
+Uso: feed nuevo de mensajes.
+Prueba: OK 200.
+
+POST /ops/:id/chat/messages
+Auth: si
+Body: igual a POST /ops/:id/chat.
+Prueba: no ejecutada, crea mensaje.
+
+GET /ops/:id/avisos
+Auth: si
+Prueba: OK 200.
+
+POST /ops/:id/avisos
+Auth: si
+Body:
+{
+  "id_personal_emisor": 2,
+  "tipo_aviso": "INFORMATIVO",
+  "contenido": "Aviso desde Postman",
+  "tipo_receptor": null,
+  "id_personal_receptor": null,
+  "id_usuario_receptor": null
+}
+tipo_aviso valido: NOVEDAD, CONTACTO, EMERGENCIA, INFORMATIVO.
+Prueba: no ejecutada, crea aviso.
+
+PATCH /ops/:id/avisos/:id_aviso
+Auth: si
+Body:
+{
+  "estado": "ATENDIDO"
+}
+Estados validos: RECIBIDO, ATENDIDO.
+Prueba: no ejecutada, modifica aviso.
+
+============================================================
+MAPA, CAPAS Y DIBUJO
+============================================================
+
+GET /ops/:id/mapa
+Auth: si
+Uso: paquete completo para dashboard/mapa.
+Prueba: OK 200.
+
+GET /ops/:id/pois
+Auth: si
+Prueba: OK 200.
+
+POST /ops/:id/pois
+Auth: si
+Body:
+{
+  "nombre": "POI Postman",
+  "tipo_poi": "REFERENCIA",
+  "latitud": 25.542,
+  "longitud": -103.406,
+  "descripcion": "Creado desde Postman",
+  "color": "#FFD700",
+  "icono_src": null,
+  "sidc": null,
+  "tipo_creador": "USUARIO",
+  "id_usuario": 1,
+  "id_personal": null
+}
+Prueba: no ejecutada, crea POI.
+
+PUT /ops/:id/pois/:id_poi
+Auth: si
+Body:
+{
+  "latitud": 25.543,
+  "longitud": -103.407
+}
+Prueba: no ejecutada, mueve POI.
+
+DELETE /ops/:id/pois/:id_poi
+Auth: si
+Notas: soft delete, activo=false.
+Prueba: no ejecutada.
+
+PATCH /ops/:id/pois/:id_poi/restore
+Auth: si
+Notas: reactiva POI.
+Prueba: no ejecutada.
+
+GET /ops/:id/areas
+Auth: si
+Prueba: OK 200.
+
+POST /ops/:id/areas
+Auth: si
+Body:
+{
+  "nombre": "Area Postman",
+  "descripcion": "Area de prueba",
+  "geometria": {
+    "type": "Polygon",
+    "coordinates": [[[-103.407,25.542],[-103.406,25.542],[-103.406,25.543],[-103.407,25.543],[-103.407,25.542]]]
+  },
+  "color": "#FF4500",
+  "tipo_creador": "USUARIO",
+  "id_usuario": 1,
+  "id_personal": null
+}
+Prueba: no ejecutada, crea area.
+
+PUT /ops/:id/areas/:id_area
+Auth: si
+Body:
+{
+  "latitud": 25.543,
+  "longitud": -103.407
+}
+Notas:
+- solo mueve areas circulares con meta.shape="circle".
+Prueba: no ejecutada.
+
+DELETE /ops/:id/areas/:id_area
+Auth: si
+Notas: soft delete, estado=ELIMINADA.
+Prueba: no ejecutada.
+
+PATCH /ops/:id/areas/:id_area/restore
+Auth: si
+Notas: reactiva area.
+Prueba: no ejecutada.
+
+GET /ops/:id/edificios
+Auth: si
+Prueba: OK 200.
+
+POST /ops/:id/edificios
+Auth: si
+Body:
+{
+  "nombre": "Edificio Postman",
+  "tipo_estructura": "CASA",
+  "latitud": 25.542,
+  "longitud": -103.406,
+  "tipo_creador": "USUARIO",
+  "id_usuario": 1,
+  "id_personal": null
+}
+Notas:
+- rol CELL no puede crear estructuras.
+Prueba: no ejecutada.
+
+PUT /ops/:id/edificios/:id_marca
+Auth: si
+Body:
+{
+  "latitud": 25.543,
+  "longitud": -103.407
+}
+Prueba: no ejecutada.
+
+DELETE /ops/:id/edificios/:id_marca
+Auth: si
+Notas: soft delete, estado=INACTIVO.
+Prueba: no ejecutada.
+
+PATCH /ops/:id/edificios/:id_marca/restore
+Auth: si
+Notas: reactiva edificio.
+Prueba: no ejecutada.
+
+GET /ops/:id/dibujos
+Auth: si
+Prueba: OK 200.
+
+POST /ops/:id/dibujos
+Auth: si
+Body:
+{
+  "puntos": [
+    { "lat": 25.542, "lng": -103.406 },
+    { "lat": 25.543, "lng": -103.407 }
+  ],
+  "color": "#FFFFFF",
+  "grosor": 3,
+  "tipo_creador": "USUARIO",
+  "id_usuario": 1,
+  "id_personal": null
+}
+Prueba: no ejecutada, crea dibujo.
+
+DELETE /ops/:id/dibujos/:id_dibujo
+Auth: si
+Notas: soft delete, activo=false.
+Prueba: no ejecutada.
+
+PATCH /ops/:id/dibujos/:id_dibujo/restore
+Auth: si
+Notas: reactiva dibujo.
+Prueba: no ejecutada.
+
+============================================================
+RUTAS
+============================================================
+
+GET /ops/:id/rutas
+Auth: si
+Uso: rutas tacticas/operacionales.
+Prueba: OK 200.
+
+POST /ops/:id/rutas
+Auth: si
+Body:
+{
+  "nombre": "Ruta tactica Postman",
+  "descripcion": "Prueba",
+  "geometria": {
+    "type": "LineString",
+    "coordinates": [[-103.406,25.542],[-103.407,25.543]]
+  },
+  "color": "#1E90FF",
+  "tipo_creador": "USUARIO",
+  "id_usuario": 1,
+  "id_personal": null
+}
+Prueba: no ejecutada, crea ruta tactica.
+
+DELETE /ops/:id/rutas/:id_ruta
+Auth: si
+Notas: soft delete, estado=CANCELADA.
+Prueba: no ejecutada.
+
+PATCH /ops/:id/rutas/:id_ruta/restore
+Auth: si
+Notas: cambia estado a PLANIFICADA.
+Prueba: no ejecutada.
+
+PATCH /ops/:id/rutas/:id_ruta/estado
+Auth: si
+Body:
+{
+  "estado": "ACTIVA"
+}
+Estados validos: PLANIFICADA, ACTIVA, COMPLETADA, CANCELADA.
+Prueba: no ejecutada.
+
+GET /ops/:id/rutas/navegacion
+Auth: si
+Prueba: OK 200.
+
+POST /ops/:id/rutas/navegacion
+Auth: si
+Body:
+{
+  "geojson": {
+    "type": "LineString",
+    "coordinates": [[-103.406,25.542],[-103.407,25.543]]
+  },
+  "origen_lat": 25.542,
+  "origen_lon": -103.406,
+  "destino_lat": 25.543,
+  "destino_lon": -103.407,
+  "distancia_m": 250,
+  "duracion_s": 60,
+  "id_vehiculo": null
+}
+Prueba: no ejecutada, crea ruta de navegacion.
+
+DELETE /ops/:id/rutas/navegacion/:id_ruta
+Auth: si
+Notas: soft delete, activo=false.
+Prueba: no ejecutada.
+
+GET /route/osrm?startLon=-103.406&startLat=25.542&endLon=-103.407&endLat=25.543
+Auth: si
+Uso: proxy a OSRM externo.
+Prueba realizada: /route/osrm sin query -> 400 esperado.
+Nota:
+- con query real requiere salida a internet hacia router.project-osrm.org.
+
+============================================================
+TRACKING
+============================================================
+
+POST /ops/:id/tracking/personal
+Auth: si
+Body:
+{
+  "id_personal": 2,
+  "latitud": 25.542,
+  "longitud": -103.406,
+  "altitud": null,
+  "precision_m": 8
+}
+Prueba: no ejecutada, inserta tracking.
+
+GET /ops/:id/tracking/personal
+Auth: si
+Prueba: OK 200.
+
+GET /ops/:id/tracking/personal/:id_personal/historial
+Auth: si
+Prueba: OK 200 con /ops/2/tracking/personal/2/historial.
+
+POST /ops/:id/tracking/vehiculos
+Auth: si
+Body:
+{
+  "id_vehiculo": 11,
+  "latitud": 25.542,
+  "longitud": -103.406,
+  "altitud": null,
+  "velocidad_kmh": 0,
+  "rumbo_grados": 180,
+  "precision_m": 8
+}
+Prueba: no ejecutada, inserta tracking.
+
+GET /ops/:id/tracking/vehiculos
+Auth: si
+Prueba: OK 200.
+
+GET /ops/:id/tracking/vehiculos/:id_vehiculo/historial
+Auth: si
+Prueba: OK 200 con /ops/2/tracking/vehiculos/11/historial.
+
+============================================================
+ZONA DE OPERACION
+============================================================
+
+GET /ops/:id/zona
+Auth: si
+Prueba: OK 200.
+
+POST /ops/:id/zona
+Auth: si
+Permisos: solo ADMIN o CUT.
+Body:
+{
+  "nombre": "Zona principal",
+  "geometria": {
+    "type": "Polygon",
+    "coordinates": [[[-103.407,25.542],[-103.406,25.542],[-103.406,25.543],[-103.407,25.543],[-103.407,25.542]]]
+  },
+  "color": "#3b82f6"
+}
+Prueba: no ejecutada, crea/actualiza zona.
+
+DELETE /ops/:id/zona
+Auth: si
+Permisos: solo ADMIN o CUT.
+Prueba: no ejecutada, borra zona.
+
+============================================================
+VALIDACION Y REPLAY
+============================================================
+
+POST /validate/disponibilidad
+Auth: si
+Body:
+{
+  "fecha_inicio": null,
+  "fecha_fin": null,
+  "personal_ids": [2],
+  "vehiculo_ids": [11],
+  "equipo_ids": [8]
+}
+Prueba historica: FALLO 400 por bug de enum FINALIZADA.
+Fix aplicado:
+- api/routes/validation.routes.js ahora filtra operaciones con estado IN ('PLANIFICADA', 'ACTIVA') en personal, vehiculos y equipos.
+Prueba despues del fix y reinicio:
+- OK 200.
+- disponible=false porque encontro conflictos reales en los ids enviados.
+Estados canonicos de operacion:
+- PLANIFICADA
+- ACTIVA
+- CERRADA
+- CANCELADA
+No usar en documentacion ni SQL:
+- TERMINADA
+- FINALIZADA
+
+GET /ops/:id/replay
+Auth: si
+Uso: timeline y snapshots de la operacion para replay.
+Prueba: OK 200.
+
+============================================================
+PENDIENTES PARA PRUEBA MANUAL EN POSTMAN
+============================================================
+
+1. COMPLETADO 2026-05-04: ejecutar POST/PUT/DELETE solo sobre una operacion o registros de prueba.
+
+   Se ejecutaron pruebas de escritura sobre operaciones y registros con prefijo POSTMAN_TEST.
+   No se usaron las operaciones reales del seed como destino de escrituras destructivas.
+
+   Operaciones de prueba creadas:
+   - PLANIFICADA: id=5, nombre=POSTMAN_TEST_PLANIFICADA_EDIT_20260504102706
+   - ACTIVA: id=6, nombre=POSTMAN_TEST_ACTIVA_20260504102706
+
+   Registros de soporte creados para PLANIFICADA:
+   - CET id_personal=48
+   - CELL id_personal=49
+   - CELL id_personal=50
+   - Vehiculo id_vehiculo=22
+   - Equipo id_equipo=16
+
+   Registros de soporte creados para ACTIVA:
+   - CET id_personal=51
+   - CELL id_personal=52
+   - CELL id_personal=53
+   - Vehiculo id_vehiculo=23
+   - Equipo id_equipo=17
+
+   CRUD de catalogos probado con registros temporales:
+   - POST/PUT/DELETE /catalog/personal OK con id_personal=47
+   - POST/PUT/DELETE /catalog/vehiculos OK con id_vehiculo=21
+   - POST/PUT/DELETE /catalog/equipos OK con id_equipo=15
+
+   Escrituras probadas en PLANIFICADA id=5:
+   - POST /ops/5/personal OK
+   - POST /ops/5/mando OK
+   - POST /ops/5/grupos OK
+   - POST /ops/5/vehiculos OK
+   - POST /ops/5/equipos OK
+   - POST/DELETE /ops/5/zona OK usando JSON crudo de Postman
+   - POST/PUT/DELETE/PATCH restore /ops/5/pois OK
+   - POST/PUT/DELETE/PATCH restore /ops/5/areas OK usando JSON crudo de Postman
+   - POST/PUT/DELETE/PATCH restore /ops/5/edificios OK
+   - POST/DELETE/PATCH restore /ops/5/dibujos OK
+   - POST/PATCH estado/DELETE/PATCH restore /ops/5/rutas OK
+   - POST/DELETE /ops/5/rutas/navegacion OK
+   - POST/PATCH /ops/5/avisos OK
+   - POST /ops/5/tracking/personal OK
+   - POST /ops/5/tracking/vehiculos OK
+   - POST /ops/5/chat/messages OK. Hallazgo: una operacion PLANIFICADA creada por POST /ops ya tiene chat asociado, asi que el mensaje no fallo.
+
+   Escrituras probadas en ACTIVA id=6:
+   - POST /ops/6/personal OK
+   - POST /ops/6/mando OK
+   - POST /ops/6/grupos OK
+   - POST /ops/6/vehiculos OK
+   - POST /ops/6/equipos OK
+   - POST/DELETE /ops/6/zona OK usando JSON crudo de Postman
+   - POST/PUT/DELETE/PATCH restore /ops/6/pois OK
+   - POST/PUT/DELETE/PATCH restore /ops/6/areas OK usando JSON crudo de Postman
+   - POST/PUT/DELETE/PATCH restore /ops/6/edificios OK
+   - POST/DELETE/PATCH restore /ops/6/dibujos OK
+   - POST/PATCH estado/DELETE/PATCH restore /ops/6/rutas OK
+   - POST/DELETE /ops/6/rutas/navegacion OK
+   - POST/PATCH /ops/6/avisos OK
+   - POST /ops/6/tracking/personal OK
+   - POST /ops/6/tracking/vehiculos OK
+   - POST /ops/6/chat/messages OK
+   - POST /ops/6/chat OK
+
+Nota sobre GeoJSON:
+   - En Postman conviene pegar el JSON crudo del body. PowerShell aplano los arrays GeoJSON en el primer intento y provoco errores falsos en zona/area.
+   - Con JSON crudo correcto, zona y area pasaron en PLANIFICADA y ACTIVA.
+
+   Cambio aplicado 2026-05-04: diferenciacion de objetos por estado de creacion.
+   - Nuevo campo en BD/API: estado_operacion_creacion.
+   - Este campo guarda el estado de operacion al momento de crear cada objeto hijo.
+   - PLANIFICADA = creado durante planeacion.
+   - ACTIVA = creado durante operacion activa.
+   - El valor queda fijo aunque despues cambie operacion.estado.
+   - Se agrego trigger en BD para llenarlo automaticamente en inserts nuevos.
+   - Se hizo backfill de datos existentes con el estado actual de cada operacion.
+   - Tablas cubiertas: asignaciones, grupos, mando, recursos, chat/mensajes, POIs, areas, edificios, rutas, dibujos, zona, tracking, avisos, novedades y timeline.
+   - Prueba tecnica: insert temporal en puntos_interes de operacion ACTIVA devolvio ACTIVA; insert temporal en operacion PLANIFICADA devolvio PLANIFICADA; ambos con ROLLBACK.
+   - API local en puerto 3001 confirmo que /ops/2/personal, /ops/2/mapa, /ops/2/zona, /ops/2/vehiculos-asignados, /ops/2/equipos-asignados, /ops/2/chat/messages y /ops/2/rutas/navegacion ya exponen estado_operacion_creacion cuando hay datos.
+
+   Nota de limpieza:
+   - Las operaciones id=5 e id=6 quedan en la base como datos de prueba porque no existe endpoint DELETE /ops.
+   - Los recursos creados dentro de esas operaciones usan nombres POSTMAN_* y se pueden identificar facilmente.
+2. Si se prueban deletes, recordar que muchos son soft delete y tienen endpoint restore.
+3. COMPLETADO 2026-05-04: corregir /validate/disponibilidad antes de usarlo como validacion confiable.
+
+   Bug:
+   - validation.routes.js usaba FINALIZADA en tres consultas.
+   - FINALIZADA no existe en estado_operacion_enum.
+
+   Fix:
+   - Se cambio el filtro a estado IN ('PLANIFICADA', 'ACTIVA') para personal, vehiculos y equipos.
+
+   Prueba posterior al reinicio:
+   - POST /validate/disponibilidad OK 200.
+   - Body: {"personal_ids":[2],"vehiculo_ids":[11],"equipo_ids":[8]}
+   - Respuesta: ok=true, disponible=false, con conflictos reales en OP-NORTE-002 y OP-PRUEBA-001.
+4. Probar /route/osrm con internet disponible si se requiere validar el proxy externo completo.

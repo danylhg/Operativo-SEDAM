@@ -9,5 +9,11 @@ data class PoiItem(
     val color: String,
     val iconoSrc: String? = null,
     val sidc: String? = null,
-    val creatorLabel: String = ""
+    val creatorLabel: String = "",
+    val creatorRank: String = "",
+    val visibility: String = "PRIVADO",
+    val creatorType: String = "",
+    val creatorUserId: Int? = null,
+    val creatorPersonalId: Int? = null,
+    val editorLabel: String = ""
 )

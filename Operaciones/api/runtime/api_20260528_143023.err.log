@@ -1,0 +1,37 @@
+DB TEST ERROR: AggregateError [ECONNREFUSED]: 
+    at C:\Users\PC\Desktop\cesium-proyecto\Operaciones\api\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
+  code: 'ECONNREFUSED',
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4078,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '::1',
+      port: 5432
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:5432
+        at createConnectionError (node:net:1678:14)
+        at afterConnectMultiple (node:net:1708:16) {
+      errno: -4078,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '127.0.0.1',
+      port: 5432
+    }
+  ]
+}
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 
+[AUTO-ACTIVACION] Error revisando operaciones: 

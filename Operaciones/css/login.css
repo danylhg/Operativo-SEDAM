@@ -1,0 +1,239 @@
+@import 'identity.css';
+
+:root {
+  --login-bg: #17345e;
+  --login-bg-soft: #285b8e;
+  --card-bg: rgba(11, 28, 54, 0.42);
+  --card-border: rgba(255, 255, 255, 0.26);
+  --accent: #3b82f6;
+  --accent-hi: #60a5fa;
+  --accent-dim: #2563eb;
+  --input-bg: rgba(255, 255, 255, 0.055);
+  --input-border: rgba(166, 190, 230, 0.16);
+  --text-bright: #f3f7ff;
+  --text-soft: #a8b6cf;
+  --danger-fallback: #f87171;
+  --font: Aptos, 'Segoe UI', Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--text-bright);
+  background: linear-gradient(135deg, var(--login-bg-soft) 0%, var(--login-bg) 48%, #0c2444 100%);
+  overflow-x: hidden;
+}
+
+body::before {
+  content: none;
+}
+
+.wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 34px 20px;
+}
+
+.card {
+  width: min(400px, 92vw);
+  padding: 28px 32px 30px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: rgba(11, 28, 54, 0.52);
+  box-shadow: 0 18px 44px rgba(3, 15, 32, 0.28);
+  overflow: hidden;
+}
+
+.icon {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 18px;
+  padding: 0;
+}
+
+.logo-ring {
+  width: 132px;
+  max-width: 40vw;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.logoSedam {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  position: relative;
+  z-index: 1;
+}
+
+.logoSedam[hidden] {
+  display: none;
+}
+
+.logoFallback:not([hidden]) {
+  display: grid;
+}
+
+.logoFallback {
+  width: 100%;
+  height: 100%;
+  display: none;
+  place-items: center;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 50%;
+  color: rgba(243, 247, 255, 0.78);
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 2px;
+}
+
+h1 {
+  max-width: 310px;
+  margin: 0 auto 8px;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+  color: var(--text-bright);
+  font-family: var(--font);
+  font-size: 28px;
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+h1 span {
+  display: block;
+}
+
+.sub {
+  margin: 0 0 24px;
+  text-align: center;
+  color: rgba(168, 182, 207, 0.78);
+  font-size: 12px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+}
+
+.field {
+  margin-bottom: 14px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(168, 182, 207, 0.78);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  outline: none;
+  background: var(--input-bg);
+  color: var(--text-bright);
+  font: 600 14px/1 var(--font);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+input:focus {
+  border-color: rgba(96, 165, 250, 0.75);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+button {
+  width: 100%;
+  height: 48px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent-dim);
+  color: #ffffff;
+  font: 850 15px/1 var(--font);
+  text-transform: none;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+button:hover {
+  background: var(--accent);
+  filter: none;
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+}
+
+.msg {
+  min-height: 20px;
+  margin: 10px 0 0;
+  text-align: center;
+  color: var(--danger, var(--danger-fallback));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.msg.loading {
+  color: #93c5fd;
+}
+
+.hint {
+  margin: 16px 0 0;
+  text-align: center;
+  color: rgba(168, 182, 207, 0.82);
+  font-size: 12px;
+}
+
+.hint b {
+  color: var(--accent-hi);
+}
+
+@media (max-width: 520px) {
+  .wrap {
+    align-items: flex-start;
+    padding: 18px 14px;
+  }
+
+  .card {
+    padding: 22px 22px 26px;
+  }
+
+  .logo-ring {
+    width: 132px;
+    max-width: 42vw;
+  }
+
+  h1 {
+    letter-spacing: 0;
+  }
+}

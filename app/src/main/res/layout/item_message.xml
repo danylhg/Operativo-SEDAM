@@ -12,8 +12,9 @@
         android:layout_gravity="start"
         android:orientation="vertical"
         android:background="@drawable/bg_bubble_recv"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp">
+        android:paddingHorizontal="4dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="2dp">
 
         <TextView
             android:id="@+id/msgMeta"
@@ -23,19 +24,11 @@
             android:textSize="10sp"
             android:layout_marginBottom="3dp"/>
 
-        <TextView
-            android:id="@+id/msgText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#e2e8f0"
-            android:textSize="13sp"
-            android:lineSpacingExtra="1dp"/>
-
         <ImageView
             android:id="@+id/msgImageAttachment"
             android:layout_width="240dp"
             android:layout_height="160dp"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="2dp"
             android:adjustViewBounds="true"
             android:background="#0B1625"
             android:contentDescription="Imagen adjunta"
@@ -46,7 +39,7 @@
             android:id="@+id/msgVideoAttachment"
             android:layout_width="240dp"
             android:layout_height="160dp"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="2dp"
             android:background="#0B1625"
             android:visibility="gone" />
 
@@ -95,6 +88,15 @@
                     android:textSize="10sp" />
             </LinearLayout>
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/msgText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textColor="#e2e8f0"
+            android:textSize="13sp"
+            android:lineSpacingExtra="1dp"/>
 
         <TextView
             android:id="@+id/msgAttachment"

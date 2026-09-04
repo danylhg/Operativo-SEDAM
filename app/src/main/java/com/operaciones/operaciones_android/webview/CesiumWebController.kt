@@ -606,23 +606,24 @@ class CesiumWebController(
         }
     }
 
-    fun addPoiToMap(idPoi: Int, lat: Double, lon: Double, nombre: String, tipoPoi: String, color: String, iconoSrc: String? = null, sidc: String? = null, creatorLabel: String = "") {
+    fun addPoiToMap(idPoi: Int, lat: Double, lon: Double, nombre: String, tipoPoi: String, color: String, iconoSrc: String? = null, sidc: String? = null, creatorLabel: String = "", editorLabel: String = "") {
         val safeNombre = jsString(nombre)
         val safeTipo = jsString(tipoPoi)
         val safeColor = jsString(color)
         val iconArg = iconoSrc?.let { "'${jsString(it)}'" } ?: "null"
         val sidcArg = sidc?.let { "'${jsString(it)}'" } ?: "null"
         val safeCreator = jsString(creatorLabel)
+        val safeEditor = jsString(editorLabel)
         android.util.Log.d(
             "POI_ANDROID",
-            "addPoiToMap id=$idPoi tipo=$tipoPoi color=$color icono=${iconoSrc ?: "null"} sidc=${sidc ?: "null"} lat=$lat lon=$lon nombre=$nombre"
+            "addPoiToMap id=$idPoi tipo=$tipoPoi color=$color icono=${iconoSrc ?: "null"} sidc=${sidc ?: "null"} lat=$lat lon=$lon nombre=$nombre editor=$editorLabel"
         )
         webView.post {
             webView.evaluateJavascript(
                 """
                 (function() {
                     if (typeof addPoiToMap === 'function') {
-                        addPoiToMap($idPoi, $lat, $lon, '$safeNombre', '$safeTipo', '$safeColor', $iconArg, $sidcArg, '$safeCreator');
+                        addPoiToMap($idPoi, $lat, $lon, '$safeNombre', '$safeTipo', '$safeColor', $iconArg, $sidcArg, '$safeCreator', '$safeEditor');
                         return 'OK';
                     }
                     return 'ERROR:addPoiToMap no existe';

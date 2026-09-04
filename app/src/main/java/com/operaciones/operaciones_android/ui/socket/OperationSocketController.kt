@@ -50,7 +50,14 @@ class OperationSocketController(
             tipo: String,
             color: String,
             iconoSrc: String?,
-            sidc: String?
+            sidc: String?,
+            visibility: String,
+            creatorType: String,
+            creatorUserId: Int?,
+            creatorPersonalId: Int?,
+            creatorLabel: String,
+            creatorRank: String,
+            editorLabel: String = ""
         )
         fun onSocketPoiDeleted(idPoi: Int)
         fun onSocketAreaPolygonCreated(
@@ -208,6 +215,10 @@ class OperationSocketController(
             onPoiCreado = { data ->
                 host.runSocketOnUi {
                     val poi = data.optJSONObject("poi") ?: return@runSocketOnUi
+                    if (!poi.optString("visibilidad", "PRIVADO").equals("PUBLICO", ignoreCase = true)) {
+                        return@runSocketOnUi
+                    }
+                    val editor = poi.optString("editor_nombre", poi.optString("editorLabel", poi.optString("modificado_por", "")))
                     host.onSocketPoiCreated(
                         idPoi = poi.optInt("id_poi"),
                         lat = poi.optDouble("latitud"),
@@ -216,7 +227,14 @@ class OperationSocketController(
                         tipo = poi.optString("tipo_poi", ""),
                         color = poi.optString("color", "#FFD700").ifBlank { "#FFD700" },
                         iconoSrc = optionalString(poi, "icono_src"),
-                        sidc = optionalString(poi, "sidc")
+                        sidc = optionalString(poi, "sidc"),
+                        visibility = poi.optString("visibilidad", "PUBLICO"),
+                        creatorType = poi.optString("tipo_creador", ""),
+                        creatorUserId = poi.optInt("id_usuario", -1).takeIf { it > 0 },
+                        creatorPersonalId = poi.optInt("id_personal", -1).takeIf { it > 0 },
+                        creatorLabel = poi.optString("creador_nombre", poi.optString("creador_label", "")),
+                        creatorRank = poi.optString("creador_puesto", ""),
+                        editorLabel = editor
                     )
                 }
             },

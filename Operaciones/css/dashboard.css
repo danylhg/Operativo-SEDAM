@@ -1,0 +1,6037 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --dash-surface: rgba(19, 55, 92, 0.42);
+  --dash-surface-strong: rgba(22, 63, 105, 0.58);
+  --dash-surface-soft: rgba(147, 197, 253, 0.14);
+  --dash-border: rgba(186, 230, 253, 0.36);
+  --dash-border-strong: rgba(125, 211, 252, 0.62);
+  --dash-text: #ffffff;
+  --dash-muted: #f8fafc;
+  --dash-accent: #0284c7;
+  --dash-accent-light: #67e8f9;
+  --dash-accent-soft: rgba(14, 165, 233, 0.24);
+  --dash-danger: #f87171;
+  --dash-danger-soft: rgba(248, 113, 113, 0.18);
+  --dash-shadow: 0 12px 30px rgba(8, 47, 73, 0.22);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 100vw;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: #08111b;
+  overflow: hidden;
+  border: 0;
+  outline: 0;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+  color: #e6edf3;
+}
+
+body::before,
+body::after {
+  display: none !important;
+  content: none !important;
+}
+
+.topbar {
+  position: fixed;
+  top: 14px;
+  left: 16px;
+  width: fit-content;
+  min-width: 0;
+  max-width: calc(100vw - 90px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 12px 16px;
+  border-radius: 18px;
+  background: rgba(5, 10, 20, 0.90);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 255, 170, 0.20);
+  color: #00ffa6;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .40);
+}
+
+.topbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.brandDot {
+  display: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #00ffa6;
+  box-shadow: 0 0 12px rgba(0, 255, 166, .9);
+}
+
+.who {
+  opacity: .9;
+  font-weight: 600;
+  color: #cfd8e3;
+}
+
+.topbarRight {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.topBtn {
+  border: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 700;
+  background: linear-gradient(135deg, #00ffa6, #00c3ff);
+  color: #001b1b;
+  box-shadow: 0 0 14px rgba(0, 255, 166, .20);
+}
+
+.mapStage {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mapBox {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  margin: 0;
+  border: 0;
+  outline: 0;
+  background: #08111b;
+}
+
+.cesium-widget,
+.cesium-widget canvas,
+.cesium-viewer,
+.cesium-viewer-cesiumWidgetContainer {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+}
+
+.mapBox.mapUnavailable {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(56, 189, 248, .14), transparent 34%),
+    linear-gradient(135deg, rgba(8, 17, 27, .98), rgba(6, 13, 22, .98));
+}
+
+.mapUnavailableCard {
+  width: min(420px, calc(100vw - 48px));
+  display: grid;
+  gap: 8px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid var(--dash-border);
+  background: rgba(19, 55, 92, .58);
+  color: var(--dash-text);
+  box-shadow: var(--dash-shadow);
+  text-align: center;
+}
+
+.mapUnavailableCard strong {
+  font-size: 18px;
+}
+
+.mapUnavailableCard span {
+  color: var(--dash-muted);
+  line-height: 1.35;
+}
+
+.planningExitModal.hidden {
+  display: none;
+}
+
+.planningExitModal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+
+.planningExitBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 8, 20, 0.62);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.planningExitCard {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  padding: 24px;
+  border-radius: 20px;
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  background: rgba(10, 19, 31, 0.98);
+  color: #e5eefc;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.planningExitCard h3 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 850;
+  color: #ffffff;
+}
+
+.planningExitCard p {
+  margin: 0;
+  color: #a3b8cc;
+  line-height: 1.5;
+  font-size: 14.5px;
+}
+
+.planningExitActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.planningExitBtn {
+  border: none;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+}
+
+.planningExitBtn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+.planningExitBtnPrimary {
+  background: var(--dash-accent);
+  color: #f8fbff;
+}
+
+.planningExitBtnDanger {
+  background: #7f1d1d;
+  color: #ffe0e0;
+}
+
+.planningExitBtnGhost {
+  grid-column: 1 / -1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #dbeafe;
+}
+
+.mapTopRightActions {
+  position: fixed;
+  top: 58px;
+  right: 10px;
+  z-index: 1205;
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mapTopActionBtn {
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 700;
+  background: rgba(40, 7, 7, 0.88);
+  color: #ffd6d6;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, .28);
+}
+
+.mapTopActionBtn:hover {
+  background: rgba(75, 12, 12, 0.92);
+}
+
+.emergencyFeedPanel {
+  position: fixed;
+  top: 116px;
+  right: 16px;
+  z-index: 1085;
+  width: 330px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 170px);
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff7f7;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  pointer-events: none;
+}
+
+.emergencyFeedPanel[hidden] {
+  display: none !important;
+}
+
+.emergencyFeedHeader {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 12px;
+  background: rgba(127, 29, 29, 0.5);
+  color: #fff;
+  font-size: 13px;
+}
+
+.emergencyFeedIndicator {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #fb7185;
+  box-shadow: 0 0 0 4px rgba(251, 113, 133, 0.16);
+}
+
+.emergencyFeedCount {
+  min-width: 22px;
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fecaca;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.emergencyFeedList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - 172px);
+  overflow-y: auto;
+  padding: 2px 4px 2px 2px;
+  pointer-events: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(252, 165, 165, 0.58) transparent;
+}
+
+.emergencyFeedList::-webkit-scrollbar {
+  width: 7px;
+}
+
+.emergencyFeedList::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 999px;
+}
+
+.emergencyFeedList::-webkit-scrollbar-thumb {
+  background: rgba(252, 165, 165, 0.58);
+  border-radius: 999px;
+}
+
+.emergencyFeedItem {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: auto;
+  height: auto;
+  border: 1px solid rgba(239, 68, 68, 0.56);
+  border-radius: 8px;
+  padding: 9px 12px 10px 11px;
+  background: rgba(239, 68, 68, 0.13);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+  overflow: hidden;
+}
+
+.emergencyFeedItem:hover,
+.emergencyFeedItem:focus-visible {
+  border-color: rgba(252, 165, 165, 0.88);
+  background: rgba(127, 29, 29, 0.42);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.emergencyFeedItem:focus-visible {
+  box-shadow: 0 0 0 2px rgba(254, 202, 202, 0.44), 0 8px 18px rgba(0, 0, 0, 0.30);
+}
+
+.emergencyFeedClose {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(248, 113, 113, 0.22);
+  color: #fecaca;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.emergencyFeedClose:hover {
+  background: rgba(248, 113, 113, 0.34);
+  color: #ffffff;
+}
+
+.emergencyFeedMeta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+  padding-right: 24px;
+  color: #fca5a5;
+  font-size: 11px;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.emergencyFeedMeta strong,
+.emergencyFeedMeta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emergencyFeedMeta strong {
+  min-width: 0;
+}
+
+.emergencyFeedMeta span {
+  flex: 0 0 auto;
+  font-weight: 800;
+  padding-right: 2px;
+}
+
+.emergencyFeedText {
+  white-space: pre-wrap;
+  display: block;
+  max-width: 100%;
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.34;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mapLayerControl {
+  position: fixed;
+  top: 18px;
+  right: 12px;
+  z-index: 1305;
+}
+
+.mapLayerButton {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 255, 170, 0.36);
+  background: rgba(7, 13, 23, 0.92);
+  color: #eafcf8;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.mapLayerButton:hover,
+.mapLayerControl.open .mapLayerButton {
+  border-color: rgba(0, 255, 170, 0.55);
+  box-shadow: 0 0 16px rgba(0, 255, 170, 0.20);
+}
+
+.mapLayerIcon {
+  position: relative;
+  width: 20px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.mapLayerIcon::before,
+.mapLayerIcon::after,
+.mapLayerIcon {
+  border-radius: 4px;
+}
+
+.mapLayerIcon::before,
+.mapLayerIcon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(0, 255, 170, 0.76);
+  background: rgba(0, 255, 170, 0.10);
+}
+
+.mapLayerIcon::before {
+  transform: translate(4px, -3px);
+}
+
+.mapLayerIcon::after {
+  transform: translate(-2px, 3px);
+  background: rgba(14, 165, 233, 0.16);
+}
+
+.mapLayerMenu {
+  display: none;
+  position: absolute;
+  top: 40px;
+  right: 0;
+  width: 176px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 255, 170, 0.24);
+  background: rgba(7, 13, 23, 0.96);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.mapLayerControl.open .mapLayerMenu {
+  display: grid;
+  gap: 4px;
+}
+
+.mapLayerOption {
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: transparent;
+  color: #dbeafe;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mapLayerOption:hover,
+.mapLayerOption.active {
+  background: rgba(0, 255, 170, 0.14);
+  color: #00ffa6;
+}
+
+.mapTopActionBtn:disabled,
+.toolFab:disabled,
+.actionBtn:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  filter: grayscale(.35);
+}
+
+.toolFab:disabled:hover,
+.actionBtn:disabled:hover,
+.mapTopActionBtn:disabled:hover {
+  transform: none;
+}
+
+@media (max-width: 768px) {
+  .mapTopRightActions {
+    top: 56px;
+    right: 10px;
+  }
+
+  .mapLayerControl {
+    top: 18px;
+    right: 12px;
+  }
+
+  .mapLayerButton {
+    width: 34px;
+    height: 34px;
+  }
+
+  .emergencyFeedPanel {
+    top: 104px;
+    right: 10px;
+    width: min(330px, calc(100vw - 20px));
+    max-height: 34vh;
+    padding: 0;
+  }
+
+  .emergencyFeedList {
+    max-height: 34vh;
+  }
+}
+
+.floatingTools {
+  position: fixed;
+  top: 92px;
+  left: 12px;
+  z-index: 1150;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toolFab {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #00ffa6;
+  font-size: 22px;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 255, 170, 0.20);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, .35);
+  transition: .2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolFab svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.toolFab:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 14px rgba(0, 255, 166, .25);
+}
+
+.toolFab.active {
+  background: #00ffa6;
+  color: #001b1b;
+}
+
+.glassPanel {
+  position: fixed;
+  top: 92px;
+  left: 78px;
+  width: 360px;
+  max-width: calc(100vw - 100px);
+  max-height: calc(100vh - 110px);
+  overflow: auto;
+  z-index: 1100;
+  padding: 30px 10px 10px 10px;
+  border-radius: 20px;
+  background: rgba(10, 15, 25, 0.85);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(0, 255, 170, 0.15);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.60);
+  color: #e6edf3;
+  display: none;
+}
+
+.glassPanel.open {
+  display: block;
+}
+
+.tacticalWide {
+  width: 420px;
+}
+
+.chatPanel {
+  width: 420px;
+  left: 390px;
+  background: rgba(20, 33, 39, 0.88);
+  border-color: rgba(0, 255, 170, 0.22);
+}
+
+.chatAudiencePanel {
+  width: 300px;
+  background: rgba(20, 33, 39, 0.90);
+  border-color: rgba(0, 255, 170, 0.22);
+}
+
+.chatGroupMembersPanel {
+  left: 824px;
+  width: 270px;
+  background: rgba(20, 33, 39, 0.90);
+  border-color: rgba(0, 255, 170, 0.22);
+}
+
+.chatAudiencePanel .panelTitle {
+  margin-bottom: 10px;
+}
+
+.chatPanel .opsInput,
+.chatPanel select,
+.chatAudiencePanel .opsInput,
+.chatAudiencePanel select {
+  background: rgba(24, 43, 47, 0.70);
+  border-color: rgba(0, 255, 170, 0.28);
+}
+
+.glassPanel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.glassPanel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+}
+
+.glassPanel::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 170, 0.25);
+  border-radius: 10px;
+}
+
+.panelTitle {
+  margin: 0 0 14px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  color: #00ffa6;
+}
+
+.groupTitle {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #b8c4d1;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+}
+
+.iconPallet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.50);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 255, 170, 0.25);
+}
+
+.iconItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 60px;
+  cursor: grab;
+  text-align: center;
+}
+
+.iconItem img {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  border-radius: 6px;
+  transition: .2s ease;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.iconItem span {
+  font-size: 10px;
+  color: #b8c4d1;
+  line-height: 1.1;
+  user-select: none;
+}
+
+.iconItem:hover img {
+  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 8px rgba(0, 255, 170, 0.4);
+}
+
+.iconItem:active {
+  cursor: grabbing;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #b8c4d1;
+}
+
+.opsInput,
+.latlngBox,
+.glassPanel select,
+.glassPanel input,
+.glassPanel textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 255, 170, 0.25);
+  background: rgba(0, 0, 0, 0.50);
+  color: #e6edf3;
+  outline: none;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.compactInput {
+  margin-bottom: 0;
+}
+
+.opsInput::placeholder,
+.glassPanel input::placeholder,
+.glassPanel textarea::placeholder {
+  color: #6b7280;
+}
+
+.glassPanel select option {
+  color: #111827;
+  background: #ffffff;
+}
+
+.opsInput:focus,
+.latlngBox:focus,
+.glassPanel select:focus,
+.glassPanel input:focus,
+.glassPanel textarea:focus {
+  border-color: rgba(0, 255, 170, 0.55);
+  box-shadow: 0 0 0 2px rgba(0, 255, 170, 0.12);
+}
+
+.glassPanel input[type="range"]:not(.cameraPlaybackRange) {
+  display: block;
+  width: 100% !important;
+  height: 6px;
+  margin: 22px 0 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: linear-gradient(90deg, #0ea5e9 0%, #0ea5e9 var(--range-fill, 0%), rgba(226, 232, 240, .82) var(--range-fill, 0%), rgba(226, 232, 240, .82) 100%) !important;
+  background-size: 100% 6px !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  box-shadow: none !important;
+  outline: none !important;
+  accent-color: #0ea5e9;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.glassPanel input[type="range"]:not(.cameraPlaybackRange):focus {
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.glassPanel input[type="range"]:not(.cameraPlaybackRange)::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.glassPanel input[type="range"]:not(.cameraPlaybackRange)::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border: 2px solid rgba(255, 255, 255, .92);
+  border-radius: 50%;
+  background: #0284c7;
+  box-shadow: 0 2px 8px rgba(8, 47, 73, .36);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.glassPanel input[type="range"]:not(.cameraPlaybackRange)::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, .82);
+  box-shadow: none;
+}
+
+.glassPanel input[type="range"]:not(.cameraPlaybackRange)::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: #0ea5e9;
+}
+
+.glassPanel input[type="range"]:not(.cameraPlaybackRange)::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, .92);
+  border-radius: 50%;
+  background: #0284c7;
+  box-shadow: 0 2px 8px rgba(8, 47, 73, .36);
+}
+
+.glassPanel input[type="range"]:not(.cameraPlaybackRange):disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.latlngRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.styleGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.btnGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.btnBeige {
+  padding: 8px 10px;
+  min-height: 36px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #00ffa6, #00c3ff);
+  color: #001b1b;
+  font-weight: 800;
+  letter-spacing: .3px;
+  cursor: pointer;
+  transition: .2s ease;
+  font-size: 13px;
+}
+
+.smallBtn {
+  min-height: 44px;
+  font-size: 13px;
+}
+
+.btnBeige:hover {
+  transform: scale(1.03);
+  box-shadow: 0 0 12px rgba(0, 255, 170, 0.60);
+}
+
+.btnBeige:disabled,
+.chatActionBtn:disabled,
+.chatIconBtn:disabled,
+.chatGroupMembersToggle:disabled,
+.sendChatBtn:disabled,
+.quickMsgBtn:disabled,
+.chatTab:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.historyBtn {
+  grid-column: 1 / -1;
+}
+
+.routeInfo {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.20);
+  color: #38bdf8;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.infoPanelContent {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.infoBlock {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.40);
+  border: 1px solid rgba(0, 255, 170, 0.15);
+  color: #e6edf3;
+}
+
+.infoBlock h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  color: #00ffa6;
+}
+
+.infoBlock p {
+  margin: 4px 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #d8e2ec;
+}
+
+.miniCard {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.60);
+  border: 1px solid rgba(0, 255, 170, 0.10);
+}
+
+.chatChannelTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.chatTab {
+  min-height: 52px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 255, 170, 0.25);
+  background: rgba(0, 0, 0, 0.55);
+  color: #e6edf3;
+  font-weight: 800;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.chatTab.active {
+  background: linear-gradient(135deg, #00ffa6, #00c3ff);
+  color: #001b1b;
+  border-color: transparent;
+}
+
+.quickMsgGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.quickMsgBtn {
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: none;
+  background: rgba(0, 255, 170, 0.14);
+  color: #dffef3;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  border: 1px solid rgba(0, 255, 170, 0.18);
+}
+
+.quickMsgBtn:hover {
+  background: rgba(0, 255, 170, 0.22);
+}
+
+.chatChannelGroup {
+  padding: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.legacyChatSelect {
+  display: none !important;
+}
+
+.chatAudienceHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.chatAudienceEyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: #9fb3bf;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.chatAudienceSummary {
+  color: #00ffa6;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.chatAudienceToggle {
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(0, 255, 170, 0.25);
+  border-radius: 8px;
+  background: rgba(0, 255, 170, 0.08);
+  color: #00ffa6;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.chatAudienceBody {
+  display: grid;
+  gap: 10px;
+}
+
+.chatAudienceBody.collapsed {
+  display: none;
+}
+
+.chatAudienceCard {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.chatAudiencePane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.chatAudienceTitle {
+  display: block;
+  margin: 10px 6px 6px;
+  color: #9fb3bf;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.chatAudienceChips {
+  display: grid;
+  gap: 2px;
+}
+
+.chatAudienceChip {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  align-items: center;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #eafff8;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chatAudienceChip::before {
+  content: attr(data-chat-avatar);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(159, 179, 191, 0.14);
+  color: #9fb3bf;
+  font-size: 13px;
+  font-weight: 900;
+  grid-row: 1 / span 2;
+}
+
+.chatAudienceChip span,
+.chatAudienceChip small {
+  grid-column: 2;
+}
+
+.chatAudienceChip span {
+  line-height: 1.15;
+  font-weight: 900;
+}
+
+.chatAudienceChip small {
+  color: #9fb3bf;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.chatAudienceChip:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.chatAudienceChip.active {
+  background: rgba(0, 255, 170, 0.12);
+  color: #00ffa6;
+}
+
+.chatAudienceChip.active::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #00ffa6;
+}
+
+.chatConversationHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -12px -2px 10px;
+  padding: 10px 6px 12px;
+  border-bottom: 1px solid rgba(0, 255, 170, 0.14);
+}
+
+.chatGroupMembersToggle {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(0, 255, 170, 0.22);
+  border-radius: 50%;
+  background: rgba(0, 255, 170, 0.12);
+  color: #00ffa6;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.chatGroupMembersToggle:hover {
+  background: rgba(0, 255, 170, 0.20);
+}
+
+.chatGroupMembersHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -10px 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 255, 170, 0.14);
+}
+
+.chatGroupMembersTitle {
+  margin: 0;
+  color: #eafff8;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.chatGroupMembersCount {
+  min-width: 28px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(0, 255, 170, 0.14);
+  color: #00ffa6;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.chatGroupMembersList {
+  display: grid;
+  gap: 6px;
+}
+
+.chatGroupMemberItem {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-height: 52px;
+  padding: 9px 10px;
+  border: 1px solid rgba(0, 255, 170, 0.14);
+  border-radius: 8px;
+  background: rgba(24, 43, 47, 0.52);
+  color: #eafff8;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chatGroupMemberItem:hover {
+  border-color: rgba(0, 255, 170, 0.35);
+  background: rgba(0, 255, 170, 0.10);
+}
+
+.chatGroupMemberItem span {
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.chatGroupMemberItem small {
+  color: #9fb3bf;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.chatGroupMembersEmpty {
+  padding: 16px 10px;
+  border: 1px dashed rgba(0, 255, 170, 0.22);
+  border-radius: 8px;
+  color: #9fb3bf;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.chatConversationAvatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(159, 179, 191, 0.14);
+  color: #9fb3bf;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.chatConversationTitle {
+  margin: 0;
+  color: #eafff8;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.chatConversationSubtitle {
+  margin-top: 2px;
+  color: #9fb3bf;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chatTargetBox {
+  min-height: 100%;
+  padding: 10px;
+  border-left: 3px solid #00ffa6;
+  border-radius: 8px;
+  background: rgba(0, 255, 170, 0.08);
+  margin-bottom: 10px;
+}
+
+.chatTargetBox.hidden {
+  display: none;
+}
+
+.chatTargetEmpty {
+  min-height: 100%;
+  padding: 12px 10px;
+  border: 1px dashed rgba(0, 255, 170, 0.24);
+  border-radius: 8px;
+  color: #9fb3bf;
+  background: rgba(5, 16, 24, 0.46);
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.chatTargetEmpty.hidden {
+  display: none;
+}
+
+.chatMessages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 230px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(24, 43, 47, 0.52);
+  border: 1px solid rgba(0, 255, 170, 0.20);
+  margin-bottom: 14px;
+}
+
+.chatBubble {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(28, 55, 58, 0.76);
+  border: 1px solid rgba(0, 255, 170, 0.18);
+}
+
+/* ── Colores por rol del autor ─────────────────────── */
+.chatBubble.rol-admin {
+  background: rgba(20, 79, 50, 0.75);
+  border-color: rgba(0, 180, 70, 0.45);
+}
+.chatBubble.rol-admin .chatBubbleHeader { color: #4ade80; }
+
+.chatBubble.rol-cut {
+  background: rgba(16, 96, 57, 0.58);
+  border-color: rgba(0, 220, 100, 0.30);
+}
+.chatBubble.rol-cut .chatBubbleHeader { color: #86efac; }
+
+.chatBubble.rol-cet {
+  background: rgba(0, 200, 100, 0.10);
+  border-color: rgba(0, 255, 170, 0.18);
+}
+.chatBubble.rol-cet .chatBubbleHeader { color: #9fd9cb; }
+
+.chatBubble.rol-cell {
+  background: rgba(35, 49, 55, 0.58);
+  border-color: rgba(0, 255, 170, 0.12);
+}
+.chatBubble.rol-cell .chatBubbleHeader { color: #6b9e92; }
+
+.chatBubble.mine {
+  background: rgba(0, 195, 255, 0.12);
+  border-color: rgba(0, 195, 255, 0.18);
+}
+
+.chatBubble.urgente {
+  /* mismo estilo que burbuja normal PTT */
+}
+
+.chatBubble.urgente .chatBubbleHeader span {
+  /* mismo estilo que burbuja normal */
+}
+
+.chatBubble.urgente .chatBubbleText {
+  /* mismo estilo que burbuja normal */
+}
+
+
+.chatBubbleHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #9fd9cb;
+  font-weight: 700;
+}
+
+.chatBubbleText {
+  font-size: 15px;
+  line-height: 1.4;
+  color: #eefbf7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chatComposer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#chatInput {
+  min-height: 26px;
+  max-height: 88px;
+  flex: 1;
+  resize: none;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 9px 6px;
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.chatInputBar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 52px;
+  padding: 6px 8px;
+  border-radius: 24px;
+  border: 1px solid rgba(0, 255, 170, 0.18);
+  background: rgba(42, 55, 58, 0.92);
+}
+
+.chatIconBtn {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-weight: 900;
+  font-size: 18px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #eafff8;
+}
+
+.voiceRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.chatActionBtn,
+.sendChatBtn:not(.chatIconBtn) {
+  min-height: 58px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  font-weight: 900;
+  font-size: 16px;
+  padding: 12px;
+}
+
+.chatActionBtn {
+  background: rgba(0, 255, 170, 0.14);
+  color: #eafff8;
+  border: 1px solid rgba(0, 255, 170, 0.20);
+}
+
+.voiceBtn.recording {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ffdede;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.voiceStatus {
+  font-size: 13px;
+  color: #a9d7c8;
+  background: rgba(37, 65, 70, 0.65);
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.sendChatBtn {
+  background: rgba(0, 255, 170, 0.14);
+  color: #00ffa6;
+  font-size: 16px;
+}
+
+.voiceAudio {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.emptyChat {
+  color: #9fb3bf;
+  font-size: 14px;
+  text-align: center;
+  padding: 20px 10px;
+}
+
+.compassRose {
+  position: fixed;
+  right: 26px;
+  bottom: 26px;
+  width: 120px;
+  height: 120px;
+  z-index: 900;
+  pointer-events: none;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.30);
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.18) 58%, rgba(0, 0, 0, 0.05) 100%);
+  box-shadow: 0 0 22px rgba(0, 0, 0, 0.35);
+}
+
+.compassRose::before,
+.compassRose::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.80);
+}
+
+.compassRose::before {
+  width: 2px;
+  height: 96px;
+}
+
+.compassRose::after {
+  width: 96px;
+  height: 2px;
+}
+
+.compassCore {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #ff7b00;
+  box-shadow: 0 0 12px rgba(255, 123, 0, .7);
+}
+
+.compassNorth,
+.compassEast,
+.compassSouth,
+.compassWest {
+  position: absolute;
+  font-weight: 900;
+  color: #ffffff;
+  text-shadow: 0 0 10px rgba(0, 0, 0, .7);
+}
+
+.compassNorth {
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compassSouth {
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compassEast {
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.compassWest {
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.mapActionButtons {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  z-index: 900;
+  pointer-events: auto;
+}
+
+.actionBtn {
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  transition: all .2s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.actionBtn.saveBtn {
+  background: rgba(0, 255, 170, 0.85);
+  border: 1px solid #00ffa6;
+  color: #001b1b;
+  font-weight: 900;
+}
+
+.actionBtn.saveBtn:hover {
+  background: #00ffa6;
+  box-shadow: 0 0 20px rgba(0, 255, 170, 0.8);
+  transform: translateY(-2px);
+}
+
+.actionBtn.cancelBtn {
+  background: rgba(255, 50, 50, 0.85);
+  border: 1px solid #ff3232;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.actionBtn.cancelBtn:hover {
+  background: #ff3232;
+  box-shadow: 0 0 20px rgba(255, 50, 50, 0.8);
+  transform: translateY(-2px);
+}
+
+.cesium-viewer-toolbar {
+  top: 10px !important;
+  right: 10px !important;
+}
+
+.cesium-button {
+  border-radius: 10px !important;
+}
+
+.cesium-viewer-geocoderContainer {
+  margin-top: 8px !important;
+}
+
+@media (max-width: 768px) {
+  .topbar {
+    width: 320px;
+    max-width: calc(100vw - 80px);
+  }
+
+  .floatingTools {
+    top: 84px;
+    left: 10px;
+  }
+
+  .glassPanel {
+    top: 84px;
+    left: 74px;
+    width: calc(100vw - 84px);
+    max-height: calc(100vh - 96px);
+  }
+
+  .tacticalWide,
+  .chatPanel,
+  .chatAudiencePanel,
+  .chatGroupMembersPanel {
+    width: calc(100vw - 84px);
+    left: 74px;
+  }
+
+  .btnGrid,
+  .latlngRow,
+  .quickMsgGrid,
+  .voiceRow,
+  .chatChannelTabs,
+  .styleGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .compassRose {
+    width: 92px;
+    height: 92px;
+    right: 18px;
+    bottom: 18px;
+  }
+}
+
+/* --- TACTICAL TOOL SELECT --- */
+.glassPanel select optgroup {
+  color: #00ffa6;
+  /* Neon green titles */
+  background: #0d1a2a;
+  font-weight: 800;
+  font-style: normal;
+  padding: 5px 0;
+}
+
+.glassPanel select option {
+  color: #e6edf3;
+  background: #08111b;
+  font-weight: 500;
+  padding: 8px;
+}
+
+/* ── Historia (Deshacer/Rehacer) en Topbar ─────────── */
+
+.topbarRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topHistoryBtn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #00ffa6;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.topHistoryBtn:hover:not(:disabled) {
+  background: rgba(0, 255, 170, 0.15);
+  transform: scale(1.1);
+}
+
+.topHistoryBtn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  color: #4b5563;
+}
+
+/* ── Generador Símbolos MIL ───────────────────────────── */
+
+.milPreviewBox {
+  width: 80px;
+  height: 80px;
+  background: rgba(0, 255, 166, 0.08);
+  border: 2px dashed rgba(0, 255, 166, 0.3);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.milPreviewBox canvas,
+.milPreviewBox img,
+.milPreviewBox svg {
+  max-width: 64px;
+  max-height: 64px;
+  width: auto;
+  height: auto;
+}
+
+.milPreviewBox:hover {
+  background: rgba(0, 255, 166, 0.15);
+  border-color: rgba(0, 255, 166, 0.6);
+  box-shadow: 0 0 15px rgba(0, 255, 166, 0.2);
+  transform: scale(1.05);
+}
+
+.milPreviewBox:active {
+  cursor: grabbing;
+}
+
+.fieldRow {
+  display: flex;
+  gap: 10px;
+}
+
+.fieldCol {
+  flex: 1;
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 11px;
+  color: #a0c4ff;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+/* Tactical object panel */
+#tacticalPanel {
+  width: 416px;
+  padding: 24px 18px 18px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(12, 18, 27, 0.94), rgba(7, 12, 20, 0.90)),
+    rgba(10, 15, 25, 0.88);
+  border-color: rgba(0, 255, 170, 0.22);
+}
+
+#tacticalPanel .panelTitle {
+  margin-bottom: 18px;
+  font-size: 21px;
+  line-height: 1.15;
+}
+
+#tacticalPanel .groupTitle {
+  margin: 0 0 8px;
+  color: #c7d2de;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+#tacticalPanel .tacticalToolPicker {
+  margin-bottom: 12px;
+}
+
+#tacticalPanel .opsInput,
+#tacticalPanel select,
+#tacticalPanel input:not([type="range"]) {
+  min-height: 42px;
+  margin-bottom: 0;
+  border-radius: 12px;
+  background: rgba(2, 8, 14, 0.72);
+  border-color: rgba(0, 255, 170, 0.28);
+}
+
+#tacticalPanel .opsInput:hover,
+#tacticalPanel select:hover,
+#tacticalPanel input:not([type="range"]):hover {
+  border-color: rgba(0, 255, 170, 0.42);
+}
+
+#tacticalPanel #symLabelContainer {
+  margin: 10px 0 16px;
+}
+
+#tacticalPanel .tacticalStyleGrid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px 12px;
+  align-items: end;
+  margin-top: 0;
+}
+
+#tacticalPanel .tacticalField {
+  min-width: 0;
+}
+
+#tacticalPanel #radiusContainer {
+  grid-column: 1 / -1;
+}
+
+#tacticalPanel .controlLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#tacticalPanel .rangeValue {
+  min-width: 48px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.72);
+  color: #e7f8ff;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+  text-transform: none;
+}
+
+#tacticalPanel input[type="range"]:not(.cameraPlaybackRange) {
+  margin: 14px 0 7px !important;
+}
+
+#tacticalPanel .tacticalNumberInput {
+  font-variant-numeric: tabular-nums;
+}
+
+#tacticalPanel #tacticalActionButtons {
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 18px !important;
+}
+
+#tacticalPanel #tacticalActionButtons.hasFinishAction {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+#tacticalPanel #tacticalActionButtons.hasFinishAction .btnBeige {
+  min-height: 38px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+#tacticalPanel .btnBeige {
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+#tacticalPanel .btnBeige:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+#tacticalPanel .secondaryAction {
+  min-height: 46px;
+  border: 1px solid rgba(0, 255, 170, 0.5);
+  background: linear-gradient(135deg, rgba(0, 255, 170, 0.92), rgba(14, 165, 233, 0.9));
+  color: #041016;
+  font-weight: 900;
+  box-shadow: 0 10px 24px rgba(0, 255, 170, 0.16);
+}
+
+#tacticalPanel .secondaryAction:hover:not(:disabled) {
+  background: linear-gradient(135deg, #35ffc0, #38bdf8);
+  box-shadow: 0 12px 28px rgba(14, 165, 233, 0.24);
+}
+
+#tacticalPanel .secondaryAction:disabled {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.72);
+  color: rgba(226, 232, 240, 0.55);
+  box-shadow: none;
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  #tacticalPanel {
+    width: calc(100vw - 84px);
+    padding: 22px 14px 16px;
+  }
+
+  #tacticalPanel .tacticalStyleGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Cursores tácticos */
+#map.pencil-cursor canvas { cursor: crosshair !important; }
+#map.eraser-cursor canvas { cursor: cell !important; }
+
+/* Botón de Recentrar Mapa */
+.recenterMapBtn {
+  position: fixed;
+  right: 26px;
+  bottom: 34px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 255, 170, 0.4);
+  background: rgba(10, 20, 40, 0.9);
+  color: #00ffa6;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.recenterMapBtn:hover {
+  background: #00ffa6;
+  color: #001b1b;
+  transform: scale(1.1);
+  box-shadow: 0 0 20px rgba(0, 255, 170, 0.4);
+}
+
+/* Camera Panel */
+.cameraPanel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  max-width: 90vw;
+  max-height: 80vh;
+  z-index: 1300;
+  padding: 0;
+  border-radius: 16px;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: auto;
+  resize: both;
+  display: none;
+  flex-direction: column;
+  cursor: grab;
+}
+
+.cameraPanel.open {
+  display: flex !important;
+}
+
+.cameraLayoutControls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(2, 6, 12, 0.74);
+  border: 1px solid rgba(0, 255, 166, 0.20);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.layoutBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(0, 255, 166, 0.36);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #eafff8;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.34);
+}
+
+.layoutBtn:hover,
+.layoutBtn.active {
+  background: rgba(0, 255, 166, 0.88);
+  border-color: rgba(0, 255, 166, 0.95);
+  color: #001b1b;
+}
+
+.layoutBtn:disabled,
+.layoutBtn[aria-disabled="true"] {
+  opacity: 0.38;
+  cursor: default;
+  pointer-events: none;
+}
+
+.cameraPanel.is-dragging {
+  cursor: grabbing;
+}
+
+.cameraFeeds {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.cameraFeeds.grid-layout {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-auto-rows: 1fr;
+}
+
+.cameraFeeds.speaker-layout {
+  grid-template-columns: 1fr;
+  grid-auto-rows: minmax(360px, 1fr);
+  overflow: hidden;
+}
+
+.cameraFeeds.speaker-layout .cameraFeed {
+  display: none;
+}
+
+.cameraFeeds.speaker-layout .cameraFeed.focused {
+  display: block;
+  height: 100%;
+  min-height: 360px;
+  outline: 2px solid rgba(0, 255, 166, 0.72);
+  outline-offset: -2px;
+}
+
+.cameraFeed {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  border: none;
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+.cameraFeed video,
+.cameraFeed img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cameraFrozenFrame {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.cameraFeed.hasFrozenFrame video {
+  opacity: 0;
+}
+
+.cameraFeed.hasFrozenFrame .cameraConnectionLostScreen,
+.cameraFeed.hasFrozenFrame .cameraConnectionLostScreen.visible {
+  display: none !important;
+}
+
+.cameraConnectionLostScreen {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background:
+    linear-gradient(180deg, rgba(10, 14, 22, 0.82), rgba(0, 0, 0, 0.94)),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 4px);
+  color: #f8fafc;
+  text-align: center;
+}
+
+.cameraConnectionLostScreen.visible {
+  display: flex;
+}
+
+.cameraConnectionLostText {
+  max-width: min(260px, 90%);
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(248, 113, 113, 0.42);
+  color: #fecaca;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.42);
+}
+
+.cameraFeed.connectionLostFinal video {
+  opacity: 0.38;
+}
+
+.cameraFeedLabel {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(10, 15, 25, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(0, 255, 170, 0.3);
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  max-width: calc(100% - 16px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Confirmation Modal */
+.confirmationModal.hidden { display: none; }
+
+.confirmationModal {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.confirmationBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 8, 18, 0.54);
+  backdrop-filter: blur(8px) saturate(1.05);
+  -webkit-backdrop-filter: blur(8px) saturate(1.05);
+}
+
+.confirmationCard {
+  position: relative;
+  top: auto;
+  left: auto;
+  transform: none;
+  width: min(390px, 100%);
+  padding: 26px 24px 22px;
+  border-radius: 16px;
+  border: 1px solid rgba(96, 165, 250, 0.24);
+  background:
+    linear-gradient(180deg, rgba(13, 26, 44, 0.76), rgba(8, 18, 31, 0.68)),
+    rgba(8, 18, 31, 0.64);
+  color: #f8fbff;
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(18px) saturate(1.12);
+  -webkit-backdrop-filter: blur(18px) saturate(1.12);
+  z-index: 1;
+}
+
+.confirmationCard h3 {
+  margin: 0 0 12px;
+  color: #f8fbff;
+  font-size: 21px;
+  line-height: 1.15;
+  font-weight: 850;
+  text-wrap: balance;
+}
+
+.confirmationCard p {
+  max-width: 34ch;
+  margin: 0 0 24px;
+  color: #c7d7ec;
+  font-size: 14px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.confirmationActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.confirmationActions button {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 11px;
+  padding: 10px 16px;
+  font-weight: 800;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease, color 160ms ease;
+}
+
+.confirmationActions button:hover {
+  transform: translateY(-1px);
+}
+
+.confirmationActions button:focus-visible {
+  outline: 2px solid rgba(147, 197, 253, 0.95);
+  outline-offset: 2px;
+}
+
+#confirmationConfirmBtn {
+  background: #ef2f32;
+  border-color: rgba(248, 113, 113, 0.44);
+  color: #fff;
+}
+
+#confirmationConfirmBtn:hover {
+  background: #dc2626;
+}
+
+#confirmationCancelBtn {
+  grid-column: auto;
+  background: rgba(255, 255, 255, 0.075);
+  border-color: rgba(203, 213, 225, 0.16);
+  color: #e6eefb;
+}
+
+#confirmationCancelBtn:hover {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(203, 213, 225, 0.26);
+}
+
+@media (max-width: 460px) {
+  .confirmationCard {
+    width: 100%;
+    padding: 24px 20px 20px;
+  }
+
+  .confirmationActions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirmationActions button {
+    transition: none;
+  }
+
+  .confirmationActions button:hover {
+    transform: none;
+  }
+}
+
+/* Personnel Detail Modal */
+.personnelDetailModal.hidden { display: none; }
+
+.personnelDetailModal {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.personnelDetailBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 8, 20, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.personnelDetailCard {
+  position: relative;
+  width: min(480px, calc(100vw - 32px));
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 24px;
+  border-radius: 18px;
+  border: 1px solid rgba(0, 255, 170, 0.2);
+  background: rgba(14, 23, 37, 0.96);
+  color: #e5eefc;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+
+.person-link,
+.tracking-link {
+  color: #00ffa6;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(0, 255, 166, 0.3);
+}
+
+.person-link.tracking-locatable,
+.tracking-link.tracking-locatable {
+  font-weight: inherit;
+}
+
+.person-link.is-followed,
+.tracking-link.is-followed {
+  font-weight: 900;
+  text-decoration-color: #38bdf8;
+}
+
+.person-link:hover,
+.tracking-link:hover {
+  text-decoration-color: #00ffa6;
+}
+
+.personInfoPopup.hidden {
+  display: none;
+}
+
+.personInfoPopup {
+  position: fixed;
+  z-index: 1260;
+  width: min(330px, calc(100vw - 28px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(89, 132, 164, 0.58);
+  background: linear-gradient(180deg, rgba(10, 24, 38, 0.98), rgba(6, 17, 28, 0.99));
+  color: #f8fafc;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.54),
+    0 0 0 1px rgba(148, 163, 184, 0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(89, 132, 164, 0.72) rgba(7, 20, 32, 0.72);
+}
+
+.personInfoPopupClose {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(148, 163, 184, 0.20);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.42);
+  color: #d9e8f2;
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.personInfoPopupClose:hover {
+  border-color: rgba(96, 165, 250, 0.52);
+  background: rgba(30, 64, 88, 0.58);
+  color: #ffffff;
+}
+
+.personInfoTitle {
+  margin: 0 24px 9px 0;
+  padding: 0 0 10px;
+  border-bottom: 1px solid rgba(89, 132, 164, 0.50);
+  color: #7ab5ff;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.personInfoGrid {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 7px 12px;
+  font-size: 13px;
+  line-height: 1.28;
+}
+
+.personInfoLabel {
+  color: #c7d8e5;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.personInfoValue {
+  color: #f8fafc;
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.personInfoDevices {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(89, 132, 164, 0.42);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.personInfoDeviceLabel {
+  color: #c7d8e5;
+  font-weight: 900;
+}
+
+.personInfoDeviceList {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.personInfoDeviceLine {
+  color: #f8fafc;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.personInfoDeviceLine.muted {
+  color: #cbd5e1;
+}
+
+.personInfoStatus {
+  display: grid;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(89, 132, 164, 0.50);
+  border-radius: 8px;
+  background: rgba(13, 35, 52, 0.76);
+  color: #dbeafe;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.personInfoStatus strong {
+  color: #67e8f9;
+}
+
+.personInfoStatus.offline {
+  border-color: rgba(89, 132, 164, 0.50);
+  background: rgba(13, 35, 52, 0.76);
+}
+
+.personInfoStatus.offline strong {
+  color: #67e8f9;
+}
+
+.personInfoStatus span {
+  display: block;
+  margin-top: 1px;
+  color: #c7d8e5;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.personInfoBio {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(89, 132, 164, 0.42);
+  border-radius: 8px;
+  background: rgba(13, 35, 52, 0.58);
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+.personInfoBioTitle {
+  margin-bottom: 8px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.personInfoUpdated {
+  margin-top: 7px;
+  color: #cbd5e1;
+  font-size: 11px;
+}
+
+.personInfoCamera {
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgba(89, 132, 164, 0.52);
+  background: #06111d;
+}
+
+.personInfoCamera img {
+  display: block;
+  width: 100%;
+  height: 92px;
+  object-fit: cover;
+}
+
+.personInfoCamera .personCameraWaiting {
+  height: 98px;
+  min-height: 98px;
+  padding: 12px;
+}
+
+.personInfoCamera .personInfoCameraFeed {
+  height: 98px;
+  min-height: 98px;
+}
+
+.personInfoCamera .cameraFeedBadge {
+  top: 6px;
+  right: 6px;
+  font-size: 10px;
+  padding: 3px 7px;
+}
+
+.personInfoCamera .cameraAudioBtn,
+.personInfoCamera .cameraSelectBtn {
+  display: none;
+}
+
+.personInfoCamera .cameraFeedName {
+  bottom: 6px !important;
+  left: 6px;
+  max-width: calc(100% - 12px);
+  font-size: 11px;
+  padding: 3px 7px;
+}
+
+#vehicleQuickMenu {
+  width: min(294px, calc(100vw - 24px)) !important;
+  min-width: 0 !important;
+  padding: 14px !important;
+  border-radius: 10px !important;
+  border-color: rgba(74, 174, 197, 0.48) !important;
+  background: rgba(13, 40, 56, 0.98) !important;
+  color: #f8fafc !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.54) !important;
+}
+
+#vehicleQuickMenu > div:first-child {
+  margin-bottom: 12px !important;
+  padding-bottom: 10px !important;
+  border-bottom-color: rgba(89, 132, 164, 0.50) !important;
+}
+
+#vehicleQuickMenuName {
+  max-width: calc(100% - 34px) !important;
+  color: #9fe3ed !important;
+  font-size: 15px !important;
+  letter-spacing: 0 !important;
+}
+
+#btnCloseVehicleQuickMenu {
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  border: 1px solid rgba(148, 163, 184, 0.20) !important;
+  border-radius: 7px !important;
+  background: rgba(15, 23, 42, 0.42) !important;
+  color: #d9e8f2 !important;
+  font-size: 17px !important;
+  line-height: 1 !important;
+}
+
+#btnCloseVehicleQuickMenu:hover {
+  border-color: rgba(96, 165, 250, 0.52) !important;
+  background: rgba(30, 64, 88, 0.58) !important;
+  color: #ffffff !important;
+}
+
+#vehicleQuickMenuOccupants {
+  margin-bottom: 12px !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 12px !important;
+}
+
+#vehicleQuickMenuOccupants > div:first-child {
+  margin-bottom: 4px !important;
+  padding: 2px 2px 7px !important;
+  color: #a9dcec !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+#vehicleQuickMenuOccupantsList {
+  display: grid !important;
+  gap: 0 !important;
+  color: #f8fafc !important;
+  line-height: 1.25 !important;
+}
+
+#vehicleQuickMenuOccupantsList > div {
+  overflow-wrap: anywhere;
+}
+
+#vehicleQuickMenuOccupantsList > div:not([style*="color"]) {
+  padding: 5px 7px;
+  border-radius: 7px;
+  background: rgba(89, 132, 164, 0.16);
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+#vehicleQuickMenu .actionBtn {
+  min-height: 38px !important;
+  padding: 9px 11px !important;
+  border-radius: 8px !important;
+  background: rgba(25, 67, 87, 0.82) !important;
+  border: 1px solid rgba(74, 174, 197, 0.42) !important;
+  color: #edf6fb !important;
+  box-shadow: none !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+#vehicleQuickMenu .actionBtn:hover {
+  background: rgba(36, 92, 111, 0.92) !important;
+  border-color: rgba(103, 215, 226, 0.68) !important;
+}
+
+.topbar {
+  padding: 4px 8px;
+}
+
+/* Compatibilidad del proyecto: cámaras WebRTC, reproducción local y adjuntos */
+.cameraFeedName {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(10, 15, 25, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(0, 255, 170, 0.3);
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  max-width: calc(100% - 16px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 2;
+}
+
+.cameraFeed.hasPlayback .cameraFeedName {
+  bottom: 58px;
+}
+
+.cameraFeedBadge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 3px 8px;
+  background: rgba(239, 68, 68, 0.9);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  z-index: 2;
+}
+
+.cameraFeed.localArchive .cameraFeedBadge {
+  background: rgba(245, 158, 11, 0.92);
+  color: #1f1300;
+}
+
+.cameraFeed.hasLocalArchive:not(.localArchive) .cameraFeedBadge::after {
+  content: none;
+  display: none;
+}
+
+.cameraSelectBtn {
+  position: absolute;
+  top: 42px;
+  right: 10px;
+  z-index: 6;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(0, 255, 166, 0.34);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.68);
+  color: #eafff8;
+  padding: 0;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.32);
+}
+
+.cameraSelectBtn:hover {
+  background: rgba(0, 255, 166, 0.88);
+  border-color: rgba(0, 255, 166, 0.9);
+  color: #001b1b;
+}
+
+.cameraFeeds.speaker-layout .cameraSelectBtn {
+  display: none;
+}
+
+.cameraAudioBtn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  min-width: 94px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.68);
+  color: #e6edf3;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.32);
+}
+
+.cameraAudioBtn:hover,
+.cameraAudioBtn.active {
+  background: rgba(0, 255, 166, 0.88);
+  border-color: rgba(0, 255, 166, 0.9);
+  color: #001b1b;
+}
+
+.cameraPlayback {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "back range forward live"
+    "time time time time";
+  gap: 4px;
+  align-items: center;
+  padding: 14px 8px 6px;
+  border-radius: 0 0 8px 8px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.62));
+  border: 0;
+  box-shadow: none;
+  opacity: 0.9;
+  transition: opacity 0.18s ease, padding 0.18s ease, background 0.18s ease, bottom 0.18s ease;
+}
+
+.cameraPlayback:hover,
+.cameraPlayback:focus-within {
+  opacity: 1;
+}
+
+.camProgressTrack {
+  grid-area: range;
+  position: relative;
+  width: 100%;
+  height: 2px;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: height 0.15s ease;
+}
+
+.cameraPlayback:hover .camProgressTrack {
+  height: 5px;
+}
+
+.camProgressFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: rgba(255, 0, 0, 0.72);
+  border-radius: 2px;
+  transition: width 0.05s linear;
+  pointer-events: none;
+}
+
+.camScrubHandle {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  background: rgba(255, 0, 0, 0.9);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.15s ease, left 0.05s linear;
+  box-shadow: 0 0 6px rgba(255, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.cameraPlayback:hover .camScrubHandle {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.cameraPlaybackRange {
+  position: absolute;
+  inset: -10px 0;
+  width: 100%;
+  height: 20px;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.cameraPlaybackBtn[data-skip="-10"] {
+  grid-area: back;
+}
+
+.cameraPlaybackBtn[data-skip="10"] {
+  grid-area: forward;
+}
+
+.cameraLiveBtn {
+  grid-area: live;
+}
+
+.cameraPlaybackBtn,
+.cameraLiveBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.58);
+  color: #e6edf3;
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.cameraPlaybackBtn:hover,
+.cameraLiveBtn:hover,
+.cameraLiveBtn.active {
+  background: rgba(255, 0, 0, 0.28);
+  border-color: rgba(255, 0, 0, 0.55);
+  color: #fff;
+}
+
+.cameraLiveBtn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.cameraPlaybackBtn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.camTimeRow {
+  grid-area: time;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.cameraPlaybackTime,
+.cameraPlaybackStatus {
+  font-size: 10px;
+  font-weight: 900;
+  color: #dbeafe;
+  white-space: nowrap;
+}
+
+.cameraPlaybackStatus {
+  min-width: 44px;
+  text-align: center;
+  border-radius: 5px;
+  padding: 2px 6px;
+  background: rgba(255, 0, 0, 0.15);
+  color: #ff4444;
+  cursor: default;
+}
+
+.cameraPlaybackStatus[data-status="local"] {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fde68a;
+}
+
+.cameraPlaybackStatus[data-status="rev"] {
+  background: rgba(59, 130, 246, 0.18);
+  color: #bfdbfe;
+}
+
+.cameraPlaybackStatus[data-status="esperando"],
+.cameraPlaybackStatus[data-status="sin-senal"] {
+  background: rgba(148, 163, 184, 0.18);
+  color: #e2e8f0;
+}
+
+/* Visual de camaras tomado de origin/frontend, conservando controles existentes */
+.cameraPanel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  max-width: 90vw;
+  max-height: 80vh;
+  z-index: 1300;
+  padding: 0;
+  border-radius: 16px;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: auto;
+  resize: both;
+  display: none;
+  flex-direction: column;
+}
+
+.cameraPanel.open {
+  display: flex !important;
+}
+
+.cameraFeeds {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.cameraFeeds.grid-layout {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-auto-rows: 1fr;
+}
+
+.cameraFeeds.speaker-layout {
+  grid-template-columns: 1fr;
+  grid-auto-rows: minmax(360px, 1fr);
+  overflow: hidden;
+}
+
+.cameraFeeds.speaker-layout .cameraFeed {
+  display: none;
+}
+
+.cameraFeeds.speaker-layout .cameraFeed.focused {
+  display: block;
+  height: 100%;
+  min-height: 360px;
+  outline: 2px solid rgba(0, 255, 166, 0.72);
+  outline-offset: -2px;
+}
+
+.cameraFeed {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  border: none;
+  width: 100%;
+  height: 100%;
+}
+
+.cameraFeed video,
+.cameraFeed img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cameraWaitingSignal,
+.personCameraWaiting {
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.20);
+  background:
+    linear-gradient(135deg, rgba(8, 16, 24, 0.96), rgba(3, 10, 17, 0.98)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 14px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 14px);
+  color: #e5eefc;
+  text-align: center;
+}
+
+.cameraWaitingSignal span,
+.personCameraWaiting span {
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.cameraWaitingSignal strong,
+.personCameraWaiting strong {
+  min-width: 74px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(34, 211, 238, 0.42);
+  background: rgba(8, 47, 73, 0.42);
+  color: #67e8f9;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.cameraWaitingSignal[data-protocol="RTMP"] strong,
+.personCameraWaiting[data-protocol="RTMP"] strong {
+  border-color: rgba(251, 146, 60, 0.48);
+  background: rgba(67, 20, 7, 0.42);
+  color: #fdba74;
+}
+
+.cameraEmptyState {
+  min-height: 220px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #020617;
+}
+
+.cameraFeedName,
+.cameraFeedLabel {
+  position: absolute;
+  bottom: 40px !important;
+  left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(10, 15, 25, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(0, 255, 170, 0.3);
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  max-width: calc(100% - 16px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 2;
+}
+
+.cameraFeed:not(.hasPlayback) .cameraFeedName {
+  bottom: 8px !important;
+}
+
+.cameraPlayback.camScrubberWrap,
+.camScrubberWrap {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(6, 8, 12, 0.58) 38%, rgba(0, 0, 0, 0.92) 100%),
+    linear-gradient(90deg, rgba(255, 0, 0, 0.18), rgba(255, 0, 0, 0.04) 48%, rgba(255, 0, 0, 0.18));
+  padding: 14px 10px 6px;
+  z-index: 5;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 1;
+}
+
+.cameraPlayback.camScrubberWrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "range"
+    "time";
+  gap: 4px;
+  align-items: center;
+}
+
+.camProgressTrack {
+  grid-area: range;
+  position: relative;
+  width: 100%;
+  height: 4px;
+  min-width: 0;
+  background: linear-gradient(90deg, rgba(255,255,255,0.26), rgba(255,255,255,0.12));
+  border-radius: 2px;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04), 0 0 12px rgba(0,0,0,0.45);
+  transition: height 0.15s ease, box-shadow 0.15s ease;
+}
+
+.camScrubberWrap:hover .camProgressTrack,
+.cameraPlayback:hover .camProgressTrack {
+  height: 6px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.07), 0 0 16px rgba(255,0,0,0.25);
+}
+
+.camProgressFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #ff1f1f 0%, #ff0000 64%, #ff6b6b 100%);
+  border-radius: 2px;
+  transition: width 0.05s linear;
+  pointer-events: none;
+  box-shadow: 0 0 10px rgba(255,0,0,0.65);
+}
+
+.camScrubHandle {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  background: radial-gradient(circle at 35% 35%, #ffb3b3 0%, #ff1f1f 38%, #b80000 100%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.15s ease, left 0.05s linear;
+  box-shadow: 0 0 0 3px rgba(255,0,0,0.14), 0 0 14px rgba(255,0,0,0.72);
+  pointer-events: none;
+}
+
+.camScrubberWrap:hover .camScrubHandle,
+.cameraPlayback:hover .camScrubHandle {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.camTimeRow {
+  grid-area: time;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 0;
+  margin-top: 4px;
+}
+
+.camElapsed,
+.cameraPlaybackTime {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.7);
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
+}
+
+.camLiveBadge,
+.cameraPlaybackStatus {
+  min-width: 0;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #ff0000;
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255,0,0,0.15);
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
+}
+
+.camLiveBadge.camLive,
+.cameraPlaybackStatus.camLive {
+  color: #ff0000;
+  background: rgba(255,0,0,0.15);
+}
+
+.camLiveBadge.camBehind,
+.cameraPlaybackStatus.camBehind {
+  color: rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.08);
+}
+
+.camLiveBadge:hover,
+.cameraPlaybackStatus:hover {
+  background: rgba(255,0,0,0.3);
+  color: #ff4444;
+}
+
+.cameraPlaybackBtn,
+.cameraLiveBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 20px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 4px;
+  background: rgba(0,0,0,0.42);
+  color: rgba(255,255,255,0.78);
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.cameraPlaybackBtn:hover,
+.cameraLiveBtn:hover,
+.cameraLiveBtn.active {
+  background: rgba(255,0,0,0.3);
+  border-color: rgba(255,0,0,0.45);
+  color: #fff;
+}
+
+.cameraBottomControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -2px 8px 0;
+  padding: 7px 8px;
+  border-radius: 0 0 10px 10px;
+  background: linear-gradient(180deg, rgba(5, 8, 12, 0.82), rgba(0, 0, 0, 0.70));
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-top: 0;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
+}
+
+.cameraProtocolTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cameraSourceBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.56);
+  color: #eafff8;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.cameraSourceBtn:hover,
+.cameraSourceBtn.active {
+  background: rgba(255, 0, 0, 0.26);
+  border-color: rgba(255, 0, 0, 0.45);
+  color: #fff;
+}
+
+/* Ajuste final del panel de camaras: evita tarjetas comprimidas y overlays amontonados. */
+.cameraPanel {
+  width: min(980px, calc(100vw - 240px));
+  min-width: min(360px, calc(100vw - 24px));
+  min-height: 320px;
+  max-width: calc(100vw - 32px);
+  max-height: min(82vh, 760px);
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.cameraLayoutControls {
+  position: static;
+  align-self: flex-end;
+  margin: 8px 8px 0 auto;
+}
+
+.cameraFeeds {
+  min-height: 0;
+  gap: 10px;
+  padding: 10px;
+  align-content: start;
+}
+
+.cameraFeeds.grid-layout {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: auto;
+}
+
+.cameraPanel.camera-two-column-mode .cameraFeeds.grid-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cameraPanel.camera-list-mode .cameraFeeds.grid-layout {
+  grid-template-columns: 1fr;
+}
+
+.cameraFeeds.grid-layout .cameraFeed {
+  min-height: 158px;
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
+.cameraPanel.camera-list-mode .cameraFeeds.grid-layout .cameraFeed {
+  min-height: 190px;
+}
+
+.cameraWaitingSignal,
+.personCameraWaiting {
+  padding: 42px 48px 40px 14px;
+}
+
+.cameraWaitingSignal strong,
+.personCameraWaiting strong {
+  min-width: 82px;
+  max-width: 100%;
+}
+
+.cameraFeedBadge {
+  max-width: calc(100% - 92px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cameraFeedName,
+.cameraFeedLabel {
+  max-width: calc(100% - 56px);
+}
+
+@media (max-width: 1040px) {
+  .cameraPanel {
+    width: min(760px, calc(100vw - 32px));
+  }
+
+  .cameraFeeds.grid-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .cameraPanel {
+    width: calc(100vw - 20px);
+    min-width: 0;
+    max-width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+
+  .cameraFeeds.grid-layout .cameraFeed {
+    min-height: 172px;
+  }
+
+  .cameraFeeds.grid-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .cameraWaitingSignal,
+  .personCameraWaiting {
+    padding-right: 48px;
+  }
+}
+
+.chatAttachment {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  color: #bfdbfe;
+  text-decoration: none;
+}
+
+.chatAttachmentFile {
+  display: inline-flex;
+  margin-top: 8px;
+  color: #bfdbfe;
+  text-decoration: none;
+}
+
+.chatAttachment img,
+.chatAttachmentMedia {
+  display: block;
+  width: min(260px, 100%);
+  max-height: 220px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.chatAttachmentImage {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 255, 170, 0.20);
+  background: rgba(0, 0, 0, 0.20);
+}
+
+.chatAttachmentAudio {
+  width: 100%;
+  height: 38px;
+}
+
+.chatVoicePlayer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: min(248px, 66vw);
+  min-width: 210px;
+  padding: 3px 2px 1px;
+  color: #dceff4;
+}
+
+.chatVoiceToggle {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #4aaec5;
+  color: #06232b;
+  cursor: pointer;
+  transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.chatVoiceToggle::before {
+  content: "";
+  width: 0;
+  height: 0;
+  margin-left: 3px;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 9px solid currentColor;
+}
+
+.chatVoicePlayer.playing .chatVoiceToggle::before {
+  width: 9px;
+  height: 12px;
+  margin-left: 0;
+  border: 0;
+  background: linear-gradient(90deg, currentColor 0 3px, transparent 3px 6px, currentColor 6px 9px);
+}
+
+.chatVoiceToggle:hover {
+  background: #67d7e2;
+}
+
+.chatVoiceToggle:active {
+  transform: scale(0.94);
+}
+
+.chatVoiceToggle:focus-visible,
+.chatVoiceSeek:focus-visible {
+  outline: 2px solid #a5f3fc;
+  outline-offset: 2px;
+}
+
+.chatVoiceTimeline {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 0 15px;
+}
+
+.chatVoiceWave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  pointer-events: none;
+}
+
+.chatVoiceBar {
+  flex: 1 1 2px;
+  min-width: 2px;
+  max-width: 3px;
+  border-radius: 999px;
+  background: rgba(190, 221, 228, 0.42);
+  transition: background-color 120ms linear;
+}
+
+.chatVoiceBar.played {
+  background: #67d7e2;
+}
+
+.chatVoiceSeek {
+  position: absolute;
+  inset: 0 0 13px;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.chatVoiceDuration {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  color: #9fb8bf;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.chatVoiceAudio {
+  display: none;
+}
+
+.chatBubble.mine .chatVoiceToggle {
+  background: #7dd3e8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chatVoiceToggle,
+  .chatVoiceBar {
+    transition: none;
+  }
+}
+
+.chatAttachmentFile {
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: rgba(30, 41, 59, 0.85);
+}
+
+/* Dashboard palette from origin/frontend */
+body {
+  color: var(--dash-text);
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.32);
+}
+
+.topbar {
+  background: var(--dash-surface-strong);
+  border-color: var(--dash-border);
+  color: var(--dash-text);
+  box-shadow: var(--dash-shadow);
+}
+
+.brandDot {
+  background: var(--dash-accent-light);
+  box-shadow: 0 0 12px rgba(96, 165, 250, .75);
+}
+
+.who {
+  color: var(--dash-muted);
+}
+
+.topBtn,
+.mapTopActionBtn,
+.toolFab.active,
+.btnBeige,
+.chatTab.active,
+.gridGenerateBtn,
+.actionBtn.saveBtn,
+#markZoneBtn,
+#btnSelectPencil,
+#opStatusBadge {
+  background: linear-gradient(135deg, #0284c7, #38bdf8) !important;
+  color: #f8fbff !important;
+  border-color: rgba(191, 219, 254, 0.52) !important;
+  box-shadow: 0 8px 20px rgba(14, 165, 233, .32) !important;
+}
+
+.vehicleQuickMenuActions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+#vehicleQuickMenu[data-context-type="dron"] {
+  width: min(280px, calc(100vw - 28px));
+}
+
+#vehicleQuickMenu[data-context-type="dron"] #vehicleQuickMenuName {
+  max-width: 210px !important;
+  font-size: 12px !important;
+  line-height: 1.25;
+}
+
+#vehicleQuickMenu[data-context-type="dron"] .vehicleQuickMenuDetails {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+#vehicleQuickMenu[data-context-type="dron"] .vehicleQuickMenuActions {
+  display: none !important;
+}
+
+.vehicleQuickMenuDetails {
+  gap: 6px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 195, 255, 0.2);
+}
+
+#droneQuickMenuInfo {
+  display: grid;
+  gap: 6px;
+}
+
+.droneQuickMenuCamera.cameraFeed {
+  position: relative;
+  width: 100%;
+  min-height: 142px;
+  aspect-ratio: 16 / 9;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #020812;
+}
+
+.droneQuickMenuCamera.cameraFeed video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vehicleQuickMenuDetailRow {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+}
+
+.vehicleQuickMenuDetailRow span {
+  color: #94a3b8;
+}
+
+.vehicleQuickMenuDetailRow strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #e6edf3;
+  font-weight: 700;
+}
+
+.vehicleQuickMenuOccupant {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 3px !important;
+  border: 0;
+  border-bottom: 1px solid rgba(74, 174, 197, 0.18);
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #edf8fb !important;
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vehicleQuickMenuOccupant:hover,
+.vehicleQuickMenuOccupant:focus-visible {
+  background: rgba(74, 174, 197, 0.12) !important;
+  outline: none;
+}
+
+.vehicleQuickMenuOccupant:last-child {
+  border-bottom: 0;
+}
+
+.vehicleQuickMenuOccupantAvatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #4aaec5;
+  color: #082c36;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.chatToolUnreadBadge,
+.chatUnreadBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: #4aaec5;
+  color: #07333a;
+  font-size: 11px;
+  line-height: 20px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  box-shadow: none;
+}
+
+.chatToolUnreadBadge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  z-index: 2;
+}
+
+.chatAudienceChip {
+  position: relative;
+}
+
+.chatUnreadBadge {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+}
+
+.chatToolUnreadBadge[hidden],
+.chatUnreadBadge[hidden] {
+  display: none;
+}
+
+.cameraPlaybackFeedback {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 6;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(5, 14, 25, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.9);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.cameraPlaybackFeedback.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  animation: camera-playback-feedback 620ms ease-out forwards;
+}
+
+.cameraPlaybackFeedback svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@keyframes camera-playback-feedback {
+  0%, 55% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.zoneCoordinatesEditor { margin-top: 12px; display: grid; gap: 8px; }
+#zoneCoordinatesEditControls { display: grid; gap: 8px; }
+.zoneCoordinatesEditor textarea {
+  width: 100%; resize: vertical; min-height: 68px; padding: 9px 10px;
+  border: 1px solid rgba(255,255,255,.2); border-radius: 8px;
+  background: rgba(0,0,0,.3); color: #fff; font: inherit;
+}
+.zoneCoordinatesEditor textarea:focus { outline: 2px solid #38bdf8; outline-offset: 1px; }
+.zoneCoordinatesSummary {
+  padding: 9px 10px; border-radius: 8px; background: rgba(0,0,0,.24);
+  color: #b9eaff; font-size: 12px; line-height: 1.45; white-space: pre-line;
+}
+
+.topBtn {
+  border: 0;
+}
+
+.mapTopActionBtn {
+  font-weight: 900;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.42);
+}
+
+.mapTopActionBtn:hover,
+.btnBeige:hover,
+.actionBtn.saveBtn:hover {
+  background: linear-gradient(135deg, #0369a1, #0ea5e9) !important;
+  box-shadow: 0 12px 28px rgba(14, 165, 233, 0.42) !important;
+}
+
+#closeActiveOpBtn,
+.actionBtn.cancelBtn {
+  background: rgba(127, 29, 29, 0.82) !important;
+  border-color: rgba(248, 113, 113, 0.45) !important;
+  color: #fee2e2 !important;
+  box-shadow: 0 10px 24px rgba(127, 29, 29, 0.28) !important;
+}
+
+#closeActiveOpBtn:hover,
+.actionBtn.cancelBtn:hover {
+  background: rgba(153, 27, 27, 0.88) !important;
+  box-shadow: 0 12px 28px rgba(127, 29, 29, 0.34) !important;
+}
+
+.planningExitBtnPrimary {
+  background: var(--dash-accent);
+  color: #f8fbff;
+}
+
+.mapLayerButton,
+.cesium-button,
+.cesium-viewer-toolbar .cesium-button,
+.cesium-home-button,
+.cesium-navigationHelpButton-wrapper,
+.cesium-sceneModePicker-wrapper .cesium-button,
+.cesium-baseLayerPicker-dropDown,
+.cesium-navigation-help,
+.cesium-geocoder-input {
+  background: var(--dash-surface-strong) !important;
+  border-color: var(--dash-border) !important;
+  color: var(--dash-text) !important;
+  box-shadow: var(--dash-shadow) !important;
+}
+
+.mapLayerButton:hover,
+.mapLayerControl.open .mapLayerButton,
+.cesium-viewer-toolbar .cesium-button:hover,
+.cesium-home-button:hover,
+.cesium-navigationHelpButton-wrapper:hover {
+  border-color: var(--dash-border-strong) !important;
+  background: rgba(59, 130, 246, 0.32) !important;
+  box-shadow: 0 0 16px rgba(96, 165, 250, 0.20) !important;
+}
+
+.mapLayerIcon::before,
+.mapLayerIcon::after {
+  border-color: rgba(125, 211, 252, 0.76);
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.mapLayerMenu {
+  border-color: var(--dash-border);
+  background: rgba(14, 23, 37, 0.96);
+}
+
+.mapLayerOption:hover,
+.mapLayerOption.active {
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-light);
+}
+
+.toolFab {
+  background: var(--dash-surface);
+  color: var(--dash-accent-light);
+  border-color: var(--dash-border);
+  box-shadow: var(--dash-shadow);
+}
+
+.toolFab:hover {
+  background: var(--dash-surface-strong);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, .24);
+}
+
+.glassPanel,
+.chatPanel,
+.chatAudiencePanel,
+.chatGroupMembersPanel {
+  background: var(--dash-surface-strong);
+  border-color: var(--dash-border);
+  box-shadow: var(--dash-shadow);
+  color: var(--dash-text);
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.36);
+}
+
+.chatPanel .opsInput,
+.chatPanel select,
+.chatAudiencePanel .opsInput,
+.chatAudiencePanel select,
+.opsInput,
+.latlngBox,
+.glassPanel select,
+.glassPanel input,
+.glassPanel textarea,
+#routePanel #routeVehicleSelect,
+#routePanel #zoneColorSelect {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: var(--dash-border) !important;
+  color: var(--dash-text) !important;
+}
+
+.opsInput:focus,
+.latlngBox:focus,
+.glassPanel select:focus,
+.glassPanel input:focus,
+.glassPanel textarea:focus {
+  border-color: var(--dash-border-strong) !important;
+  box-shadow: 0 0 0 2px var(--dash-accent-soft) !important;
+}
+
+.glassPanel select optgroup {
+  color: var(--dash-accent-light);
+  background: #1f2937;
+}
+
+.glassPanel select option {
+  color: var(--dash-text);
+  background: #1f2937;
+}
+
+.glassPanel::-webkit-scrollbar-thumb {
+  background: rgba(96, 165, 250, 0.34);
+}
+
+.panelTitle {
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(15, 23, 42, 0.48);
+}
+
+.groupTitle,
+.fieldLabel {
+  color: #f8fafc;
+  text-shadow: 0 1px 3px rgba(15, 23, 42, 0.42);
+}
+
+.iconPallet,
+.routeInfo,
+.quickMsgBtn,
+.chatActionBtn,
+.sendChatBtn,
+.chatAudienceToggle,
+.chatGroupMembersToggle,
+.chatAudienceChip::before,
+.chatConversationAvatar,
+.chatGroupMembersCount,
+.chatTargetBox,
+.milPreviewBox {
+  background: var(--dash-surface-soft);
+  border-color: var(--dash-border);
+}
+
+.quickMsgBtn,
+.chatActionBtn,
+.sendChatBtn,
+.chatAudienceToggle,
+.chatGroupMembersToggle,
+.chatAudienceChip.active,
+.chatAudienceSummary,
+.person-link,
+.tracking-link,
+.personInfoStatus strong,
+.topHistoryBtn {
+  color: var(--dash-accent-light) !important;
+}
+
+.quickMsgBtn:hover,
+.chatAudienceChip.active,
+.topHistoryBtn:hover:not(:disabled) {
+  background: var(--dash-accent-soft);
+}
+
+.iconItem:hover img,
+.milPreviewBox:hover {
+  box-shadow: 0 0 15px rgba(96, 165, 250, 0.26);
+}
+
+.infoBlock,
+.miniCard {
+  background: rgba(224, 242, 254, 0.09);
+  border-color: var(--dash-border);
+  color: #ffffff;
+}
+
+.infoBlock h3 {
+  color: #a5f3fc;
+}
+
+.infoBlock p {
+  color: #f8fafc;
+}
+
+.chatTab,
+.chatMessages,
+.chatBubble,
+.chatGroupMemberItem,
+.chatInputBar,
+.chatAttachmentImage {
+  border-color: rgba(96, 165, 250, 0.20);
+}
+
+.chatTab,
+.quickMsgBtn,
+.chatBubble.mine,
+.chatGroupMemberItem:hover,
+.sendChatBtn {
+  background: rgba(96, 165, 250, 0.14);
+}
+
+.chatBubble.rol-cet,
+.chatBubble.rol-cell {
+  border-color: rgba(96, 165, 250, 0.18);
+}
+
+.chatBubbleHeader {
+  color: #9fd9cb;
+}
+
+.chatAudienceEyebrow,
+.chatAudienceTitle,
+.chatAudienceChip small,
+.chatConversationSubtitle,
+.chatTargetEmpty,
+.emptyChat {
+  color: #9fb3bf;
+}
+
+.chatAudienceChip,
+.chatGroupMemberItem,
+.chatConversationTitle,
+.chatIconBtn,
+.chatActionBtn,
+.cameraSourceBtn {
+  color: #eafff8;
+}
+
+.chatAudienceChip.active::after {
+  background: var(--dash-accent-light);
+}
+
+.chatConversationHeader,
+.chatGroupMembersHeader,
+.personInfoSubtitle,
+.personInfoBio,
+.personInfoCamera,
+.chatAttachmentImage {
+  border-color: var(--dash-border-strong);
+}
+
+.chatTargetBox {
+  border-left-color: var(--dash-accent-light);
+}
+
+.chatTargetEmpty {
+  border-color: rgba(96, 165, 250, 0.24);
+}
+
+.actionBtn {
+  color: var(--dash-text);
+  box-shadow: var(--dash-shadow);
+}
+
+.compassRose {
+  background: radial-gradient(circle, rgba(55, 65, 81, 0.58) 0%, rgba(55, 65, 81, 0.24) 58%, rgba(55, 65, 81, 0.08) 100%);
+  box-shadow: 0 0 22px rgba(15, 23, 42, 0.28);
+}
+
+#tacticalPanel {
+  background: var(--dash-surface-strong);
+  border-color: var(--dash-border);
+}
+
+#tacticalPanel .opsInput,
+#tacticalPanel select,
+#tacticalPanel input:not([type="range"]) {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: var(--dash-border);
+}
+
+#tacticalPanel .opsInput:hover,
+#tacticalPanel select:hover,
+#tacticalPanel input:not([type="range"]):hover {
+  border-color: var(--dash-border-strong);
+}
+
+#tacticalPanel .secondaryAction {
+  border-color: rgba(191, 219, 254, 0.52);
+  background: linear-gradient(135deg, #0284c7, #38bdf8);
+  color: #f8fbff;
+  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.28);
+}
+
+#tacticalPanel .secondaryAction:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0369a1, #0ea5e9);
+  box-shadow: 0 12px 28px rgba(14, 165, 233, 0.34);
+}
+
+.milPreviewBox {
+  border-style: dashed;
+}
+
+.recenterMapBtn {
+  background: var(--dash-surface-strong);
+  border-color: var(--dash-border-strong);
+  color: var(--dash-accent-light);
+  box-shadow: var(--dash-shadow);
+}
+
+.recenterMapBtn:hover {
+  background: var(--dash-accent);
+  color: #f8fbff;
+  box-shadow: 0 0 20px rgba(96, 165, 250, 0.42);
+}
+
+.personInfoTitle {
+  color: #60a5fa;
+}
+
+.personInfoPopup,
+.personnelDetailCard {
+  border-color: rgba(96, 165, 250, 0.30);
+}
+
+.personInfoMessageBtn {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 10px;
+  border: 1px solid rgba(74, 174, 197, 0.48);
+  border-radius: 8px;
+  background: rgba(25, 67, 87, 0.88);
+  color: #edf8fb;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.personInfoMessageBtn:hover,
+.personInfoMessageBtn:focus-visible {
+  border-color: rgba(103, 215, 226, 0.72);
+  background: rgba(36, 92, 111, 0.94);
+  outline: none;
+}
+
+/* Custom Route Panel Styling - Card Separation */
+.routeSectionCard {
+  background: rgba(0, 0, 0, 0.40);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 15px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.routeSectionCard:hover {
+  border-color: rgba(56, 189, 248, 0.30);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.08);
+}
+
+.routeSectionCard .groupTitle {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+/* Force flat theme blue styling globally on all buttons (replaces shiny/gradient styles) */
+.btnBeige,
+.secondaryAction,
+.topBtn,
+.mapTopActionBtn,
+.gridGenerateBtn,
+.actionBtn.saveBtn,
+#markZoneBtn,
+#btnSelectPencil,
+#opStatusBadge {
+  background: var(--dash-accent) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--dash-border) !important;
+  box-shadow: var(--dash-shadow) !important;
+  text-shadow: none !important;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.btnBeige:hover,
+.secondaryAction:hover,
+.topBtn:hover,
+.mapTopActionBtn:hover,
+.gridGenerateBtn:hover,
+.actionBtn.saveBtn:hover,
+#btnSelectPencil:hover {
+  background: #026ca3 !important;
+  border-color: var(--dash-border-strong) !important;
+  transform: none !important;
+  box-shadow: var(--dash-shadow) !important;
+}
+
+.btnBeige:disabled,
+.secondaryAction:disabled,
+.topBtn:disabled,
+.mapTopActionBtn:disabled,
+.gridGenerateBtn:disabled,
+.actionBtn.saveBtn:disabled,
+#btnSelectPencil:disabled {
+  opacity: .48 !important;
+  cursor: not-allowed !important;
+  background: var(--dash-surface-strong) !important;
+  border-color: var(--dash-border) !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Custom scrollbar and cleaner styling for grid quadrant names */
+#gridNamesContainer::-webkit-scrollbar {
+  width: 6px;
+}
+
+#gridNamesContainer::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 3px;
+}
+
+#gridNamesContainer::-webkit-scrollbar-thumb {
+  background: var(--dash-border);
+  border-radius: 3px;
+}
+
+#gridNamesContainer::-webkit-scrollbar-thumb:hover {
+  background: var(--dash-border-strong);
+}
+
+#gridNamesContainer > div {
+  margin-bottom: 8px !important;
+}
+
+#gridNamesContainer .opsInput {
+  margin-bottom: 0px !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-radius: 8px !important;
+  border-color: var(--dash-border) !important;
+}
+
+#gridNamesContainer label.fieldLabel {
+  margin-bottom: 3px !important;
+  font-size: 9px !important;
+  text-transform: uppercase !important;
+  color: var(--dash-border-strong) !important;
+  letter-spacing: 0.5px !important;
+}
+
+/* Side-by-side grid buttons layout */
+.gridButtonsContainer {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  margin-bottom: 0;
+  width: auto;
+  order: 3;
+  justify-content: center;
+}
+
+#gridSubmenu[style*="display: block"] {
+  display: flex !important;
+  flex-direction: column;
+}
+
+#gridNamesWrapper { order: 2; }
+
+.gridButtonsContainer .btnBeige {
+  flex: 0 0 165px;
+  min-width: 0;
+  height: 36px;
+  min-height: 36px;
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: 6px;
+  background: var(--dash-accent) !important;
+  border-color: var(--dash-border) !important;
+  margin-bottom: 0 !important;
+}
+
+.gridButtonsContainer #generateGridBtn { flex-basis: 165px; }
+
+/* Chat composer polish: keep inline SVG icons stroked and the input integrated. */
+.chatInputBar #chatInput {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #eafff8 !important;
+  margin-bottom: 0 !important;
+}
+
+.chatInputBar #chatInput::placeholder {
+  color: rgba(234, 255, 248, 0.62) !important;
+}
+
+.chatInputBar .chatIconBtn {
+  color: #eafff8 !important;
+}
+
+.chatInputBar .chatIconBtn svg {
+  width: 21px;
+  height: 21px;
+  display: block;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 2.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chatInputBar .chatIconBtn svg path {
+  fill: none !important;
+  stroke: currentColor !important;
+}
+
+/* Chat layout refinement: remove the unused spacer and give messages priority. */
+.chatPanel.open {
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chatPanel .chatConversationHeader,
+.chatPanel .chatTargetBox,
+.chatPanel .chatComposer {
+  flex: 0 0 auto;
+}
+
+.chatPanel .chatTargetEmpty {
+  display: none !important;
+}
+
+.chatPanel .chatMessages {
+  flex: 1 1 auto;
+  min-height: 300px;
+  max-height: min(430px, calc(100vh - 310px));
+  margin-bottom: 14px;
+  padding: 10px 8px 10px 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 211, 252, 0.62) rgba(15, 35, 43, 0.72);
+}
+
+.chatPanel .chatMessages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chatPanel .chatMessages::-webkit-scrollbar-track {
+  background: rgba(15, 35, 43, 0.72);
+  border-radius: 999px;
+}
+
+.chatPanel .chatMessages::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(125, 211, 252, 0.78), rgba(45, 212, 191, 0.58));
+  border: 2px solid rgba(15, 35, 43, 0.72);
+  border-radius: 999px;
+}
+
+.chatPanel .chatMessages::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(186, 230, 253, 0.88), rgba(94, 234, 212, 0.72));
+}
+
+.chatPanel .chatMessages {
+  gap: 8px;
+}
+
+.chatPanel .chatBubble {
+  position: relative;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 82%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  box-shadow: none !important;
+}
+
+.chatPanel .chatBubble.mine {
+  align-self: flex-end;
+  margin-left: auto;
+  margin-right: 8px;
+  background: rgba(37, 99, 235, 0.22) !important;
+  border-color: rgba(125, 211, 252, 0.34) !important;
+}
+
+.chatPanel .chatBubble:not(.mine):not(.sistema) {
+  margin-left: 8px;
+  margin-right: auto;
+}
+
+.chatPanel .chatBubble.sistema {
+  align-self: center;
+  max-width: 92%;
+  text-align: left;
+  margin-left: auto;
+  margin-right: auto;
+  background: rgba(59, 130, 246, 0.18) !important;
+  border-color: rgba(125, 211, 252, 0.28) !important;
+}
+
+.chatPanel .chatBubble:not(.mine):not(.sistema)::before,
+.chatPanel .chatBubble.mine::before {
+  content: "";
+  position: absolute;
+  bottom: 11px;
+  width: 0;
+  height: 0;
+  background: transparent;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+}
+
+.chatPanel .chatBubble:not(.mine):not(.sistema)::before {
+  left: -7px;
+  border-right: 8px solid rgba(28, 55, 58, 0.76);
+}
+
+.chatPanel .chatBubble.mine::before {
+  right: -7px;
+  border-left: 8px solid rgba(37, 99, 235, 0.22);
+}
+
+.chatPanel .chatBubble.rol-admin::before {
+  border-right-color: rgba(20, 79, 50, 0.75) !important;
+}
+
+.chatPanel .chatBubble.rol-cut::before {
+  border-right-color: rgba(16, 96, 57, 0.58) !important;
+}
+
+.chatPanel .chatBubble.rol-cet::before {
+  border-right-color: rgba(0, 200, 100, 0.10) !important;
+}
+
+.chatPanel .chatBubble.rol-cell::before {
+  border-right-color: rgba(35, 49, 55, 0.58) !important;
+}
+
+.chatPanel .chatBubbleHeader {
+  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.chatPanel .chatBubbleText {
+  font-size: 13px;
+  line-height: 1.32;
+}
+
+.chatPanel .chatBubble.urgente {
+  /* mismo estilo que burbuja normal PTT */
+}
+
+.chatPanel .chatBubble.urgente::before {
+  /* mismo estilo que burbuja normal */
+}
+
+.chatPanel .chatBubble.urgente.mine::before {
+  /* mismo estilo que burbuja normal */
+}
+
+.chatPanel .chatBubble.urgente .chatBubbleText {
+  /* mismo estilo que burbuja normal */
+}
+
+/* Restrained tool colors for the floating map controls. */
+.floatingTools .toolFab {
+  --tool-color: #c7d8e5;
+  background: rgba(9, 26, 38, 0.86) !important;
+  border-color: rgba(148, 163, 184, 0.32) !important;
+  color: var(--tool-color) !important;
+}
+
+.floatingTools .toolFab:nth-child(1) { --tool-color: #c7d8e5; }
+.floatingTools .toolFab:nth-child(2) { --tool-color: #a9c4d2; }
+.floatingTools .toolFab:nth-child(3) { --tool-color: #b7c7d4; }
+.floatingTools .toolFab:nth-child(4) { --tool-color: #ddd6fe; }
+.floatingTools .toolFab:nth-child(5) { --tool-color: #fecdd3; }
+
+.floatingTools .toolFab:hover {
+  background: rgba(14, 38, 52, 0.94) !important;
+  border-color: color-mix(in srgb, var(--tool-color) 42%, rgba(148, 163, 184, 0.32)) !important;
+  box-shadow: 0 0 10px rgba(111, 159, 179, 0.14), var(--dash-shadow) !important;
+}
+
+.floatingTools .toolFab.active {
+  background: rgba(31, 89, 118, 0.86) !important;
+  border-color: rgba(143, 184, 202, 0.66) !important;
+  color: #f4fbff !important;
+  box-shadow: 0 0 14px rgba(111, 159, 179, 0.22), var(--dash-shadow) !important;
+}
+
+/* Camera panel: align with the tactical dashboard shell. */
+.cameraPanel {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  position: fixed !important;
+  overflow: hidden !important;
+  resize: both !important;
+  container-type: inline-size;
+  width: min(860px, calc(100vw - 176px));
+  min-width: min(280px, calc(100vw - 32px)) !important;
+  min-height: 176px !important;
+  max-width: calc(100vw - 32px) !important;
+  max-height: min(78vh, 720px) !important;
+}
+
+.cameraPanel.camera-single-feed {
+  min-width: min(240px, calc(100vw - 32px)) !important;
+  min-height: 158px !important;
+}
+
+.cameraPanel.camera-multi-feed:not(.is-focused):not(.camera-compact-row) {
+  min-width: min(360px, calc(100vw - 32px)) !important;
+  min-height: 248px !important;
+}
+
+.cameraPanel.camera-multi-feed.camera-compact-row {
+  min-height: 214px !important;
+}
+
+.cameraPanel.is-focused {
+  min-height: 176px !important;
+}
+
+.cameraPanel.camera-compact-box {
+  width: min(340px, calc(100vw - 32px));
+  min-width: min(220px, calc(100vw - 32px)) !important;
+  min-height: 158px !important;
+}
+
+.cameraLayoutControls {
+  margin: 0 0 8px auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  cursor: grab;
+}
+
+.cameraPanel.is-dragging .cameraLayoutControls {
+  cursor: grabbing;
+}
+
+.cameraDragHandle {
+  width: 30px !important;
+  height: 30px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 8px !important;
+  background: rgba(7, 22, 35, 0.72) !important;
+  color: #9fb8c8 !important;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.cameraDragHandle svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.cameraPanel.is-dragging .cameraDragHandle {
+  cursor: grabbing;
+  color: #f4fbff !important;
+}
+
+.layoutBtn {
+  width: 30px !important;
+  height: 30px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 8px !important;
+  background: rgba(7, 22, 35, 0.72) !important;
+  border: 0 !important;
+  color: #c7d8e5 !important;
+  box-shadow: none !important;
+}
+
+.layoutBtn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.layoutBtn:hover,
+.layoutBtn.active {
+  background: rgba(31, 89, 118, 0.58) !important;
+  border: 0 !important;
+  color: #f4fbff !important;
+}
+
+.cameraSideNav {
+  position: absolute;
+  top: 50%;
+  z-index: 18;
+  width: 30px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(7, 22, 35, 0.46);
+  color: #c7d8e5;
+  box-shadow: 0 10px 22px rgba(2, 6, 23, 0.34);
+  transform: translateY(-50%);
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.cameraSideNavPrev {
+  left: 8px;
+}
+
+.cameraSideNavNext {
+  right: 8px;
+}
+
+.cameraSideNav.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cameraSideNav:disabled:not(.is-hidden) {
+  opacity: 0.42;
+  cursor: default;
+  pointer-events: none;
+}
+
+.cameraSideNav:hover,
+.cameraSideNav:focus-visible {
+  opacity: 1;
+  background: rgba(31, 89, 118, 0.62);
+  border-color: rgba(143, 184, 202, 0.62);
+  color: #f4fbff;
+}
+
+.cameraSideNav svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cameraFeeds {
+  gap: 12px !important;
+  padding: 0 42px !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(117, 145, 160, 0.58) rgba(8, 22, 32, 0.72);
+}
+
+.cameraPanel:not(.has-camera-nav) .cameraFeeds {
+  padding-inline: 0 !important;
+}
+
+#cameraPanel.has-camera-nav .cameraFeeds,
+#cameraPanel.has-camera-nav .cameraFeeds.speaker-layout {
+  width: 100% !important;
+  margin-inline: 0 !important;
+  padding-inline: 0 !important;
+}
+
+.cameraFeeds.grid-layout {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)) !important;
+  grid-auto-rows: minmax(124px, 1fr) !important;
+  align-items: stretch !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  min-height: 0 !important;
+  scroll-behavior: smooth;
+}
+
+.cameraFeeds.grid-layout .cameraFeed {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 16 / 9;
+}
+
+.cameraPanel.camera-single-feed .cameraFeeds.grid-layout {
+  grid-template-columns: minmax(0, min(100%, 420px)) !important;
+  grid-auto-rows: auto !important;
+  justify-content: start !important;
+  align-content: start !important;
+}
+
+.cameraPanel.camera-single-feed .cameraFeeds.grid-layout .cameraFeed {
+  height: auto !important;
+  max-height: calc(100vh - 260px) !important;
+}
+
+.cameraPanel.camera-compact-row .cameraFeeds.grid-layout {
+  display: flex !important;
+  grid-template-columns: none !important;
+  grid-auto-rows: auto !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  min-height: clamp(136px, 20cqw, 168px) !important;
+  scroll-snap-type: x proximity;
+}
+
+.cameraPanel.camera-compact-row .cameraFeeds.grid-layout .cameraFeed {
+  flex: 0 0 clamp(156px, 31cqw, 276px) !important;
+  width: auto !important;
+  height: clamp(132px, 18cqw, 156px) !important;
+  scroll-snap-align: start;
+}
+
+.cameraFeeds.speaker-layout {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-auto-rows: minmax(92px, 1fr) !important;
+  overflow: hidden !important;
+  min-height: 0 !important;
+  padding: 0 42px !important;
+}
+
+.cameraFeeds.speaker-layout .cameraFeed {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.cameraFeeds.speaker-layout .cameraFeed.focused {
+  min-height: 0 !important;
+}
+
+.cameraFeeds.speaker-layout .cameraFeed:not(.focused) {
+  display: none !important;
+}
+
+.cameraPanel.camera-compact-box .cameraFeeds,
+.cameraPanel.camera-compact-box .cameraFeeds.speaker-layout {
+  padding-inline: 28px !important;
+}
+
+.cameraPanel.camera-compact-box .cameraSideNav {
+  width: 24px;
+  height: 38px;
+}
+
+.cameraPanel.camera-compact-box .cameraSideNavPrev {
+  left: 2px;
+}
+
+.cameraPanel.camera-compact-box .cameraSideNavNext {
+  right: 2px;
+}
+
+.cameraFeeds::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cameraFeeds::-webkit-scrollbar-track {
+  background: rgba(8, 22, 32, 0.72);
+  border-radius: 999px;
+}
+
+.cameraFeeds::-webkit-scrollbar-thumb {
+  background: rgba(117, 145, 160, 0.62);
+  border-radius: 999px;
+}
+
+.cameraFeed {
+  border-radius: 10px !important;
+  background: rgba(3, 14, 23, 0.94) !important;
+  border: 0 !important;
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.28) !important;
+  flex-shrink: 0 !important;
+}
+
+.cameraFeeds.speaker-layout .cameraFeed.focused {
+  outline: 0 !important;
+  border: 0 !important;
+}
+
+.cameraWaitingSignal,
+.personCameraWaiting {
+  border: 0 !important;
+  background:
+    linear-gradient(180deg, rgba(7, 25, 38, 0.96), rgba(3, 13, 22, 0.98)) !important;
+  color: #e8f1f7 !important;
+}
+
+.cameraWaitingSignal span,
+.personCameraWaiting span {
+  color: #cbd5e1 !important;
+  font-size: clamp(9px, 2.1cqw, 11px) !important;
+  letter-spacing: 0 !important;
+}
+
+.cameraWaitingSignal small,
+.personCameraWaiting small {
+  color: rgba(232, 241, 247, 0.68) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
+
+.cameraWaitingSignal strong,
+.personCameraWaiting strong {
+  border-radius: 7px !important;
+  border-color: rgba(143, 184, 202, 0.46) !important;
+  background: rgba(18, 52, 70, 0.58) !important;
+  color: #c7d8e5 !important;
+  font-size: clamp(10px, 2.5cqw, 13px) !important;
+  padding: clamp(4px, 1.1cqw, 7px) clamp(7px, 1.8cqw, 12px) !important;
+}
+
+.cameraFeedBadge {
+  top: 10px !important;
+  left: 10px !important;
+  padding: 5px 9px !important;
+  border-radius: 7px !important;
+  background: rgba(25, 72, 96, 0.84) !important;
+  border: 1px solid rgba(143, 184, 202, 0.36) !important;
+  color: #f4fbff !important;
+  font-size: 10px !important;
+  letter-spacing: 0 !important;
+  box-shadow: 0 8px 18px rgba(3, 7, 9, 0.26) !important;
+}
+
+.cameraFeedBadge:has(+ .cameraAudioBtn) {
+  max-width: calc(100% - 126px) !important;
+}
+
+.cameraFeed.hasPlayback > .cameraFeedBadge {
+  display: none !important;
+}
+
+.cameraFeedName,
+.cameraFeedLabel {
+  top: 10px !important;
+  bottom: auto !important;
+  left: 10px !important;
+  max-width: calc(100% - 20px) !important;
+  border-radius: 7px !important;
+  background: rgba(8, 28, 42, 0.86) !important;
+  border-color: rgba(117, 145, 160, 0.44) !important;
+  color: #edf6fb !important;
+  font-size: clamp(10px, 2.4cqw, 12px) !important;
+  letter-spacing: 0 !important;
+  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.24) !important;
+  padding: 4px 8px !important;
+}
+
+.cameraFeed:not(.hasPlayback) .cameraFeedName {
+  top: 10px !important;
+  bottom: auto !important;
+}
+
+.cameraFeed.hasPlayback .cameraFeedName {
+  max-width: calc(100% - 58px) !important;
+}
+
+.cameraFeedName {
+  top: 10px !important;
+  left: 10px !important;
+  bottom: auto !important;
+  max-width: calc(100% - 20px) !important;
+  transform: none !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  text-align: left !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.7) !important;
+}
+
+.cameraWaitingSignal,
+.personCameraWaiting {
+  background: transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+}
+
+.cameraWaitingSignal span,
+.personCameraWaiting span {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 8px 14px !important;
+  border-radius: 8px !important;
+  background: rgba(8, 28, 42, 0.68) !important;
+  border: 1px solid rgba(143, 184, 202, 0.36) !important;
+  color: #edf6fb !important;
+  text-align: center !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8) !important;
+}
+
+.cameraWaitingSignal strong,
+.personCameraWaiting strong,
+.cameraFeedBadge:empty {
+  display: none !important;
+}
+
+.cameraAudioBtn,
+.cameraSelectBtn {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+.cameraAudioBtn {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  border: none !important;
+  color: #dbeafe !important;
+  font-size: 0 !important;
+  box-shadow: none !important;
+  transition: color 0.16s ease !important;
+}
+
+.cameraAudioBtn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cameraAudioBtn:not(.active) {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #cbd5e1 !important;
+}
+
+.cameraAudioBtn.active {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #f4fbff !important;
+}
+
+.cameraAudioBtn:hover,
+.cameraAudioBtn:focus-visible {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  transform: none !important;
+}
+
+.cameraSelectBtn {
+  display: none !important;
+}
+
+.cameraPlayback.camScrubberWrap,
+.camScrubberWrap {
+  background: linear-gradient(180deg, rgba(3, 13, 22, 0), rgba(3, 13, 22, 0.82) 45%, rgba(3, 13, 22, 0.96)) !important;
+}
+
+.camProgressFill {
+  background: linear-gradient(90deg, #214e7a, #3875ad) !important;
+  box-shadow: none !important;
+}
+
+.camScrubHandle {
+  background: #3875ad !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.camScrubberWrap:hover .camProgressTrack,
+.cameraPlayback:hover .camProgressTrack {
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.07), 0 0 16px rgba(56, 117, 173, 0.3) !important;
+}
+
+.camTimeRow {
+  justify-content: flex-start !important;
+}
+
+.cameraPlaybackBtn,
+.cameraLiveBtn,
+.cameraPlaybackStatus,
+.camLiveBadge {
+  background: rgba(12, 35, 50, 0.84) !important;
+  border-color: rgba(117, 145, 160, 0.32) !important;
+  color: #c7d8e5 !important;
+}
+
+.cameraPlayback.camScrubberWrap .cameraPlaybackBtn,
+.cameraPlayback.camScrubberWrap .cameraLiveBtn {
+  display: none !important;
+}
+
+.cameraPlaybackStatus,
+.camLiveBadge {
+  display: none !important;
+}
+
+.cameraPlaybackBtn:hover,
+.cameraLiveBtn:hover,
+.cameraLiveBtn.active,
+.cameraPlaybackStatus:hover,
+.camLiveBadge:hover {
+  background: rgba(31, 89, 118, 0.72) !important;
+  border-color: rgba(143, 184, 202, 0.58) !important;
+  color: #f4fbff !important;
+}
+
+.cameraBottomControls {
+  margin: 10px 0 0 !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  align-self: flex-start !important;
+  border-radius: 10px !important;
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.cameraProtocolTabs {
+  gap: 4px !important;
+  flex-wrap: wrap !important;
+}
+
+.cameraSourceBtn {
+  background: rgba(12, 35, 50, 0.86) !important;
+  border-color: rgba(117, 145, 160, 0.36) !important;
+  color: #c7d8e5 !important;
+  min-height: 28px !important;
+  padding: 6px 12px !important;
+  font-size: 11px !important;
+}
+
+.cameraSourceBtn:hover,
+.cameraSourceBtn.active {
+  background: rgba(31, 89, 118, 0.74) !important;
+  border-color: rgba(143, 184, 202, 0.60) !important;
+  color: #f4fbff !important;
+}
+
+@container (max-width: 420px) {
+  .cameraLayoutControls {
+    gap: 3px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .cameraDragHandle,
+  .layoutBtn {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .cameraFeeds {
+    gap: 8px !important;
+    padding-inline: 36px !important;
+  }
+
+  .cameraPanel.camera-compact-row .cameraFeeds.grid-layout {
+    min-height: 132px !important;
+  }
+
+  .cameraPanel.camera-compact-row .cameraFeeds.grid-layout .cameraFeed {
+    flex-basis: calc(100cqw - 96px) !important;
+    height: max(124px, min(148px, calc((100cqw - 96px) * 0.5625))) !important;
+  }
+
+  .cameraPanel.camera-single-feed .cameraFeeds.grid-layout .cameraFeed {
+    height: auto !important;
+  }
+
+  .cameraSideNav {
+    width: 26px;
+    height: 42px;
+  }
+
+  .cameraFeedBadge,
+  .cameraAudioBtn {
+    display: none !important;
+  }
+
+  .cameraFeedName,
+  .cameraFeedLabel {
+    top: 7px !important;
+    left: 7px !important;
+    max-width: calc(100% - 14px) !important;
+  }
+
+  .cameraBottomControls {
+    margin-top: 6px !important;
+  }
+}
+
+@container (max-width: 320px) {
+  .cameraFeeds {
+    padding-inline: 30px !important;
+  }
+
+  .cameraFeeds.speaker-layout {
+    padding-inline: 30px !important;
+  }
+
+  .cameraSideNav {
+    width: 24px;
+    height: 38px;
+  }
+
+  .cameraSideNavPrev {
+    left: 3px;
+  }
+
+  .cameraSideNavNext {
+    right: 3px;
+  }
+}
+
+/* Tracking popups: final overrides after the dashboard theme layer. */
+.personInfoPopup {
+  width: min(318px, calc(100vw - 28px)) !important;
+  padding: 12px !important;
+  border-color: rgba(148, 190, 211, 0.42) !important;
+  background: linear-gradient(180deg, rgba(35, 61, 76, 0.90), rgba(22, 44, 58, 0.92)) !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.48) !important;
+}
+
+.personInfoTitle {
+  margin-right: 22px !important;
+  margin-bottom: 8px !important;
+  padding-bottom: 8px !important;
+  border-bottom-color: rgba(148, 190, 211, 0.38) !important;
+  color: #f4fbff !important;
+  font-size: 15px !important;
+}
+
+.personInfoPopupClose {
+  top: 10px !important;
+  right: 10px !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: rgba(244, 251, 255, 0.78) !important;
+  box-shadow: none !important;
+  font-size: 17px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+
+.personInfoPopupClose:hover {
+  background: transparent !important;
+  color: #ffffff !important;
+}
+
+.personInfoGrid {
+  grid-template-columns: 76px minmax(0, 1fr) !important;
+  gap: 5px 10px !important;
+  font-size: 12px !important;
+}
+
+.personInfoLabel,
+.personInfoDeviceLabel {
+  color: #d5e7f0 !important;
+}
+
+.personInfoValue,
+.personInfoDeviceLine {
+  color: #f8fbff !important;
+}
+
+.personInfoDevices {
+  margin-top: 10px !important;
+  padding-top: 8px !important;
+  border-top-color: rgba(148, 190, 211, 0.30) !important;
+  font-size: 12px !important;
+}
+
+.personInfoStatus {
+  display: block !important;
+  margin-top: 9px !important;
+  padding: 7px 9px !important;
+  border-color: rgba(148, 190, 211, 0.34) !important;
+  background: rgba(25, 52, 68, 0.62) !important;
+  font-size: 11px !important;
+  line-height: 1.22 !important;
+}
+
+.personInfoStatus strong {
+  display: inline !important;
+  margin-left: 4px !important;
+  color: #8fe9ff !important;
+}
+
+.personInfoStatus.offline {
+  border-color: rgba(148, 190, 211, 0.34) !important;
+  background: rgba(25, 52, 68, 0.62) !important;
+}
+
+.personInfoStatus.offline strong {
+  color: #8fe9ff !important;
+}
+
+.personInfoStatus span {
+  margin-top: 2px !important;
+  color: #d5e7f0 !important;
+  font-size: 10px !important;
+}
+
+.personInfoCamera {
+  margin-top: 10px !important;
+  border-color: rgba(148, 190, 211, 0.34) !important;
+  background: rgba(8, 27, 38, 0.68) !important;
+}
+
+.personInfoCamera .personCameraWaiting,
+.personInfoCamera .cameraWaitingSignal,
+.personInfoCamera .personInfoCameraFeed {
+  height: 108px !important;
+  min-height: 108px !important;
+}
+
+.personInfoCamera .personCameraWaiting,
+.personInfoCamera .cameraWaitingSignal {
+  display: grid !important;
+  place-items: center !important;
+  padding: 8px !important;
+}
+
+.personInfoCamera .personCameraWaiting span,
+.personInfoCamera .cameraWaitingSignal span {
+  color: #d5e7f0 !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+}
+
+.personInfoCamera .personCameraWaiting strong,
+.personInfoCamera .cameraWaitingSignal strong,
+.personInfoCamera .cameraFeedBadge {
+  display: none !important;
+}
+
+.personInfoCamera .cameraFeedName {
+  display: none !important;
+}
+
+.personInfoCamera .cameraFeedLabel {
+  top: 7px !important;
+  left: 7px !important;
+  max-width: calc(100% - 14px) !important;
+  padding: 4px 7px !important;
+  border-color: rgba(148, 190, 211, 0.38) !important;
+  background: rgba(25, 72, 96, 0.72) !important;
+  color: #f4fbff !important;
+  font-size: 10px !important;
+}
+
+#entityPopup {
+  width: min(220px, calc(100vw - 24px)) !important;
+  min-width: min(180px, calc(100vw - 24px)) !important;
+  padding: 10px !important;
+  border-radius: 10px !important;
+  border-color: rgba(148, 190, 211, 0.42) !important;
+  background: linear-gradient(180deg, rgba(35, 61, 76, 0.90), rgba(22, 44, 58, 0.92)) !important;
+  color: #f4fbff !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+}
+
+#entityPopup > div:first-child {
+  margin-bottom: 8px !important;
+  padding-bottom: 7px !important;
+  border-bottom: 1px solid rgba(148, 190, 211, 0.30) !important;
+}
+
+#entityPopupName {
+  max-width: calc(100% - 28px) !important;
+  color: #f4fbff !important;
+  font-size: 11px !important;
+  line-height: 1.18 !important;
+  font-weight: 900 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+.entityPopupCreator {
+  margin: -2px 0 8px !important;
+  color: rgba(219, 234, 254, 0.74) !important;
+  font-size: 10px !important;
+  line-height: 1.25 !important;
+  font-weight: 700 !important;
+  overflow-wrap: anywhere !important;
+}
+
+#btnCloseEntityPopup {
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: rgba(244, 251, 255, 0.78) !important;
+  box-shadow: none !important;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+
+#btnCloseEntityPopup:hover {
+  color: #ffffff !important;
+}
+
+#entityPopupDelete {
+  width: 100% !important;
+  min-height: 32px !important;
+  padding: 7px 10px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(248, 113, 113, 0.42) !important;
+  background: rgba(127, 29, 29, 0.34) !important;
+  color: #ffd6d6 !important;
+  box-shadow: none !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+#entityPopupDelete:hover {
+  border-color: rgba(252, 165, 165, 0.58) !important;
+  background: rgba(153, 27, 27, 0.44) !important;
+  color: #ffffff !important;
+}
+
+/* Top operation status bar */
+.topbar {
+  width: fit-content !important;
+  min-width: 0 !important;
+  max-width: calc(100vw - 32px) !important;
+  min-height: 46px !important;
+  padding: 6px !important;
+  gap: 10px !important;
+  border-radius: 17px !important;
+  background:
+    linear-gradient(180deg, rgba(29, 61, 80, 0.88), rgba(17, 43, 59, 0.92)),
+    rgba(15, 45, 64, 0.88) !important;
+  border: 1px solid rgba(139, 196, 223, 0.42) !important;
+  box-shadow:
+    0 14px 34px rgba(2, 6, 23, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+  backdrop-filter: blur(18px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(130%) !important;
+}
+
+.topbarLeft {
+  flex: 0 1 auto !important;
+  min-width: 0 !important;
+  gap: 9px !important;
+  padding: 0 4px 0 2px !important;
+}
+
+.brandDot {
+  width: 10px !important;
+  height: 10px !important;
+  flex: 0 0 10px !important;
+  background: #ff3f5f !important;
+  box-shadow:
+    0 0 0 4px rgba(255, 63, 95, 0.13),
+    0 0 15px rgba(255, 63, 95, 0.56) !important;
+}
+
+#topbarTitle {
+  min-width: 0 !important;
+  max-width: min(42vw, 430px) !important;
+  color: #f8fbff !important;
+  font-size: 15px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+#opStatusBadge {
+  display: none;
+  align-items: center !important;
+  min-height: 23px !important;
+  padding: 4px 9px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(103, 232, 249, 0.34) !important;
+  background: rgba(2, 132, 199, 0.88) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+  text-shadow: none !important;
+}
+
+.who {
+  max-width: 120px !important;
+  padding-left: 4px !important;
+  color: rgba(232, 241, 247, 0.78) !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.topbarRight {
+  flex: 0 0 auto !important;
+  gap: 4px !important;
+  padding-left: 4px !important;
+  border-left: 1px solid rgba(210, 235, 248, 0.12) !important;
+}
+
+.topHistoryBtn {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  border-radius: 11px !important;
+  border: 1px solid transparent !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: rgba(190, 235, 248, 0.90) !important;
+  box-shadow: none !important;
+  font-size: 15px !important;
+}
+
+.topBtn {
+  min-height: 34px !important;
+  margin-left: 4px !important;
+  padding: 7px 15px !important;
+  border-radius: 12px !important;
+  background: linear-gradient(180deg, #1297da, #0479b8) !important;
+  border: 1px solid rgba(156, 220, 249, 0.58) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 8px 20px rgba(2, 132, 199, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+}
+
+.topHistoryBtn:hover:not(:disabled) {
+  background: rgba(103, 232, 249, 0.12) !important;
+  border-color: rgba(125, 211, 252, 0.30) !important;
+  color: #ffffff !important;
+}
+
+.topHistoryBtn:disabled {
+  opacity: 0.28 !important;
+}
+
+.topBtn:hover {
+  background: linear-gradient(180deg, #1aa4ed, #0586ca) !important;
+  border-color: rgba(190, 235, 248, 0.74) !important;
+  transform: translateY(-1px) !important;
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    left: 10px !important;
+    width: calc(100vw - 20px) !important;
+    min-width: 0 !important;
+  }
+
+  #topbarTitle {
+    max-width: 36vw !important;
+  }
+
+  .who {
+    display: none !important;
+  }
+}
+
+/* Custom serious blue for active contacts and avatars */
+.chatAudienceChip::before,
+.chatConversationAvatar {
+  background: rgba(56, 189, 248, 0.16) !important;
+  color: #38bdf8 !important;
+}
+
+.chatAudienceSummary {
+  color: #38bdf8 !important;
+}
+
+.chatAudienceChip.active span {
+  color: #38bdf8 !important;
+}
+
+/* Remove green from chat bubbles and headers */
+.chatBubble {
+  background: rgba(15, 23, 42, 0.6) !important;
+  border-color: rgba(96, 165, 250, 0.20) !important;
+}
+
+.chatBubble.rol-admin,
+.chatBubble.rol-cut,
+.chatBubble.rol-cet,
+.chatBubble.rol-cell {
+  background: rgba(15, 23, 42, 0.6) !important;
+  border-color: rgba(96, 165, 250, 0.18) !important;
+}
+
+.chatBubble.mine {
+  background: rgba(96, 165, 250, 0.14) !important;
+  border-color: rgba(96, 165, 250, 0.24) !important;
+}
+
+.chatBubbleHeader {
+  color: #9fb3bf !important;
+}
+
+.chatBubble.rol-admin .chatBubbleHeader,
+.chatBubble.rol-cut .chatBubbleHeader,
+.chatBubble.rol-cet .chatBubbleHeader,
+.chatBubble.rol-cell .chatBubbleHeader {
+  color: #9fb3bf !important;
+}
+
+/* Minimal select chat dropdown */
+.chatTargetBox {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 10px !important;
+  margin-top: 4px !important;
+  margin-bottom: 8px !important;
+}
+
+.chatTargetBox label {
+  display: none !important;
+}
+
+#chatTargetPicker {
+  height: 32px !important;
+  padding: 4px 8px !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+  background: rgba(15, 23, 42, 0.5) !important;
+  border: 1px solid rgba(96, 165, 250, 0.2) !important;
+  color: #9fb3bf !important;
+  margin-bottom: 0 !important;
+}
+
+/* Controles vectoriales y tactiles del panel de camaras. */
+.topHistoryBtn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cameraPanel {
+  resize: none !important;
+}
+
+.cameraResizeHandle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px 0 0 0;
+  background: rgba(7, 22, 35, 0.86);
+  color: #d7e6ef;
+  touch-action: none;
+  user-select: none;
+  cursor: nwse-resize;
+}
+
+.cameraResizeHandle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cameraPanel.is-resizing .cameraResizeHandle {
+  color: #fff;
+  background: rgba(31, 89, 118, 0.96);
+}
+
+/* Conserva las zonas de arrastre y redimensionado sin mostrar sus iconos. */
+.cameraDragHandle,
+.cameraResizeHandle {
+  opacity: 0;
+}
+
+.cameraPlayback.camScrubberWrap,
+.cameraFeed .camScrubberWrap {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transform: translateY(6px);
+  transition: opacity 180ms ease, transform 180ms ease, visibility 0s linear 180ms;
+}
+
+.cameraFeed.playback-controls-visible .cameraPlayback.camScrubberWrap,
+.cameraFeed.playback-controls-visible .camScrubberWrap,
+.cameraFeed:hover .cameraPlayback.camScrubberWrap,
+.cameraFeed:hover .camScrubberWrap,
+.cameraFeed:focus-within .cameraPlayback.camScrubberWrap,
+.cameraFeed:focus-within .camScrubberWrap {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  transform: translateY(0);
+  transition-delay: 0s;
+}
+
+.cameraFeed.hasPlayback .cameraFeedName,
+.cameraFeed.hasPlayback .cameraFeedLabel {
+  bottom: 8px !important;
+  transition: bottom 180ms ease;
+}
+
+.cameraFeed.hasPlayback.playback-controls-visible .cameraFeedName,
+.cameraFeed.hasPlayback.playback-controls-visible .cameraFeedLabel,
+.cameraFeed.hasPlayback:hover .cameraFeedName,
+.cameraFeed.hasPlayback:hover .cameraFeedLabel,
+.cameraFeed.hasPlayback:focus-within .cameraFeedName,
+.cameraFeed.hasPlayback:focus-within .cameraFeedLabel {
+  bottom: 40px !important;
+}
+
+.cameraPlaybackToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 24px;
+  margin-right: 8px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(12, 35, 50, 0.88);
+  color: #f4fbff;
+  cursor: pointer;
+}
+
+.cameraPlaybackToggle:hover,
+.cameraPlaybackToggle:focus-visible {
+  background: rgba(31, 89, 118, 0.96);
+  outline: 2px solid rgba(143, 184, 202, 0.72);
+  outline-offset: 1px;
+}
+
+.cameraPlaybackToggle span {
+  font-size: 12px;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cameraPlayback.camScrubberWrap,
+  .cameraFeed .camScrubberWrap,
+  .cameraFeed.hasPlayback .cameraFeedName,
+  .cameraFeed.hasPlayback .cameraFeedLabel {
+    transition: none;
+  }
+
+  .cameraPlaybackFeedback,
+  .cameraPlaybackFeedback.visible {
+    transition: none;
+  }
+
+  .cameraPlaybackFeedback.visible {
+    animation-duration: 1ms;
+  }
+}
+
+/* Adaptacion estructural: escritorio, tableta, telefono y areas seguras. */
+html,
+body {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.topbar {
+  top: max(14px, env(safe-area-inset-top)) !important;
+  left: max(14px, env(safe-area-inset-left)) !important;
+}
+
+.floatingTools {
+  left: max(14px, env(safe-area-inset-left)) !important;
+}
+
+@media (pointer: coarse) {
+  .topHistoryBtn,
+  .layoutBtn,
+  .cameraDragHandle,
+  .cameraResizeHandle,
+  .cameraSideNav,
+  .floatingTools .toolFab {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  button,
+  input[type="range"] {
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 1100px) {
+  .topbar {
+    max-width: calc(100vw - max(28px, env(safe-area-inset-left) + env(safe-area-inset-right))) !important;
+  }
+
+  #topbarTitle {
+    max-width: 30vw !important;
+  }
+
+  .glassPanel:not(.cameraPanel) {
+    max-width: calc(100vw - 96px - env(safe-area-inset-right)) !important;
+    max-height: calc(100dvh - 104px - env(safe-area-inset-bottom)) !important;
+  }
+
+  .cameraPanel {
+    width: min(56vw, 680px) !important;
+    max-width: calc(100vw - 96px - env(safe-area-inset-right)) !important;
+    max-height: calc(100dvh - 112px - env(safe-area-inset-bottom)) !important;
+  }
+}
+
+@media (max-width: 820px) {
+  .topbar {
+    right: max(8px, env(safe-area-inset-right)) !important;
+    left: max(8px, env(safe-area-inset-left)) !important;
+    width: auto !important;
+    max-width: none !important;
+    min-height: 52px !important;
+  }
+
+  .topbarLeft {
+    flex: 1 1 auto !important;
+  }
+
+  #topbarTitle {
+    max-width: 32vw !important;
+    font-size: 14px !important;
+  }
+
+  .topBtn {
+    min-height: 44px !important;
+    padding-inline: 13px !important;
+  }
+
+  .floatingTools {
+    top: auto !important;
+    right: max(8px, env(safe-area-inset-right)) !important;
+    bottom: max(8px, env(safe-area-inset-bottom)) !important;
+    left: max(8px, env(safe-area-inset-left)) !important;
+    width: auto !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 6px !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .floatingTools::-webkit-scrollbar {
+    display: none;
+  }
+
+  .floatingTools .toolFab {
+    flex: 0 0 46px !important;
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  .glassPanel:not(.cameraPanel) {
+    top: calc(max(8px, env(safe-area-inset-top)) + 62px) !important;
+    right: max(8px, env(safe-area-inset-right)) !important;
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 66px) !important;
+    left: max(8px, env(safe-area-inset-left)) !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: auto !important;
+  }
+
+  .cameraPanel {
+    top: auto !important;
+    right: max(8px, env(safe-area-inset-right)) !important;
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 66px) !important;
+    left: max(8px, env(safe-area-inset-left)) !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: min(42dvh, 340px) !important;
+    min-height: 190px !important;
+    max-height: calc(100dvh - 144px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+  }
+
+  .cameraFeeds.grid-layout,
+  .cameraPanel.camera-compact-row .cameraFeeds.grid-layout {
+    grid-auto-columns: minmax(220px, 82vw) !important;
+  }
+
+  .compassRose {
+    width: 72px !important;
+    height: 72px !important;
+    right: max(12px, env(safe-area-inset-right)) !important;
+    bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  #topbarTitle,
+  #opStatusBadge,
+  .who {
+    display: none !important;
+  }
+
+  .topbar {
+    gap: 4px !important;
+  }
+
+  .topbarRight {
+    margin-left: auto !important;
+  }
+
+  .topBtn {
+    padding-inline: 11px !important;
+  }
+
+  .cameraPanel {
+    height: min(46dvh, 320px) !important;
+  }
+
+  .cameraLayoutControls {
+    margin-bottom: 4px !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .topbar {
+    min-height: 44px !important;
+  }
+
+  .floatingTools {
+    padding-block: 4px !important;
+  }
+
+  .floatingTools .toolFab {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+  }
+
+  .cameraPanel {
+    height: min(48dvh, 250px) !important;
+  }
+}
+
+

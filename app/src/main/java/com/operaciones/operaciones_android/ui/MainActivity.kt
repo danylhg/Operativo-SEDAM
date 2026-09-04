@@ -1,12 +1,22 @@
 package com.operaciones.operaciones_android.ui
 
+import android.app.Dialog
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.content.ClipData
+import android.hardware.Camera
 import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.media.MediaRecorder
+import android.media.MediaMetadataRetriever
+import android.media.MediaPlayer
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.media.MediaMuxer
+import android.media.CamcorderProfile
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -27,10 +37,20 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.VideoView
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import android.view.Gravity
+import android.view.WindowManager
 import android.widget.PopupWindow
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.graphics.Matrix
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -80,6 +100,10 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
+
+private var ImageButton.text: CharSequence
+    get() = ""
+    set(_) {}
 
 class MainActivity : AppCompatActivity(),
     MainPanelRenderer.Host,
@@ -168,6 +192,8 @@ class MainActivity : AppCompatActivity(),
     private var pendingChatAttachmentDestination: ChatAttachmentDestination? = null
     private var pendingCameraOutputUri: Uri? = null
     private var pendingCameraKind: String = "IMAGE"
+    private var pendingCropKind: String = "IMAGE"
+    private var pendingCropOutputUri: Uri? = null
     private var voiceRecorder: MediaRecorder? = null
     private var voiceOutputFile: File? = null
     private var voiceStartedAt: Long = 0L
@@ -225,12 +251,7 @@ class MainActivity : AppCompatActivity(),
             val isVideo = pendingCameraKind == "VIDEO"
             val uri = if (isVideo && result.data?.data != null) result.data!!.data else pendingCameraOutputUri ?: result.data?.data
             uri?.let {
-                sendChatAttachmentUri(
-                    uri = it,
-                    forcedKind = pendingCameraKind,
-                    fallbackName = if (pendingCameraKind == "VIDEO") "camara_video.mp4" else "camara_foto.jpg",
-                    forcedMimeType = if (pendingCameraKind == "VIDEO") "video/mp4" else "image/jpeg"
-                )
+                confirmCameraAttachment(it, pendingCameraKind)
             }
         }
         pendingCameraOutputUri = null
@@ -984,6 +1005,12 @@ class MainActivity : AppCompatActivity(),
 
     override fun getMapDataCurrentUserId(): Int = currentUser.id
 
+    override fun getMapDataCurrentUserTabla(): String = currentUser.tabla
+
+    override fun syncMapData(force: Boolean) {
+        mapDataController.syncFromBackend(force = force)
+    }
+
     override fun isMapDataCesiumReady(): Boolean = isCesiumReady
 
     override fun runMapDataOnUi(block: () -> Unit) {
@@ -1241,9 +1268,22 @@ class MainActivity : AppCompatActivity(),
         tipo: String,
         color: String,
         iconoSrc: String?,
-        sidc: String?
+        sidc: String?,
+        visibility: String,
+        creatorType: String,
+        creatorUserId: Int?,
+        creatorPersonalId: Int?,
+        creatorLabel: String,
+        creatorRank: String,
+        editorLabel: String
     ) {
-        mapDataController.onPoiCreated(idPoi, lat, lon, nombre, tipo, color, iconoSrc, sidc)
+        mapDataController.onPoiCreated(
+            idPoi, lat, lon, nombre, tipo, color, iconoSrc, sidc,
+            visibility, creatorType, creatorUserId, creatorPersonalId,
+            editorLabel = editorLabel,
+            creatorLabel = creatorLabel,
+            creatorRank = creatorRank
+        )
     }
 
     override fun onSocketPoiDeleted(idPoi: Int) {
@@ -1762,13 +1802,528 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun openChatGalleryPicker() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
+        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
+            type = "image/*"
         }
         pickChatMediaLauncher.launch(intent)
     }
+
+    private val cropChatImageLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) pendingCropOutputUri?.let { confirmCameraAttachment(it, pendingCropKind) }
+        pendingCropOutputUri = null
+    }
+
+    private fun confirmCameraAttachment(uri: Uri, kind: String) {
+        val uiDensity = resources.displayMetrics.density
+        fun dp(value: Int) = (value * uiDensity).toInt()
+        val dialog = Dialog(this)
+        val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        var preparedPlayer: MediaPlayer? = null
+        var trimStart = 0
+        var trimEnd = 1000
+        val preview: View = if (kind == "VIDEO") {
+            VideoView(this).apply {
+                setVideoURI(uri)
+                setOnPreparedListener { player ->
+                    player.isLooping = true
+                    player.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+                }
+            }
+        } else {
+            ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; setImageURI(uri) }
+        }
+        root.addView(preview, FrameLayout.LayoutParams(-1, -1))
+        if (kind == "VIDEO") {
+            (preview as VideoView).setOnPreparedListener { player ->
+                preparedPlayer = player
+                player.isLooping = true
+                player.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+                preview.post {
+                    val videoWidth = player.videoWidth
+                    val videoHeight = player.videoHeight
+                    if (videoWidth > 0 && videoHeight > 0 && root.width > 0 && root.height > 0) {
+                        val scale = minOf(root.width.toFloat() / videoWidth, root.height.toFloat() / videoHeight)
+                        preview.layoutParams = FrameLayout.LayoutParams(
+                            (videoWidth * scale).toInt(), (videoHeight * scale).toInt(), Gravity.CENTER
+                        )
+                    }
+                }
+            }
+        }
+        if (kind == "VIDEO") {
+            val thumbnail = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                runCatching {
+                    val retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(this@MainActivity, uri)
+                    setImageBitmap(retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC))
+                    retriever.release()
+                }
+            }
+            root.addView(thumbnail, FrameLayout.LayoutParams(-1, -1))
+            val playButton = ImageButton(this).apply {
+                text = "▶"
+                setImageResource(R.drawable.ic_media_play)
+                scaleType = ImageView.ScaleType.CENTER
+                setPadding(0, 0, 0, 0)
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
+                setOnClickListener {
+                    val video = preview as? VideoView ?: return@setOnClickListener
+                    thumbnail.visibility = View.GONE
+                    if (video.isPlaying) {
+                        video.pause()
+                        setImageResource(R.drawable.ic_media_play)
+                        visibility = View.VISIBLE
+                        text = "▶"
+                    } else {
+                        video.start()
+                        setImageResource(R.drawable.ic_media_pause)
+                        visibility = View.GONE
+                        text = "Ⅱ"
+                    }
+                }
+            }
+            root.addView(playButton, FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER).apply { bottomMargin = dp(28) })
+            (preview as? VideoView)?.setOnTouchListener { _, event ->
+                if (event.action == android.view.MotionEvent.ACTION_UP && (preview as VideoView).isPlaying) {
+                    playButton.setImageResource(R.drawable.ic_media_pause)
+                    playButton.visibility = View.VISIBLE
+                }
+                true
+            }
+            val timelineStrip = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setBackgroundColor(Color.TRANSPARENT)
+                setPadding(0, 0, 0, 0)
+            }
+            root.addView(timelineStrip, FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP).apply { leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(82) })
+            val trimFrame = object : View(this) {
+                private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                override fun onDraw(canvas: android.graphics.Canvas) {
+                    val left = width * trimStart / 1000f
+                    val right = width * trimEnd / 1000f
+                    paint.color = Color.argb(125, 0, 0, 0)
+                    canvas.drawRect(0f, 0f, left, height.toFloat(), paint)
+                    canvas.drawRect(right, 0f, width.toFloat(), height.toFloat(), paint)
+                    paint.color = Color.rgb(255, 205, 0)
+                    paint.style = android.graphics.Paint.Style.STROKE
+                    paint.strokeWidth = dp(4).toFloat()
+                    canvas.drawRect(left + 2f, 2f, right - 2f, height - 2f, paint)
+                    paint.style = android.graphics.Paint.Style.FILL
+                    val mid = height / 2f
+                    val arrow = dp(8).toFloat()
+                    val pathLeft = android.graphics.Path().apply { moveTo(left + arrow, mid - arrow); lineTo(left, mid); lineTo(left + arrow, mid + arrow); close() }
+                    val pathRight = android.graphics.Path().apply { moveTo(right - arrow, mid - arrow); lineTo(right, mid); lineTo(right - arrow, mid + arrow); close() }
+                    canvas.drawPath(pathLeft, paint)
+                    canvas.drawPath(pathRight, paint)
+                }
+            }
+            root.addView(trimFrame, FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP).apply { leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(82) })
+            val playhead = View(this).apply { setBackgroundColor(Color.WHITE); elevation = dp(3).toFloat() }
+            root.addView(playhead, FrameLayout.LayoutParams(dp(3), dp(56), Gravity.TOP).apply { topMargin = dp(82); leftMargin = dp(24) })
+            var draggingPlayhead = false
+            var lastPlayheadSeekAt = 0L
+
+            fun trimBar(initial: Int, onChange: (Int) -> Unit) = SeekBar(this).apply {
+                max = 1000; progress = initial; setPadding(0, 0, 0, 0)
+                progressDrawable = ColorDrawable(Color.TRANSPARENT); background = ColorDrawable(Color.TRANSPARENT)
+                thumb = ColorDrawable(Color.TRANSPARENT)
+                var draggingThumb = false
+                setOnTouchListener { view, event ->
+                    val bar = view as SeekBar
+                    val thumbX = bar.width * bar.progress / bar.max.toFloat()
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            draggingThumb = kotlin.math.abs(event.x - thumbX) <= dp(24)
+                            true
+                        }
+                        MotionEvent.ACTION_MOVE -> if (draggingThumb) {
+                            bar.progress = ((event.x / bar.width) * bar.max).toInt().coerceIn(0, bar.max)
+                            true
+                        } else false
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            val wasDragging = draggingThumb
+                            draggingThumb = false
+                            wasDragging
+                        }
+                        else -> draggingThumb
+                    }
+                }
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(b: SeekBar?, v: Int, fromUser: Boolean) { if (fromUser) onChange(v) }
+                    override fun onStartTrackingTouch(b: SeekBar?) {}
+                    override fun onStopTrackingTouch(b: SeekBar?) {}
+                })
+            }
+            val startBar = trimBar(0) { trimStart = it.coerceAtMost(trimEnd - 10); (preview as VideoView).seekTo((preview as VideoView).duration * trimStart / 1000) }
+            val endBar = trimBar(1000) { trimEnd = it.coerceAtLeast(trimStart + 10) }
+            root.addView(startBar, FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP).apply { leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(82) })
+            root.addView(endBar, FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP).apply { leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(82) })
+            val trimTouchLayer = View(this).apply {
+                var activeHandle = 0
+                setOnTouchListener { view, event ->
+                    val width = view.width.coerceAtLeast(1)
+                    val video = preview as VideoView
+                    fun position(value: Int) = width * value / 1000f
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            val startDistance = kotlin.math.abs(event.x - position(trimStart))
+                            val endDistance = kotlin.math.abs(event.x - position(trimEnd))
+                            val playPosition = if (video.duration > 0) video.currentPosition * 1000 / video.duration else trimStart
+                            val playDistance = kotlin.math.abs(event.x - position(playPosition))
+                            activeHandle = when {
+                                startDistance <= dp(28) && startDistance <= endDistance -> 1
+                                endDistance <= dp(28) -> 2
+                                playDistance <= dp(28) -> 3
+                                else -> 0
+                            }
+                            draggingPlayhead = activeHandle == 3
+                            true
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            if (activeHandle == 1) {
+                                trimStart = ((event.x / width) * 1000).toInt().coerceIn(0, trimEnd - 10)
+                                startBar.progress = trimStart
+                                trimFrame.invalidate()
+                            }
+                            if (activeHandle == 2) {
+                                trimEnd = ((event.x / width) * 1000).toInt().coerceIn(trimStart + 10, 1000)
+                                endBar.progress = trimEnd
+                                trimFrame.invalidate()
+                            }
+                            if (activeHandle == 3 && video.duration > 0) {
+                                val position = (event.x / width * video.duration).toInt().coerceIn(0, video.duration)
+                                (playhead.layoutParams as FrameLayout.LayoutParams).apply {
+                                    leftMargin = dp(24) + event.x.toInt()
+                                }.also { playhead.layoutParams = it }
+                                val now = System.currentTimeMillis()
+                                if (now - lastPlayheadSeekAt >= 80L) {
+                                    video.seekTo(position)
+                                    lastPlayheadSeekAt = now
+                                }
+                            }
+                            true
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            if (activeHandle == 3 && video.duration > 0) video.seekTo((event.x / width * video.duration).toInt().coerceIn(0, video.duration))
+                            activeHandle = 0; draggingPlayhead = false; true
+                        }
+                        else -> true
+                    }
+                }
+            }
+            root.addView(trimTouchLayer, FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP).apply { leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(82) })
+            val playheadUpdater = object : Runnable {
+                override fun run() {
+                    val video = preview as VideoView
+                    if (!draggingPlayhead && video.duration > 0 && timelineStrip.width > 0) {
+                        (playhead.layoutParams as FrameLayout.LayoutParams).apply {
+                            leftMargin = dp(24) + (timelineStrip.width * video.currentPosition / video.duration)
+                        }.also { playhead.layoutParams = it }
+                    }
+                    playhead.postDelayed(this, 250L)
+                }
+            }
+            playhead.post(playheadUpdater)
+            timelineStrip.post {
+                val retriever = MediaMetadataRetriever()
+                runCatching {
+                    retriever.setDataSource(this@MainActivity, uri)
+                    val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                    repeat(12) { index ->
+                        val frame = retriever.getFrameAtTime((duration * index / 11L) * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        timelineStrip.addView(ImageView(this).apply { setImageBitmap(frame); scaleType = ImageView.ScaleType.CENTER_CROP }, LinearLayout.LayoutParams(0, dp(56), 1f))
+                    }
+                }
+                retriever.release()
+            }
+            val soundButton = ImageButton(this).apply {
+                text = "🔊"
+                setImageResource(R.drawable.ic_volume_on)
+                imageTintList = ColorStateList.valueOf(Color.WHITE)
+                scaleType = ImageView.ScaleType.CENTER
+                setPadding(0, 0, 0, 0)
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(175, 8, 55, 92)); setStroke(dp(1), Color.rgb(125, 205, 255)) }
+                setOnClickListener {
+                    val video = preview as VideoView
+                    val muted = tag == true
+                    preparedPlayer?.setVolume(if (muted) 1f else 0f, if (muted) 1f else 0f)
+                    tag = !muted
+                    setImageResource(if (muted) R.drawable.ic_volume_on else R.drawable.ic_volume_off)
+                    text = if (muted) "🔊" else "🔇"
+                }
+            }
+            root.addView(soundButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { rightMargin = dp(76); topMargin = dp(24) })
+        }
+        val caption = EditText(this).apply {
+            hint = "Escribe un texto..."
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.LTGRAY)
+            setPadding(dp(18), 0, dp(18), 0)
+            background = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = dp(28).toFloat(); setColor(Color.argb(215, 8, 25, 40)); setStroke(dp(1), Color.rgb(120, 185, 230)) }
+            visibility = View.VISIBLE
+        }
+        val captionParams = FrameLayout.LayoutParams(-1, dp(56), Gravity.BOTTOM)
+        captionParams.bottomMargin = dp(16)
+        captionParams.leftMargin = dp(16)
+        captionParams.rightMargin = dp(76)
+        root.addView(caption, captionParams)
+        val close = TextView(this).apply {
+            text = "X"
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            typeface = android.graphics.Typeface.DEFAULT
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(175, 8, 55, 92)); setStroke(dp(1), Color.rgb(125, 205, 255)) }
+            setOnClickListener { dialog.dismiss() }
+        }
+        root.addView(close, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.LEFT).apply { topMargin = if (kind == "VIDEO") dp(24) else dp(56); leftMargin = dp(16) })
+        close.elevation = dp(20).toFloat()
+        var drawingColor = Color.RED
+        val colors = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.TRANSPARENT)
+            visibility = View.GONE
+            elevation = dp(10).toFloat()
+        }
+        val colorViews = mutableListOf<View>()
+        listOf(Color.RED, Color.YELLOW, Color.GREEN, Color.CYAN, Color.WHITE).forEach { selectedColor ->
+            colors.addView(View(this).apply {
+                colorViews.add(this)
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(selectedColor); setStroke(dp(1), Color.WHITE) }
+                scaleX = if (selectedColor == drawingColor) 1.2f else 1f
+                scaleY = if (selectedColor == drawingColor) 1.2f else 1f
+                setOnClickListener {
+                    drawingColor = selectedColor
+                    colorViews.forEach { it.scaleX = 1f; it.scaleY = 1f; it.alpha = 0.7f }
+                    scaleX = 1.2f
+                    scaleY = 1.2f
+                    alpha = 1f
+                }
+            }, LinearLayout.LayoutParams(dp(34), dp(34)).apply { topMargin = dp(8); bottomMargin = dp(8) })
+        }
+        root.addView(colors, FrameLayout.LayoutParams(dp(52), dp(380), Gravity.TOP or Gravity.RIGHT).apply { topMargin = dp(112); rightMargin = dp(12) })
+        val drawing = object : View(this) {
+            val strokes = mutableListOf<Pair<Int, android.graphics.Path>>()
+            var drawingActive = false
+            val brush = android.graphics.Paint().apply { style = android.graphics.Paint.Style.STROKE; strokeWidth = dp(5).toFloat(); strokeCap = android.graphics.Paint.Cap.ROUND; strokeJoin = android.graphics.Paint.Join.ROUND }
+            override fun onDraw(canvas: android.graphics.Canvas) { strokes.forEach { (c, path) -> brush.color = c; canvas.drawPath(path, brush) } }
+            override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+                if (!drawingActive) return false
+                when (event.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> { strokes.add(drawingColor to android.graphics.Path().apply { moveTo(event.x, event.y) }); invalidate(); return true }
+                    android.view.MotionEvent.ACTION_MOVE -> { strokes.lastOrNull()?.second?.lineTo(event.x, event.y); invalidate(); return true }
+                }
+                return true
+            }
+        }
+        drawing.visibility = View.VISIBLE
+        drawing.elevation = dp(1).toFloat()
+        root.addView(drawing, FrameLayout.LayoutParams(-1, -1))
+        val undo = TextView(this).apply {
+            text = "↶"
+            textSize = 25f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setOnClickListener { drawing.strokes.removeLastOrNull(); drawing.invalidate() }
+        }
+        colors.addView(undo, LinearLayout.LayoutParams(dp(44), dp(44)).apply { topMargin = dp(8) })
+        val clear = TextView(this).apply {
+            text = "⌫"
+            textSize = 23f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setOnClickListener { drawing.strokes.clear(); drawing.invalidate() }
+        }
+        colors.addView(clear, LinearLayout.LayoutParams(dp(44), dp(44)).apply { topMargin = dp(4) })
+        val drawButton = ImageButton(this).apply {
+            text = "✎"
+            setImageResource(R.drawable.ic_tool_pencil)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER
+            setPadding(0, 0, 0, dp(3))
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(175, 8, 55, 92)); setStroke(dp(1), Color.rgb(125, 205, 255)) }
+            setOnClickListener {
+                drawing.drawingActive = !drawing.drawingActive
+                colors.visibility = if (drawing.drawingActive) View.VISIBLE else View.GONE
+            }
+        }
+        root.addView(drawButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { topMargin = if (kind == "VIDEO") dp(24) else dp(56); rightMargin = dp(12) })
+        drawButton.elevation = dp(20).toFloat()
+        val cropButton = TextView(this).apply {
+            text = "⛶"
+            textSize = 28f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(175, 8, 55, 92)); setStroke(dp(1), Color.rgb(125, 205, 255)) }
+            setOnClickListener {
+                dialog.dismiss()
+                showInternalCropEditor(uri, kind)
+            }
+        }
+        root.addView(cropButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { topMargin = if (kind == "VIDEO") dp(24) else dp(56); rightMargin = dp(76) })
+        cropButton.elevation = dp(20).toFloat()
+        if (kind == "VIDEO") cropButton.visibility = View.GONE
+        val send = TextView(this).apply {
+            text = "➤"
+            textSize = 28f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setPadding(0, 0, 0, dp(3))
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(30, 105, 190)) }
+            setOnClickListener {
+                var attachmentUri = uri
+                if (kind == "IMAGE" && drawing.strokes.isNotEmpty()) {
+                    runCatching {
+                        val source = contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it) }
+                            ?: error("No se pudo leer la imagen")
+                        val composed = android.graphics.Bitmap.createBitmap(source.width, source.height, android.graphics.Bitmap.Config.ARGB_8888)
+                        val canvas = android.graphics.Canvas(composed)
+                        canvas.drawBitmap(source, 0f, 0f, null)
+                        val paint = android.graphics.Paint().apply { style = android.graphics.Paint.Style.STROKE; strokeWidth = 5f; strokeCap = android.graphics.Paint.Cap.ROUND; strokeJoin = android.graphics.Paint.Join.ROUND }
+                        drawing.strokes.forEach { (strokeColor, path) -> paint.color = strokeColor; canvas.drawPath(path, paint) }
+                        val file = createChatMediaFile("chat_edited_", ".jpg")
+                        file.outputStream().use { composed.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
+                        source.recycle(); composed.recycle()
+                        attachmentUri = FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider", file)
+                    }
+                }
+                if (kind == "VIDEO" && trimStart > 0 || kind == "VIDEO" && trimEnd < 1000) {
+                    val duration = MediaMetadataRetriever().runCatching { setDataSource(this@MainActivity, uri); extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L }.getOrDefault(0L)
+                    trimVideo(uri, duration * trimStart / 1000, duration * trimEnd / 1000)?.let { attachmentUri = Uri.fromFile(it) }
+                }
+                sendChatAttachmentUri(attachmentUri, kind, if (kind == "VIDEO") "camara_video.mp4" else "camara_foto.jpg", if (kind == "VIDEO") "video/mp4" else "image/jpeg", caption = caption.text.toString().trim())
+                dialog.dismiss()
+            }
+        }
+        root.addView(send, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.RIGHT).apply { bottomMargin = dp(16); rightMargin = dp(16) })
+        send.elevation = dp(20).toFloat()
+        dialog.setContentView(root)
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.BLACK))
+        dialog.window?.setLayout(-1, -1)
+    }
+
+    private fun showInternalCropEditor(uri: Uri, kind: String) {
+        val bitmap = contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it) } ?: return
+        val dp = resources.displayMetrics.density
+        fun px(value: Int) = (value * dp).toInt()
+        val dialog = Dialog(this)
+        val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val image = ImageView(this).apply { setImageBitmap(bitmap); scaleType = ImageView.ScaleType.CENTER_INSIDE }
+        root.addView(image, FrameLayout.LayoutParams(-1, -1))
+        val cropOverlay = object : View(this) {
+            val imageRect = android.graphics.RectF()
+            val cropRect = android.graphics.RectF()
+            private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            private var activeCorner = 0
+            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                val scale = minOf(w.toFloat() / bitmap.width, h.toFloat() / bitmap.height)
+                val iw = bitmap.width * scale; val ih = bitmap.height * scale
+                imageRect.set((w - iw) / 2f, (h - ih) / 2f, (w + iw) / 2f, (h + ih) / 2f)
+                cropRect.set(imageRect)
+            }
+            override fun onDraw(canvas: android.graphics.Canvas) {
+                paint.style = android.graphics.Paint.Style.STROKE; paint.strokeWidth = px(2).toFloat(); paint.color = Color.WHITE
+                canvas.drawRect(cropRect, paint)
+                paint.style = android.graphics.Paint.Style.FILL
+                listOf(cropRect.left to cropRect.top, cropRect.right to cropRect.top, cropRect.left to cropRect.bottom, cropRect.right to cropRect.bottom).forEach { canvas.drawCircle(it.first, it.second, px(7).toFloat(), paint) }
+            }
+            override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+                when (event.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        val d = px(28).toFloat()
+                        activeCorner = when {
+                            kotlin.math.abs(event.x - cropRect.left) < d && kotlin.math.abs(event.y - cropRect.top) < d -> 1
+                            kotlin.math.abs(event.x - cropRect.right) < d && kotlin.math.abs(event.y - cropRect.top) < d -> 2
+                            kotlin.math.abs(event.x - cropRect.left) < d && kotlin.math.abs(event.y - cropRect.bottom) < d -> 3
+                            kotlin.math.abs(event.x - cropRect.right) < d && kotlin.math.abs(event.y - cropRect.bottom) < d -> 4
+                            else -> 0
+                        }; return true
+                    }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val minSize = px(70).toFloat()
+                        when (activeCorner) {
+                            1 -> { cropRect.left = event.x.coerceIn(imageRect.left, cropRect.right - minSize); cropRect.top = event.y.coerceIn(imageRect.top, cropRect.bottom - minSize) }
+                            2 -> { cropRect.right = event.x.coerceIn(cropRect.left + minSize, imageRect.right); cropRect.top = event.y.coerceIn(imageRect.top, cropRect.bottom - minSize) }
+                            3 -> { cropRect.left = event.x.coerceIn(imageRect.left, cropRect.right - minSize); cropRect.bottom = event.y.coerceIn(cropRect.top + minSize, imageRect.bottom) }
+                            4 -> { cropRect.right = event.x.coerceIn(cropRect.left + minSize, imageRect.right); cropRect.bottom = event.y.coerceIn(cropRect.top + minSize, imageRect.bottom) }
+                        }; invalidate(); return true
+                    }
+                }; return true
+            }
+        }
+        root.addView(cropOverlay, FrameLayout.LayoutParams(-1, -1))
+        val cancel = TextView(this).apply {
+            text = "X"; textSize = 24f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(175, 8, 55, 92)); setStroke(px(1), Color.rgb(125, 205, 255)) }
+            setOnClickListener {
+                bitmap.recycle()
+                dialog.dismiss()
+                confirmCameraAttachment(uri, kind)
+            }
+        }
+        root.addView(cancel, FrameLayout.LayoutParams(px(52), px(52), Gravity.BOTTOM or Gravity.LEFT).apply { leftMargin = px(42); bottomMargin = px(12) })
+        val accept = TextView(this).apply {
+            text = "✓"; textSize = 28f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(175, 8, 55, 92)); setStroke(px(1), Color.rgb(125, 205, 255)) }
+            setOnClickListener {
+                val sourceRect = cropOverlay.cropRect; val imageRect = cropOverlay.imageRect
+                val left = ((sourceRect.left - imageRect.left) / imageRect.width() * bitmap.width).toInt().coerceIn(0, bitmap.width - 1)
+                val top = ((sourceRect.top - imageRect.top) / imageRect.height() * bitmap.height).toInt().coerceIn(0, bitmap.height - 1)
+                val right = ((sourceRect.right - imageRect.left) / imageRect.width() * bitmap.width).toInt().coerceIn(left + 1, bitmap.width)
+                val bottom = ((sourceRect.bottom - imageRect.top) / imageRect.height() * bitmap.height).toInt().coerceIn(top + 1, bitmap.height)
+                val cropped = Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
+                val file = createChatMediaFile("chat_crop_", ".jpg")
+                file.outputStream().use { cropped.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+                bitmap.recycle(); cropped.recycle(); dialog.dismiss()
+                confirmCameraAttachment(FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider", file), kind)
+            }
+        }
+        root.addView(accept, FrameLayout.LayoutParams(px(52), px(52), Gravity.BOTTOM or Gravity.RIGHT).apply { rightMargin = px(42); bottomMargin = px(12) })
+        dialog.setContentView(root); dialog.show(); dialog.window?.setBackgroundDrawable(ColorDrawable(Color.BLACK)); dialog.window?.setLayout(-1, -1)
+    }
+
+    private fun trimVideo(uri: Uri, startMs: Long, endMs: Long): File? = runCatching {
+        val input = contentResolver.openFileDescriptor(uri, "r") ?: return@runCatching null
+        val output = createChatMediaFile("chat_trimmed_", ".mp4")
+        val extractor = MediaExtractor()
+        extractor.setDataSource(input.fileDescriptor)
+        val muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        val map = mutableMapOf<Int, Int>()
+        for (i in 0 until extractor.trackCount) {
+            val format = extractor.getTrackFormat(i)
+            if (format.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true || format.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
+                map[i] = muxer.addTrack(format)
+            }
+        }
+        muxer.start()
+        val buffer = java.nio.ByteBuffer.allocate(1024 * 1024)
+        val info = android.media.MediaCodec.BufferInfo()
+        map.forEach { (sourceTrack, outputTrack) ->
+            extractor.selectTrack(sourceTrack)
+            extractor.seekTo(startMs * 1000L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+            while (true) {
+                val sampleTime = extractor.sampleTime
+                if (sampleTime < 0 || sampleTime > endMs * 1000L) break
+                info.offset = 0
+                info.size = extractor.readSampleData(buffer, 0)
+                info.presentationTimeUs = sampleTime - startMs * 1000L
+                info.flags = extractor.sampleFlags
+                if (info.size > 0) muxer.writeSampleData(outputTrack, buffer, info)
+                if (!extractor.advance()) break
+            }
+            extractor.unselectTrack(sourceTrack)
+        }
+        muxer.stop(); muxer.release(); extractor.release(); input.close()
+        output
+    }.getOrNull()
 
     private fun openChatFilePicker() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -1783,16 +2338,14 @@ class MainActivity : AppCompatActivity(),
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), REQUEST_CHAT_CAMERA_PERMISSION)
             return
         }
-
-        AlertDialog.Builder(this)
-            .setTitle("Enviar desde camara")
-            .setItems(arrayOf("Foto", "Video")) { _, which ->
-                if (which == 0) startChatCameraCapture("IMAGE") else startChatCameraCapture("VIDEO")
-            }
-            .show()
+        startChatCameraCapture("IMAGE")
     }
 
     private fun startChatCameraCapture(kind: String) {
+        if (kind == "IMAGE") {
+            openChatCameraInApp()
+            return
+        }
         pendingCameraKind = kind
         val isVideo = kind == "VIDEO"
         val file = createChatMediaFile(
@@ -1804,9 +2357,287 @@ class MainActivity : AppCompatActivity(),
 
         val intent = Intent(if (isVideo) MediaStore.ACTION_VIDEO_CAPTURE else MediaStore.ACTION_IMAGE_CAPTURE).apply {
             putExtra(MediaStore.EXTRA_OUTPUT, uri)
+            clipData = ClipData.newRawUri("chat_media", uri)
             addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         captureChatMediaLauncher.launch(intent)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun openChatCameraInApp() {
+        val dialog = android.app.Dialog(this)
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        val root = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        val preview = SurfaceView(this)
+        root.addView(preview, FrameLayout.LayoutParams(-1, -1))
+        val density = resources.displayMetrics.density
+        val controlSize = (44 * density).toInt()
+        val controlBackground: () -> GradientDrawable = {
+            GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.argb(175, 8, 55, 92))
+                setStroke((1 * resources.displayMetrics.density).toInt(), Color.rgb(125, 205, 255))
+            }
+        }
+        val close = TextView(this).apply { text = "×"; textSize = 34f; setTextColor(Color.WHITE); gravity = android.view.Gravity.CENTER; setOnClickListener { dialog.dismiss() } }
+        close.text = "X"
+        close.textSize = 18f
+        close.setTextColor(Color.WHITE)
+        close.includeFontPadding = false
+        close.typeface = android.graphics.Typeface.DEFAULT
+        close.minWidth = 0
+        close.minHeight = 0
+        close.setPadding(0, 0, 0, 0)
+        close.background = controlBackground()
+        val closeParams = FrameLayout.LayoutParams(controlSize, controlSize, android.view.Gravity.TOP or android.view.Gravity.LEFT)
+        closeParams.topMargin = (24 * density).toInt()
+        closeParams.leftMargin = (16 * density).toInt()
+        root.addView(close, closeParams)
+        val take = View(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.WHITE)
+                setStroke(5, Color.WHITE)
+            }
+            elevation = 8f
+        }
+        val shutterSize = (64 * resources.displayMetrics.density).toInt()
+        val takeParams = FrameLayout.LayoutParams(shutterSize, shutterSize, android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL)
+        takeParams.bottomMargin = (125 * resources.displayMetrics.density).toInt()
+        root.addView(take, takeParams)
+        val modes = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        var selectedMode = "IMAGE"
+        var recording = false
+        var recorder: MediaRecorder? = null
+        var videoFile: File? = null
+        var videoStartedAt = 0L
+        val videoTimerHandler = Handler(Looper.getMainLooper())
+        val videoCounter = TextView(this).apply {
+            text = "00:00"
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            visibility = View.GONE
+        }
+        root.addView(videoCounter, FrameLayout.LayoutParams(dp(90), dp(36), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(24) })
+        val videoTimer = object : Runnable {
+            override fun run() {
+                val elapsed = ((System.currentTimeMillis() - videoStartedAt) / 1000L).toInt()
+                videoCounter.text = "%02d:%02d".format(elapsed / 60, elapsed % 60)
+                if (recording) videoTimerHandler.postDelayed(this, 1000L)
+            }
+        }
+        val modeButtons = listOf("VIDEO", "FOTO").map { label ->
+            TextView(this).apply {
+                text = label
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                background = if (label == "FOTO") GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = 28f
+                    setColor(Color.argb(105, 70, 165, 235))
+                    setStroke(1, Color.rgb(139, 206, 255))
+                } else null
+                gravity = android.view.Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, -1, 1f).apply {
+                    marginStart = 8
+                    marginEnd = 8
+                }
+                setPadding(24, 0, 24, 0)
+            }.also { modes.addView(it) }
+        }
+        val modeParams = FrameLayout.LayoutParams(
+            (resources.displayMetrics.widthPixels * 0.65f).toInt(),
+            (44 * density).toInt(),
+            android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
+        )
+        modeParams.bottomMargin = (48 * density).toInt()
+        root.addView(modes, modeParams)
+        dialog.setContentView(root)
+        var camera: Camera? = null
+        var cameraFacing = Camera.CameraInfo.CAMERA_FACING_BACK
+        var flashEnabled = false
+        val flashButton = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_flash_off)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER
+            setPadding(0, 0, 0, 0)
+            background = controlBackground()
+            setOnClickListener {
+                flashEnabled = !flashEnabled
+                setImageResource(if (flashEnabled) R.drawable.ic_flash_on else R.drawable.ic_flash_off)
+                imageTintList = ColorStateList.valueOf(if (flashEnabled) Color.rgb(100, 190, 255) else Color.WHITE)
+            }
+        }
+        root.addView(flashButton, FrameLayout.LayoutParams(controlSize, controlSize, Gravity.TOP or Gravity.RIGHT).apply { topMargin = (24 * density).toInt(); rightMargin = (16 * density).toInt() })
+        val flipButton = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_flip_camera)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER
+            setPadding(0, 0, 0, 0)
+            background = controlBackground()
+            setOnClickListener {
+                runCatching {
+                    camera?.stopPreview()
+                    camera?.release()
+                    cameraFacing = if (cameraFacing == Camera.CameraInfo.CAMERA_FACING_BACK) Camera.CameraInfo.CAMERA_FACING_FRONT else Camera.CameraInfo.CAMERA_FACING_BACK
+                    camera = Camera.open(cameraFacing)
+                    camera?.setDisplayOrientation(90)
+                    camera?.setPreviewDisplay(preview.holder)
+                    camera?.startPreview()
+                }.onFailure { Toast.makeText(this@MainActivity, "No se pudo cambiar la cámara", Toast.LENGTH_SHORT).show() }
+            }
+        }
+        root.addView(flipButton, FrameLayout.LayoutParams(controlSize, controlSize, Gravity.TOP or Gravity.RIGHT).apply { topMargin = (24 * density).toInt(); rightMargin = (72 * density).toInt() })
+        var cameraReady = false
+        preview.holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                camera = runCatching { Camera.open() }.getOrNull()
+                try {
+                    camera?.setDisplayOrientation(90)
+                    camera?.setPreviewDisplay(holder)
+                    camera?.startPreview()
+                    cameraReady = camera != null
+                } catch (_: Exception) {
+                    cameraReady = false
+                    camera?.release()
+                    camera = null
+                    Toast.makeText(this@MainActivity, "No se pudo iniciar la cámara", Toast.LENGTH_SHORT).show()
+                }
+            }
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+            override fun surfaceDestroyed(holder: SurfaceHolder) { cameraReady = false; camera?.release(); camera = null }
+        })
+        modeButtons[0].setOnClickListener {
+            if (recording) return@setOnClickListener
+            selectedMode = "VIDEO"
+            modeButtons[0].setTextColor(Color.WHITE)
+            modeButtons[0].background = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = 28f; setColor(Color.argb(105, 70, 165, 235)); setStroke(1, Color.rgb(139, 206, 255)) }
+            modeButtons[1].setTextColor(Color.WHITE)
+            modeButtons[1].background = null
+            take.alpha = 1f
+            videoCounter.visibility = View.VISIBLE
+        }
+        modeButtons[1].setOnClickListener {
+            if (recording) return@setOnClickListener
+            selectedMode = "IMAGE"
+            modeButtons[0].setTextColor(Color.WHITE)
+            modeButtons[0].background = null
+            modeButtons[1].setTextColor(Color.WHITE)
+            modeButtons[1].background = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = 28f; setColor(Color.argb(105, 70, 165, 235)); setStroke(1, Color.rgb(139, 206, 255)) }
+            take.alpha = 1f
+            videoCounter.visibility = View.GONE
+        }
+        take.setOnClickListener {
+            val activeCamera = camera
+            if (activeCamera == null || !cameraReady) {
+                Toast.makeText(this, "La cámara todavía no está lista", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (selectedMode == "VIDEO") {
+                if (!recording) {
+                    try {
+                        videoFile = createChatMediaFile("chat_video_", ".mp4")
+                        if (flashEnabled) runCatching {
+                            activeCamera.parameters = activeCamera.parameters.apply { flashMode = Camera.Parameters.FLASH_MODE_TORCH }
+                        }
+                        activeCamera.unlock()
+                        recorder = MediaRecorder().apply {
+                            setCamera(activeCamera)
+                            setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
+                            setVideoSource(MediaRecorder.VideoSource.CAMERA)
+                            setProfile(CamcorderProfile.get(CamcorderProfile.QUALITY_LOW))
+                            setOutputFile(videoFile!!.absolutePath)
+                            setPreviewDisplay(preview.holder.surface)
+                            setOrientationHint(if (cameraFacing == Camera.CameraInfo.CAMERA_FACING_BACK) 90 else 270)
+                            prepare()
+                            start()
+                        }
+                        recording = true
+                        videoStartedAt = System.currentTimeMillis()
+                        videoCounter.text = "00:00"
+                        videoTimerHandler.post(videoTimer)
+                        close.visibility = View.GONE
+                        modes.visibility = View.GONE
+                        takeParams.bottomMargin = (70 * density).toInt()
+                        take.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.RED); setStroke(5, Color.WHITE) }
+                    } catch (_: Exception) {
+                        runCatching { recorder?.release() }
+                        recorder = null
+                        runCatching { activeCamera.lock(); activeCamera.startPreview() }
+                        Toast.makeText(this, "No se pudo iniciar el video", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    try {
+                        recorder?.stop()
+                        recorder?.release()
+                        recorder = null
+                        runCatching {
+                            activeCamera.parameters = activeCamera.parameters.apply { flashMode = Camera.Parameters.FLASH_MODE_OFF }
+                        }
+                        activeCamera.lock()
+                        recording = false
+                        videoTimerHandler.removeCallbacks(videoTimer)
+                        dialog.dismiss()
+                        val fileUri = FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider", videoFile!!)
+                        confirmCameraAttachment(fileUri, "VIDEO")
+                    } catch (_: Exception) {
+                        runCatching { recorder?.release() }
+                        recorder = null
+                        dialog.dismiss()
+                        Toast.makeText(this@MainActivity, "No se pudo guardar el video", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                return@setOnClickListener
+            }
+            take.isEnabled = false
+            try {
+                if (flashEnabled) runCatching {
+                    activeCamera.parameters = activeCamera.parameters.apply { flashMode = Camera.Parameters.FLASH_MODE_TORCH }
+                }
+                activeCamera.takePicture(null, null) { data, cam ->
+                    try {
+                        val file = createChatMediaFile("chat_image_", ".jpg")
+                        val source = BitmapFactory.decodeByteArray(data, 0, data.size)
+                        val matrix = Matrix().apply { postRotate(90f) }
+                        val rotated = android.graphics.Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+                        file.outputStream().use { rotated.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
+                        if (rotated !== source) rotated.recycle()
+                        source.recycle()
+                        cam.release()
+                        camera = null
+                        dialog.dismiss()
+                        val fileUri = FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider", file)
+                        confirmCameraAttachment(fileUri, "IMAGE")
+                    } catch (_: Exception) {
+                        cam.release()
+                        camera = null
+                        dialog.dismiss()
+                        Toast.makeText(this@MainActivity, "No se pudo guardar la foto", Toast.LENGTH_SHORT).show()
+                    }
+                    runCatching { cam.parameters = cam.parameters.apply { flashMode = Camera.Parameters.FLASH_MODE_OFF } }
+                }
+            } catch (_: Exception) {
+                take.isEnabled = true
+                runCatching { activeCamera.startPreview() }
+                Toast.makeText(this, "No se pudo tomar la foto", Toast.LENGTH_SHORT).show()
+            }
+        }
+        dialog.setOnDismissListener {
+            if (recording) runCatching { recorder?.stop() }
+            runCatching { recorder?.release() }
+            recorder = null
+            camera?.release()
+            camera = null
+        }
+        dialog.show()
+        dialog.window?.setLayout(-1, -1)
     }
 
     private fun toggleVoiceMessageRecording() {
@@ -2168,7 +2999,8 @@ class MainActivity : AppCompatActivity(),
         forcedKind: String?,
         fallbackName: String?,
         forcedMimeType: String? = null,
-        durationMs: Long? = null
+        durationMs: Long? = null,
+        caption: String? = null
     ) {
         val mimeType = forcedMimeType ?: contentResolver.getType(uri) ?: "application/octet-stream"
         val kind = forcedKind ?: when {
@@ -2179,6 +3011,10 @@ class MainActivity : AppCompatActivity(),
         }
 
         val destination = pendingChatAttachmentDestination
+        val locationCaption = if (lastKnownLat != null && lastKnownLon != null) {
+            "\n📍 ${lastKnownLat}, ${lastKnownLon}"
+        } else ""
+        val currentLocation = if (destination?.destinoTipo.isNullOrBlank() && destination?.destinoId.isNullOrBlank() && lastKnownLat != null && lastKnownLon != null) lastKnownLat!! to lastKnownLon!! else null
         val fileName = queryDisplayName(uri) ?: fallbackName ?: defaultAttachmentName(kind, mimeType)
         chatController.sendAttachment(
             uri = uri,
@@ -2186,10 +3022,11 @@ class MainActivity : AppCompatActivity(),
             mimeType = mimeType,
             attachmentKind = kind,
             destinatarioRol = destination?.destinatarioRol,
-            destinoTipo = destination?.destinoTipo,
-            destinoId = destination?.destinoId,
-            destinoLabel = destination?.destinoLabel,
-            durationMs = durationMs
+            destinoTipo = destination?.destinoTipo?.takeIf { it.isNotBlank() } ?: currentLocation?.let { "UBICACION" },
+            destinoId = destination?.destinoId?.takeIf { it.isNotBlank() } ?: currentLocation?.let { "${it.first},${it.second}" },
+            destinoLabel = destination?.destinoLabel?.takeIf { it.isNotBlank() } ?: currentLocation?.let { "UBICACION:${it.first},${it.second}" },
+            durationMs = durationMs,
+            caption = caption.orEmpty() + locationCaption
         )
     }
 
@@ -2245,6 +3082,13 @@ class MainActivity : AppCompatActivity(),
     override fun getChatPersonal(): List<PersonalItem> = personalList
 
     override fun getChatContentResolver(): android.content.ContentResolver = contentResolver
+    override fun getChatLastLocation(): Pair<Double, Double>? =
+        if (lastKnownLat != null && lastKnownLon != null) lastKnownLat!! to lastKnownLon!! else null
+
+    fun openChatLocation(lat: Double, lon: Double) {
+        panelNavigationController.showPanel(Panel.NONE)
+        cesiumWebController.centerOnLocation(lat, lon, zoom = 500, follow = false)
+    }
 
     override fun getChatReadMessageIds(): Set<Int> {
         val key = "${currentOperation.id}_${currentUser.tabla}_${currentUser.id}"
@@ -2399,6 +3243,12 @@ class MainActivity : AppCompatActivity(),
     override fun getSimulationLastKnownLat(): Double? = lastKnownLat
 
     override fun getSimulationLastKnownLon(): Double? = lastKnownLon
+
+    fun getLastKnownLocationPair(): Pair<Double, Double>? {
+        val lat = lastKnownLat
+        val lon = lastKnownLon
+        return if (lat != null && lon != null) Pair(lat, lon) else null
+    }
 
     override fun hasSimulationSocket(): Boolean = chatSocketManager != null
 
@@ -2741,6 +3591,22 @@ class MainActivity : AppCompatActivity(),
     fun getCurrentOperationNameForBridge(): String = currentOperation.nombre
 
     fun getCurrentOperationIdForBridge(): Int = currentOperation.id
+
+    fun getCurrentUserIdForBridge(): Int = currentUser.id
+
+    fun getCurrentUserTableForBridge(): String = currentUser.tabla
+
+    fun publishPoiFromBridge(idPoi: Int) {
+        mapObjectsController.publishPoiById(idPoi)
+    }
+
+    fun onPoiVisibilityToggled(poiId: Int, isPublic: Boolean) {
+        mapObjectsController.setPoiVisibility(poiId, isPublic)
+    }
+
+    fun editPoiFromBridge(payloadJson: String) {
+        mapObjectsController.editPoiFromBridge(payloadJson)
+    }
 
     fun onRouteCreatedFromBridge(payloadJson: String) {
         mapObjectsController.onRouteCreatedFromBridge(payloadJson)
@@ -3219,8 +4085,47 @@ class MainActivity : AppCompatActivity(),
 
     override fun getSelectedMapVehiculoId(): Int? = selectedVehiculoId
 
-    override fun getMapDataCurrentUserLabel(): String =
-        currentUser.nombreCompleto.ifBlank { currentUser.username }.ifBlank { "Usuario" }
+    override fun getMapDataCurrentUserLabel(): String {
+        val rank = abbreviateRank(currentUser.jerarquia)
+        val rawName = currentUser.nombreCompleto.ifBlank { currentUser.username }.trim()
+        val cleanName = rawName.replace(Regex("""\s*\([^)]*\)"""), "").trim()
+        return listOf(rank, cleanName).filter { it.isNotBlank() }.joinToString(" ").ifBlank { "Usuario" }
+    }
+
+    private fun abbreviateRank(rank: String): String {
+        val r = rank.trim().lowercase()
+        return when {
+            r.contains("capitán de navío") || r.contains("capitan de navio") -> "Cap. Nav."
+            r.contains("capitán de fragata") || r.contains("capitan de fragata") -> "Cap. Frag."
+            r.contains("capitán de corbeta") || r.contains("capitan de corbeta") -> "Cap. Corb."
+            r.contains("capitán 1/o") || r.contains("capitan 1/o") || r.contains("capitán primero") -> "Cap. 1/o"
+            r.contains("capitán 2/o") || r.contains("capitan 2/o") || r.contains("capitán segundo") -> "Cap. 2/o"
+            r.contains("capitán") || r.contains("capitan") || r == "cap" || r == "cap." -> "Cap."
+            r.contains("teniente de navío") || r.contains("teniente de navio") -> "Tte. Nav."
+            r.contains("teniente de fragata") || r.contains("teniente de fragata") -> "Tte. Frag."
+            r.contains("teniente de corbeta") || r.contains("teniente de corbeta") -> "Tte. Corb."
+            r.contains("primer teniente") || r.contains("1er teniente") -> "1er. Tte."
+            r.contains("segundo teniente") || r.contains("2do teniente") -> "2do. Tte."
+            r.contains("subteniente") || r == "subtte" || r == "subtte." -> "Subtte."
+            r.contains("teniente") || r == "tte" || r == "tte." -> "Tte."
+            r.contains("sargento 1/o") || r.contains("sargento primero") -> "Sgto. 1/o"
+            r.contains("sargento 2/o") || r.contains("sargento segundo") -> "Sgto. 2/o"
+            r.contains("sargento") || r == "sgto" || r == "sgto." -> "Sgto."
+            r.contains("cabo") || r == "cbo" || r == "cbo." -> "Cbo."
+            r.contains("marinero") || r == "mro" || r == "mro." -> "Mro."
+            r.contains("soldado") || r == "sld" || r == "sld." -> "Sld."
+            r.contains("general de división") || r.contains("general de division") -> "Gral. Div."
+            r.contains("general de brigada") -> "Gral. Brig."
+            r.contains("general brigadier") -> "Gral. Bgda."
+            r.contains("general") || r == "gral" || r == "gral." -> "Gral."
+            r.contains("almirante") || r == "alm" || r == "alm." -> "Alm."
+            r.contains("vicealmirante") || r == "valm" || r == "valm." -> "Valm."
+            r.contains("contralmirante") || r == "calm" || r == "calm." -> "Calm."
+            r.contains("coronel") || r == "cnel" || r == "cnel." -> "Cnel."
+            r.contains("mayor") || r == "my" || r == "my." -> "My."
+            else -> ""
+        }
+    }
 
     private val simulationVehicleOccupants = mutableMapOf<Int, List<PersonalItem>>()
 

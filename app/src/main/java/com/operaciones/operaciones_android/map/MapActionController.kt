@@ -141,6 +141,13 @@ class MapActionController(
             color: String,
             iconoSrc: String? = null
         )
+        fun updatePoi(
+            poiId: Int,
+            nombre: String,
+            tipoPoi: String,
+            color: String,
+            iconoSrc: String? = null
+        )
         fun clearRouteOnBackend()
     }
 
@@ -437,6 +444,231 @@ class MapActionController(
             val color = when (identity) { "Amigo" -> "#39A8FF"; "Hostil" -> "#FF4D5E"; "Neutral" -> "#54D18B"; else -> "#E4B943" }
             val sidc = currentSidc()
             host.savePoi(lat, lon, pointName, if (isTarget) "MIL" else "PDI", color, sidc)
+            dialog.dismiss()
+        }
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            dialog.window?.setDimAmount(.32f)
+            dialog.window?.setLayout(dp(374), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        dialog.show()
+        preview.postDelayed({ updatePreview() }, 250)
+    }
+
+    fun showEditPointForm(poiId: Int, isTarget: Boolean, lat: Double, lon: Double, currentName: String, currentIdentity: String, currentOption: String) {
+        val context = host.getContext()
+        val density = context.resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        fun bg(fill: String, stroke: String, radius: Int = 7) = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(radius).toFloat()
+            setColor(Color.parseColor(fill))
+            setStroke(dp(1), Color.parseColor(stroke))
+        }
+        fun label(value: String) = TextView(context).apply {
+            text = value
+            textSize = 9f
+            letterSpacing = .12f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#9BB0C7"))
+            setPadding(0, dp(10), 0, dp(5))
+        }
+        fun choice(textValue: String) = TextView(context).apply {
+            text = textValue
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#AFC4DB"))
+            background = bg("#071B31", "#42617F")
+            isClickable = true
+        }
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = bg("#F2071B30", "#31506F", 13)
+        }
+        root.addView(TextView(context).apply {
+            text = if (isTarget) "Editar Blanco" else "Editar Waypoint"
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            setPadding(0, 0, 0, dp(12))
+        })
+        val previewName = TextView(context).apply {
+            text = currentName.ifBlank { "Sin nombre" }
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#F7FAFF"))
+            maxLines = 1
+        }
+        val previewSidc = TextView(context).apply {
+            textSize = 9f
+            setTextColor(Color.parseColor("#7890AB"))
+            maxLines = 1
+        }
+        val preview = android.webkit.WebView(context).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            settings.javaScriptEnabled = true
+            webViewClient = android.webkit.WebViewClient()
+            loadDataWithBaseURL(
+                "file:///android_asset/",
+                """
+                <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+                <script src="milsymbol.min.js"></script><style>html,body,#symbol{width:100%;height:100%;margin:0;background:transparent;overflow:hidden}#symbol{display:flex;align-items:center;justify-content:center}svg{max-width:58px;max-height:58px}</style>
+                </head><body><div id="symbol"></div><script>
+                function render(sidc){var e=document.getElementById('symbol');try{var colors={F:'#F7FAFF',H:'#FF3347',N:'#00F53D',U:'#FFF000'};var waypoint=sidc.charAt(0)==='G';var options=waypoint?{size:46,monoColor:colors[sidc.charAt(1)]||'#FFF000',fill:false}:{size:46,colorMode:'Light',fill:true};var s=new ms.Symbol(sidc,options);e.innerHTML=s.asSVG()||'';}catch(x){e.innerHTML='';}}
+                </script></body></html>
+                """.trimIndent(),
+                "text/html",
+                "UTF-8",
+                null
+            )
+        }
+        root.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(6), dp(10), dp(6))
+            background = bg("#091D38", "#173452")
+            addView(preview, LinearLayout.LayoutParams(dp(62), dp(62)))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(8), 0, 0, 0)
+                addView(TextView(context).apply {
+                    text = "Vista previa MIL-STD-2525C"
+                    textSize = 9f
+                    setTextColor(Color.parseColor("#849AB4"))
+                })
+                addView(previewName)
+                addView(previewSidc)
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(76)))
+        val name = EditText(context).apply {
+            setText(currentName)
+            hint = "Nombre"
+            setHintTextColor(Color.parseColor("#849AB4"))
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            setSingleLine(true)
+            setPadding(dp(10), 0, dp(10), 0)
+            background = bg("#182C43", "#3C5874")
+        }
+        root.addView(name, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)).apply { topMargin = dp(12) })
+
+        val identities = listOf("Amigo", "Hostil", "Neutral", "Desconocido")
+        val options = if (isTarget) listOf("Superficie", "Tierra", "Aire", "Submarino") else listOf("Referencia", "Ruta", "Acción")
+        root.addView(label("IDENTIDAD"))
+        val identityRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        var identity = currentIdentity.ifBlank { if (isTarget) "Desconocido" else "Amigo" }
+        var selectedOption = currentOption.ifBlank { if (isTarget) "Tierra" else "Referencia" }
+        fun currentSidc(): String {
+            val affiliation = when (identity) { "Amigo" -> "F"; "Hostil" -> "H"; "Neutral" -> "N"; else -> "U" }
+            if (!isTarget) {
+                val waypointCode = when (selectedOption) {
+                    "Ruta" -> "GPOW"
+                    "Acción" -> "GPPW"
+                    else -> "GPRW"
+                }
+                return "G${affiliation}GP${waypointCode}---X"
+            }
+            val dimension = when (selectedOption) { "Aire" -> "A"; "Submarino" -> "U"; "Superficie" -> "S"; else -> "G" }
+            return "S${affiliation}${dimension}P-----------"
+        }
+        fun updatePreview() {
+            val sidc = currentSidc()
+            previewSidc.text = sidc
+            preview.evaluateJavascript("render('$sidc')", null)
+        }
+        val identityViews = mutableListOf<TextView>()
+        identities.forEach { value ->
+            val view = choice(value)
+            identityViews += view
+            identityRow.addView(view, LinearLayout.LayoutParams(0, dp(32), 1f).apply { if (identityViews.size > 1) marginStart = dp(4) })
+            view.setOnClickListener {
+                identity = value
+                identityViews.forEach {
+                    it.background = bg("#071B31", "#42617F")
+                    it.setTextColor(Color.parseColor("#D7E5F3"))
+                }
+                view.background = bg("#D9B041", "#E4C456")
+                view.setTextColor(Color.parseColor("#17263A"))
+                updatePreview()
+            }
+        }
+        root.addView(identityRow)
+        identityViews.firstOrNull { it.text.toString().equals(identity, ignoreCase = true) }?.performClick()
+            ?: identityViews[if (isTarget) 3 else 0].performClick()
+
+        root.addView(label(if (isTarget) "PLATAFORMA" else "TIPO"))
+        val optionRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val optionViews = mutableListOf<TextView>()
+        options.forEach { value ->
+            val view = choice(value)
+            optionViews += view
+            optionRow.addView(view, LinearLayout.LayoutParams(0, dp(32), 1f).apply { if (optionViews.size > 1) marginStart = dp(4) })
+            view.setOnClickListener {
+                selectedOption = value
+                optionViews.forEach {
+                    it.background = bg("#071B31", "#42617F")
+                    it.setTextColor(Color.parseColor("#D7E5F3"))
+                }
+                view.background = bg("#D9B041", "#E4C456")
+                view.setTextColor(Color.parseColor("#17263A"))
+                updatePreview()
+            }
+        }
+        root.addView(optionRow)
+        optionViews.firstOrNull { it.text.toString().equals(selectedOption, ignoreCase = true) }?.performClick()
+            ?: optionViews[if (isTarget) 1 else 0].performClick()
+
+        if (isTarget) {
+            val metrics = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            listOf("Rumbo (°)", "Vel. (km/h)").forEachIndexed { index, hintValue ->
+                metrics.addView(EditText(context).apply {
+                    hint = hintValue
+                    inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    setHintTextColor(Color.parseColor("#849AB4"))
+                    setTextColor(Color.WHITE)
+                    textSize = 12f
+                    setPadding(dp(10), 0, dp(10), 0)
+                    background = bg("#182C43", "#3C5874")
+                }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { topMargin = dp(12); if (index > 0) marginStart = dp(6) })
+            }
+            root.addView(metrics)
+        }
+        root.addView(TextView(context).apply {
+            text = String.format(Locale.US, "%.5f, %.5f", lat, lon)
+            textSize = 9f
+            setTextColor(Color.parseColor("#849AB4"))
+            setPadding(0, dp(9), 0, dp(6))
+        })
+        val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
+        val cancel = choice("CANCELAR").apply { background = ColorDrawable(Color.TRANSPARENT); setTextColor(Color.parseColor("#AFC4DB")) }
+        val create = choice("GUARDAR").apply { background = bg("#D9B041", "#E4C456"); setTextColor(Color.parseColor("#17263A")) }
+        name.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                previewName.text = s?.toString()?.trim()?.ifBlank { "Sin nombre" } ?: "Sin nombre"
+                val enabled = !s.isNullOrBlank()
+                create.isEnabled = enabled
+                create.alpha = if (enabled) 1f else .55f
+                create.background = if (enabled) bg("#D9B041", "#E4C456") else bg("#29415C", "#35506B")
+                create.setTextColor(Color.parseColor(if (enabled) "#17263A" else "#90A4BA"))
+            }
+            override fun afterTextChanged(s: android.text.Editable?) = Unit
+        })
+        actions.addView(cancel, LinearLayout.LayoutParams(dp(86), dp(38)))
+        actions.addView(create, LinearLayout.LayoutParams(dp(82), dp(38)).apply { marginStart = dp(5) })
+        root.addView(actions)
+        val dialog = AlertDialog.Builder(context).setView(root).create()
+        cancel.setOnClickListener { dialog.dismiss() }
+        create.setOnClickListener {
+            val pointName = name.text.toString().trim()
+            if (pointName.isBlank()) { name.error = "Escribe un nombre"; return@setOnClickListener }
+            val color = when (identity) { "Amigo" -> "#39A8FF"; "Hostil" -> "#FF4D5E"; "Neutral" -> "#54D18B"; else -> "#E4B943" }
+            val sidc = currentSidc()
+            host.updatePoi(poiId, pointName, if (isTarget) "MIL" else "PDI", color, sidc)
             dialog.dismiss()
         }
         dialog.setOnShowListener {

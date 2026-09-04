@@ -287,7 +287,7 @@ class OperationMapParser {
             if (idPoi <= 0) continue
 
             val iconoSrc = optionalString(c, "icono_src")
-            val sidc = optionalString(c, "sidc") ?: iconoSrc?.takeIf { it.startsWith("S") }
+            val sidc = optionalString(c, "sidc") ?: iconoSrc?.takeIf { it.startsWith("S") || it.startsWith("G") }
 
             pois.add(
                 PoiItem(
@@ -299,7 +299,13 @@ class OperationMapParser {
                     color = c.optString("color", "#FFD700").ifBlank { "#FFD700" },
                     iconoSrc = iconoSrc,
                     sidc = sidc,
-                    creatorLabel = creatorLabel(c)
+                    creatorLabel = creatorLabel(c),
+                    creatorRank = c.optString("creador_puesto", c.optString("creatorRank", "")),
+                    visibility = c.optString("visibilidad", "PRIVADO").uppercase(),
+                    creatorType = c.optString("tipo_creador", "").uppercase(),
+                    creatorUserId = c.optInt("id_usuario", -1).takeIf { it > 0 },
+                    creatorPersonalId = c.optInt("id_personal", -1).takeIf { it > 0 },
+                    editorLabel = editorLabel(c)
                 )
             )
         }
@@ -522,20 +528,71 @@ class OperationMapParser {
     private fun positiveInt(json: JSONObject, key: String): Int? =
         json.optInt(key, -1).takeIf { it > 0 }
 
+    private fun abbreviateRank(rank: String): String {
+        val r = rank.trim().lowercase()
+        return when {
+            r.contains("capitán de navío") || r.contains("capitan de navio") -> "Cap. Nav."
+            r.contains("capitán de fragata") || r.contains("capitan de fragata") -> "Cap. Frag."
+            r.contains("capitán de corbeta") || r.contains("capitan de corbeta") -> "Cap. Corb."
+            r.contains("capitán 1/o") || r.contains("capitan 1/o") || r.contains("capitán primero") -> "Cap. 1/o"
+            r.contains("capitán 2/o") || r.contains("capitan 2/o") || r.contains("capitán segundo") -> "Cap. 2/o"
+            r.contains("capitán") || r.contains("capitan") || r == "cap" || r == "cap." -> "Cap."
+            r.contains("teniente de navío") || r.contains("teniente de navio") -> "Tte. Nav."
+            r.contains("teniente de fragata") || r.contains("teniente de fragata") -> "Tte. Frag."
+            r.contains("teniente de corbeta") || r.contains("teniente de corbeta") -> "Tte. Corb."
+            r.contains("primer teniente") || r.contains("1er teniente") -> "1er. Tte."
+            r.contains("segundo teniente") || r.contains("2do teniente") -> "2do. Tte."
+            r.contains("subteniente") || r == "subtte" || r == "subtte." -> "Subtte."
+            r.contains("teniente") || r == "tte" || r == "tte." -> "Tte."
+            r.contains("sargento 1/o") || r.contains("sargento primero") -> "Sgto. 1/o"
+            r.contains("sargento 2/o") || r.contains("sargento segundo") -> "Sgto. 2/o"
+            r.contains("sargento") || r == "sgto" || r == "sgto." -> "Sgto."
+            r.contains("cabo") || r == "cbo" || r == "cbo." -> "Cbo."
+            r.contains("marinero") || r == "mro" || r == "mro." -> "Mro."
+            r.contains("soldado") || r == "sld" || r == "sld." -> "Sld."
+            r.contains("general de división") || r.contains("general de division") -> "Gral. Div."
+            r.contains("general de brigada") -> "Gral. Brig."
+            r.contains("general brigadier") -> "Gral. Bgda."
+            r.contains("general") || r == "gral" || r == "gral." -> "Gral."
+            r.contains("almirante") || r == "alm" || r == "alm." -> "Alm."
+            r.contains("vicealmirante") || r == "valm" || r == "valm." -> "Valm."
+            r.contains("contralmirante") || r == "calm" || r == "calm." -> "Calm."
+            r.contains("coronel") || r == "cnel" || r == "cnel." -> "Cnel."
+            r.contains("mayor") || r == "my" || r == "my." -> "My."
+            else -> ""
+        }
+    }
+
     private fun creatorLabel(json: JSONObject): String {
+        val rawRank = listOf("jerarquia", "creador_jerarquia", "puesto", "creador_puesto", "rango", "grado")
+            .map { key -> json.optString(key, "").trim() }
+            .firstOrNull { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+            .orEmpty()
+        val rank = if (rawRank.isNotBlank()) abbreviateRank(rawRank) else ""
+
         val direct = listOf(
             "creatorLabel",
+            "creador_label",
             "creador_nombre",
             "nombre_creador",
             "autor_nombre",
             "created_by_nombre",
             "creador",
             "apodo",
-            "username"
+            "username",
+            "usuario"
         )
             .map { key -> json.optString(key, "").trim() }
             .firstOrNull { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
-        if (!direct.isNullOrBlank()) return direct
+
+        if (!direct.isNullOrBlank()) {
+            val cleanDirect = direct.replace(Regex("""\s*\([^)]*\)"""), "").trim()
+            return if (rank.isNotBlank() && !cleanDirect.contains(rank, ignoreCase = true)) {
+                "$rank $cleanDirect"
+            } else {
+                cleanDirect
+            }
+        }
 
         val fullName = listOf(
             json.optString("nombre_creador_persona", "").trim(),
@@ -543,9 +600,29 @@ class OperationMapParser {
         )
             .filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
             .joinToString(" ")
-        if (fullName.isNotBlank()) return fullName
+            .replace(Regex("""\s*\([^)]*\)"""), "")
+            .trim()
+        if (fullName.isNotBlank()) {
+            return if (rank.isNotBlank() && !fullName.contains(rank, ignoreCase = true)) {
+                "$rank $fullName"
+            } else {
+                fullName
+            }
+        }
 
-        return json.optString("tipo_creador", "").trim()
+        return ""
+    }
+
+    private fun editorLabel(json: JSONObject): String {
+        val direct = listOf(
+            "editorLabel",
+            "editor_nombre",
+            "modificado_por",
+            "editor"
+        )
+            .map { key -> json.optString(key, "").trim() }
+            .firstOrNull { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+        return direct?.replace(Regex("""\s*\([^)]*\)"""), "")?.trim() ?: ""
     }
 
     private fun splitCsv(value: String): List<String> =

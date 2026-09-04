@@ -1,0 +1,38 @@
+
+> operaciones-api@1.0.0 start
+> node server.js
+
+DB CONFIG TEST: { host: 'localhost', port: 5432, user: 'postgres', database: 'ops_db' }
+DB OK: { current_user: 'postgres', current_database: 'ops_db' }
+[DB SCHEMA] Indices de puntos_interes actualizados correctamente.
+API + WS en http://192.168.202.112:3001
+[AUTO-ACTIVACION] Revisor iniciado cada 15000ms.
+➡️ GET /me
+➡️ GET /me
+➡️ GET /ops
+➡️ GET /catalog/personal?rol=CUT
+➡️ GET /catalog/personal?rol=CET
+➡️ GET /catalog/personal?rol=CELL
+➡️ GET /catalog/vehiculos
+➡️ GET /catalog/equipos
+➡️ GET /catalog/dispositivos
+➡️ POST /ops
+➡️ POST /ops
+➡️ GET /config/cesium-token
+➡️ GET /health
+➡️ GET /health
+➡️ GET /health
+➡️ GET /health
+➡️ GET /health
+➡️ GET /health
+➡️ GET /health
+➡️ GET /health
+➡️ GET /health
+➡️ GET /health
+➡️ GET /health
+➡️ GET /health
+➡️ POST /ops
+➡️ GET /health
+➡️ GET /me
+➡️ GET /ops
+➡️ GET /ops

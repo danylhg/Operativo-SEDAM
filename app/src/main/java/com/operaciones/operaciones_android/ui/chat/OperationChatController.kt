@@ -30,6 +30,7 @@ class OperationChatController(
         fun getChatCurrentUser(): User
         fun getChatPersonal(): List<PersonalItem>
         fun getChatContentResolver(): android.content.ContentResolver
+        fun getChatLastLocation(): Pair<Double, Double>?
         fun getChatReadMessageIds(): Set<Int>
         fun saveChatReadMessageIds(ids: Set<Int>)
         fun onChatMessageAdded(message: ChatMessage, visibleInActiveChat: Boolean)
@@ -172,7 +173,8 @@ class OperationChatController(
         destinoTipo: String?,
         destinoId: String?,
         destinoLabel: String?,
-        durationMs: Long? = null
+        durationMs: Long? = null,
+        caption: String? = null
     ) {
         val operationId = host.getChatOperationId()
         if (operationId <= 0) {
@@ -199,6 +201,7 @@ class OperationChatController(
             destinoId = destinoId,
             destinoLabel = destinoLabel,
             durationMs = durationMs,
+            caption = caption,
             onSuccess = { item -> addMessageFromJson(item) },
             onError = { message ->
                 addMessage(ChatMessage(user = "Sistema", text = message, type = MessageType.SYSTEM))

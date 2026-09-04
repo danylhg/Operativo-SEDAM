@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Panorama táctico</title>
+
+  <link rel="stylesheet" href="css/dashboard.css?v=20260723-camera-arrows-translucent" />
+  <script src="js/api_config.js"></script>
+  <script src="js/auth_check.js"></script>
+
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/Cesium.js"></script>
+
+  <script src="js/libs/milsymbol.min.js"></script>
+</head>
+
+<body>
+  <!-- Diagnostic Error Overlay -->
+  <div id="errorOverlay" style="display:none; position:fixed; top:10px; left:10px; right:10px; background:rgba(220,53,69,0.95); color:white; padding:20px; z-index:999999; font-family:monospace; border-radius:8px; max-height:80vh; overflow-y:auto; box-shadow:0 0 20px rgba(0,0,0,0.5); font-size:14px; border:2px solid #ffc107;">
+    <h3 style="margin-top:0; color:#ffc107; border-bottom:1px solid rgba(255,255,255,0.3); padding-bottom:10px;">[DEBUG] Runtime Error Detected</h3>
+    <pre id="errorText" style="white-space:pre-wrap; margin:0; line-height:1.5;"></pre>
+  </div>
+  <script>
+    (function() {
+      function showError(msg, err) {
+        var overlay = document.getElementById('errorOverlay');
+        var pre = document.getElementById('errorText');
+        if (overlay && pre) {
+          overlay.style.display = 'block';
+          pre.textContent += msg + '\n' + (err ? (err.stack || err) : '') + '\n\n';
+        }
+      }
+      window.onerror = function(message, source, lineno, colno, error) {
+        showError('Error: ' + message + '\nSource: ' + source + ':' + lineno + ':' + colno, error);
+        return false;
+      };
+      window.addEventListener('unhandledrejection', function(event) {
+        var msg = 'Unhandled Promise Rejection: ' + (event.reason ? (event.reason.message || event.reason) : event);
+        showError(msg, event.reason);
+      });
+    })();
+  </script>
+
+  <header class="topbar">
+    <div class="topbarLeft">
+      <span class="brandDot" id="brandDot"></span>
+      <strong id="topbarTitle">Panorama táctico</strong>
+      <span id="opStatusBadge">ACTIVA</span>
+    </div>
+
+    <div class="topbarRight">
+      <button id="undoBtn" class="topHistoryBtn" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 7 4 12l5 5"></path><path d="M5 12h8a6 6 0 0 1 6 6"></path></svg>
+      </button>
+      <button id="redoBtn" class="topHistoryBtn" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 7 5 5-5 5"></path><path d="M19 12h-8a6 6 0 0 0-6 6"></path></svg>
+      </button>
+      <button id="logout" class="topBtn">Salir</button>
+    </div>
+  </header>
+
+  <div id="planningExitModal" class="planningExitModal hidden" aria-hidden="true">
+    <div id="planningExitBackdrop" class="planningExitBackdrop"></div>
+    <div class="planningExitCard" role="dialog" aria-modal="true" aria-labelledby="planningExitTitle">
+      <h3 id="planningExitTitle">¿Seguro que quieres salir?</h3>
+      <p>Elige si quieres conservar la operación planificada o salir sin guardar.</p>
+      <div class="planningExitActions">
+        <button id="planningExitSaveBtn" class="planningExitBtn planningExitBtnPrimary">Guardar y salir</button>
+        <button id="planningExitDiscardBtn" class="planningExitBtn planningExitBtnDanger">Salir sin guardar</button>
+        <button id="planningExitCancelBtn" class="planningExitBtn planningExitBtnGhost">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirmationModal" class="planningExitModal confirmationModal hidden" aria-hidden="true">
+    <div id="confirmationBackdrop" class="planningExitBackdrop confirmationBackdrop"></div>
+    <div class="planningExitCard confirmationCard" role="dialog" aria-modal="true" aria-labelledby="confirmationTitle">
+      <h3 id="confirmationTitle">¿Confirmar acción?</h3>
+      <p id="confirmationMessage">¿Estás seguro de realizar esta acción?</p>
+      <div class="planningExitActions confirmationActions">
+        <button id="confirmationConfirmBtn" class="planningExitBtn planningExitBtnPrimary">Terminar</button>
+        <button id="confirmationCancelBtn" class="planningExitBtn planningExitBtnGhost">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="floatingTools">
+    <button id="toggleInfoPanel" class="toolFab active" title="Información" aria-label="Información">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M9 5h6"></path>
+        <path d="M9 9h6"></path>
+        <path d="M9 13h4"></path>
+        <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"></path>
+      </svg>
+    </button>
+    <button id="toggleRoutePanel" class="toolFab" title="Rutas" aria-label="Rutas">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M9 18 5 20V6l4-2 6 2 4-2v14l-4 2-6-2Z"></path>
+        <path d="M9 4v14"></path>
+        <path d="M15 6v14"></path>
+      </svg>
+    </button>
+    <button id="toggleTacticalPanel" class="toolFab" title="Táctico" aria-label="Táctico">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 5v14"></path>
+        <path d="M5 12h14"></path>
+      </svg>
+    </button>
+    <button id="toggleChatPanel" class="toolFab" title="Chat táctico" aria-label="Chat táctico">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"></path>
+        <path d="M8 9h8"></path>
+        <path d="M8 13h5"></path>
+      </svg>
+    </button>
+    <button id="toggleCameraPanel" class="toolFab" title="Cámaras en vivo" aria-label="Cámaras en vivo">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M4 7h11a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"></path>
+        <path d="m18 11 4-3v8l-4-3"></path>
+      </svg>
+    </button>
+  </div>
+
+  <main class="mapStage">
+    <div id="map" class="mapBox"></div>
+
+    <div id="mapLayerControl" class="mapLayerControl">
+      <button id="mapLayerButton" class="mapLayerButton" type="button" aria-label="Capas del mapa" title="Capas del mapa" aria-haspopup="true" aria-expanded="false">
+        <span class="mapLayerIcon" aria-hidden="true"></span>
+      </button>
+      <div id="mapLayerMenu" class="mapLayerMenu" role="menu" aria-label="Capas del mapa">
+        <button class="mapLayerOption" type="button" data-map-layer="osm" role="menuitem">Normal</button>
+        <button class="mapLayerOption" type="button" data-map-layer="satellite" role="menuitem">Satélite</button>
+        <button class="mapLayerOption active" type="button" data-map-layer="hybrid" role="menuitem">Híbrida</button>
+      </div>
+    </div>
+
+    <div id="mapTopRightActions" class="mapTopRightActions">
+      <button id="activateOpBtn" class="mapTopActionBtn" style="display:none;" disabled>Activar operación</button>
+      <button id="closeActiveOpBtn" class="mapTopActionBtn" style="display:none;" disabled>Terminar operación</button>
+    </div>
+
+    <aside id="emergencyFeedPanel" class="emergencyFeedPanel" aria-label="Alertas de emergencia" hidden>
+      <div class="emergencyFeedHeader">
+        <span class="emergencyFeedIndicator" aria-hidden="true"></span>
+        <strong>Emergencias</strong>
+        <span id="emergencyFeedCount" class="emergencyFeedCount">0</span>
+      </div>
+      <div id="emergencyFeedList" class="emergencyFeedList" aria-live="assertive"></div>
+    </aside>
+
+    <!-- Popup flotante para eliminar elemento seleccionado -->
+    <div id="entityPopup"
+      style="display:none; position:absolute; z-index:9999; background:rgba(10,20,40,0.95); border:1px solid #00ffa6; border-radius:12px; padding:12px; box-shadow:0 8px 30px rgba(0,255,166,0.25); pointer-events:all; min-width:180px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div id="entityPopupName"
+          style="font-size:12px; color:#a0c4ff; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:130px;">
+        </div>
+        <button id="btnCloseEntityPopup"
+          style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:16px; padding:0 4px;">x</button>
+      </div>
+      <button id="entityPopupDelete"
+        style="width:100%; padding:8px; background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:8px; color:#ff8080; font-weight:700; font-size:13px; cursor:pointer; transition:all 0.2s;">Eliminar</button>
+    </div>
+
+    <!-- Menú rápido flotante para vehículos rastreados -->
+    <div id="vehicleQuickMenu"
+      style="display:none; position:absolute; z-index:9999; background:rgba(5, 15, 30, 0.95); border:1px solid #00c3ff; border-radius:12px; padding:12px; box-shadow:0 8px 30px rgba(0, 195, 255, 0.3); pointer-events:all; min-width:220px;">
+      <div
+        style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(0,195,255,0.2); padding-bottom:8px;">
+        <div id="vehicleQuickMenuName"
+          style="font-size:14px; color:#dbeafe; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:170px;">
+          Vehículo</div>
+        <button id="btnCloseVehicleQuickMenu"
+          style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:18px; padding:0 4px;">x</button>
+      </div>
+      <div id="vehicleQuickMenuOccupants" class="vehicleQuickMenuOccupants" style="display:none;">
+        <div class="vehicleQuickMenuOccupantsTitle">Personas en el veh&iacute;culo</div>
+        <div id="vehicleQuickMenuOccupantsList" class="vehicleQuickMenuOccupantsList"></div>
+      </div>
+      <div id="vehicleQuickMenuDetails" class="vehicleQuickMenuDetails" style="display:none;" aria-label="Informaci&oacute;n del dron">
+        <div id="droneQuickMenuInfo"></div>
+        <div id="droneQuickMenuCamera" class="droneQuickMenuCamera cameraFeed" aria-label="Video del dron"></div>
+      </div>
+      <div class="vehicleQuickMenuActions">
+        <button id="btnVehQuickChat" class="actionBtn"
+          style="padding:10px; font-size:12px; background:rgba(0,255,170,0.1); border:1px solid rgba(0,255,170,0.3); color:#e6edf3; width:100%; text-transform:none; border-radius:8px;">Mnsj a Tripulación</button>
+        <button id="btnVehQuickAlert" class="actionBtn"
+          style="padding:10px; font-size:12px; background:rgba(255, 69, 0, 0.15); border:1px solid rgba(255, 69, 0, 0.4); color:#ffd6d6; width:100%; text-transform:none; border-radius:8px;">Dar Aviso Rápido</button>
+        <button id="btnVehQuickRoute" class="actionBtn"
+          style="padding:10px; font-size:12px; background:rgba(0,195,255,0.1); border:1px solid rgba(0,195,255,0.3); color:#e6edf3; width:100%; text-transform:none; border-radius:8px;">Ver Ruta</button>
+      </div>
+    </div>
+
+    <div id="mapActionButtons" class="mapActionButtons">
+      <button id="saveOpMapBtn" class="actionBtn saveBtn">Guardar operación</button>
+      <button id="cancelOpMapBtn" class="actionBtn cancelBtn">Cancelar operación</button>
+    </div>
+
+    <button id="recenterMapBtn" class="recenterMapBtn" title="Centrar en operación">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5"
+        stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+        <line x1="12" y1="1" x2="12" y2="4"></line>
+        <line x1="12" y1="20" x2="12" y2="23"></line>
+        <line x1="1" y1="12" x2="4" y2="12"></line>
+        <line x1="20" y1="12" x2="23" y2="12"></line>
+      </svg>
+    </button>
+    <div id="personnelDetailModal" class="planningExitModal hidden" aria-hidden="true">
+      <div id="personnelDetailBackdrop" class="planningExitBackdrop"></div>
+      <div class="planningExitCard personnelDetailCard" role="dialog" aria-modal="true"
+        style="width: 600px; max-width: 90vw;">
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom: 1px solid rgba(0,255,166,0.3); padding-bottom:10px;">
+          <h3 id="personnelDetailName" style="margin:0; color:#00ffa6;">Nombre del Agente</h3>
+          <button id="btnClosePersonnelDetail"
+            style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:20px;">x</button>
+        </div>
+
+        <div class="personnelDetailGrid" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+          <div class="personnelInfoCol">
+            <div class="vitalsBlock"
+              style="background:rgba(0,0,0,0.3); padding:15px; border-radius:10px; border:1px solid rgba(255,0,0,0.2); margin-bottom:15px;">
+              <h4 style="margin:0 0 10px 0; font-size:12px; color:#ff4444; text-transform:uppercase;">Signos Vitales
+              </h4>
+              <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <span>Frecuencia Cardíaca:</span>
+                <strong style="color:#ff4444;">78 BPM</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <span>Oxigenación:</span>
+                <strong style="color:#00ffa6;">98% SpO2</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between;">
+                <span>Temperatura:</span>
+                <strong style="color:#ffae00;">36.5 °C</strong>
+              </div>
+            </div>
+
+            <div class="locationBlock"
+              style="background:rgba(0,0,0,0.3); padding:15px; border-radius:10px; border:1px solid rgba(0,195,255,0.2);">
+              <h4 style="margin:0 0 10px 0; font-size:12px; color:#00c3ff; text-transform:uppercase;">Ubicación Actual
+              </h4>
+              <p id="personnelDetailCoords" style="font-family:monospace; font-size:12px; margin:0;">LAT: 19.4326, LNG:
+                -99.1332</p>
+              <button id="btnCenterOnPerson" class="btnBeige"
+                style="width:100%; margin-top:10px; font-size:11px; padding:5px;">Ir a ubicación</button>
+            </div>
+          </div>
+
+          <div class="personnelCameraCol">
+            <h4 style="margin:0 0 10px 0; font-size:12px; color:#00ffa6; text-transform:uppercase;">Cámara en Tiempo
+              Real</h4>
+            <div id="personnelDetailCamera" class="cameraFeed"
+              style="width:100%; height:180px; border: 2px solid #00ffa6;">
+              <!-- Feed will be injected here -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside id="personInfoPopup" class="personInfoPopup hidden" aria-live="polite">
+      <button id="btnClosePersonInfoPopup" class="personInfoPopupClose" type="button" aria-label="Cerrar">x</button>
+      <div id="personInfoPopupContent"></div>
+    </aside>
+  </main>
+
+  <aside id="infoPanel" class="glassPanel open">
+    <h2 class="panelTitle">Información de operación</h2>
+    <div id="infoPanelContent" class="infoPanelContent"></div>
+  </aside>
+
+  <aside id="routePanel" class="glassPanel">
+    <h2 class="panelTitle">Rutas y mapa</h2>
+
+    <div class="routeSectionCard zoneCard" id="operationZoneControls">
+      <div class="groupTitle">Zona de operación</div>
+      <div class="btnGrid" id="zoneEditActions">
+        <button id="markZoneBtn" class="btnBeige">Marcar zona</button>
+        <button id="clearZoneBtn" class="btnBeige">Limpiar zona</button>
+      </div>
+      <div class="zoneCoordinatesEditor">
+        <label class="fieldLabel" for="zoneCoordinatesInput">Coordenadas de la zona</label>
+        <div id="zoneCoordinatesEditControls">
+          <textarea id="zoneCoordinatesInput" rows="3" placeholder="Latitud, longitud; Latitud, longitud; ..."></textarea>
+          <button id="applyZoneCoordinatesBtn" class="btnBeige" type="button">Usar coordenadas</button>
+        </div>
+        <div id="zoneCoordinatesSummary" class="zoneCoordinatesSummary" aria-live="polite">Sin coordenadas guardadas.</div>
+      </div>
+      <div id="zoneStyleControls" class="styleGrid" style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div>
+          <label class="fieldLabel">Color</label>
+          <select id="zoneColorSelect"
+            style="width: 100%; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.2);">
+            <option value="blue">Azul</option>
+            <option value="red">Rojo</option>
+            <option value="green">Verde</option>
+            <option value="yellow">Amarillo</option>
+            <option value="orange">Naranja</option>
+            <option value="black">Negro</option>
+            <option value="white">Blanco</option>
+          </select>
+        </div>
+        <div>
+          <label class="fieldLabel">Grosor</label>
+          <input id="zoneWidthRange" type="range" min="1" max="10" step="1" value="3" style="width: 100%;">
+        </div>
+      </div>
+    </div>
+
+    <div class="routeSectionCard routeCard">
+      <div class="groupTitle">Ruta por Vehículo</div>
+      <select id="routeVehicleSelect"
+        style="margin-bottom: 10px; width: 100%; padding: 6px; font-size: 13px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.5); color: #fff;">
+        <option value="global">Ruta General (Todos los vehículos)</option>
+      </select>
+
+      <div class="latlngRow">
+        <input id="opLat" class="latlngBox" placeholder="Origen LAT-LNG" readonly />
+        <input id="opLng" class="latlngBox" placeholder="Destino LAT-LNG" readonly />
+      </div>
+
+      <div class="routeInfo" id="routeInfo">
+        Listo. Busca una ciudad con la barra de búsqueda de Cesium, delimita un área y luego elige ORIGEN y DESTINO.
+      </div>
+
+      <div class="btnGrid">
+        <button id="markRoute" class="btnBeige">Marcar ruta</button>
+        <button id="clearRoute" class="btnBeige">Limpiar ruta</button>
+      </div>
+    </div>
+
+    <div style="display:none;">
+      <button id="calcRoute" class="btnBeige">Calcular ruta</button>
+      <div class="groupTitle">Área de planeación</div>
+      <div class="btnGrid">
+        <button id="markAreaBtn" class="btnBeige">Marcar área</button>
+        <button id="clearAreaBtn" class="btnBeige">Limpiar área</button>
+      </div>
+      <div class="routeInfo" id="areaInfo">
+        Presiona “Marcar área” y haz dos clics en el mapa para delimitar un rectángulo punteado.
+      </div>
+    </div>
+  </aside>
+
+  <aside id="tacticalPanel" class="glassPanel tacticalWide">
+    <h2 id="tacticalPanelTitle" class="panelTitle">Herramientas tácticas</h2>
+
+    <div class="tacticalToolPicker">
+      <div class="groupTitle" id="tacticalToolGroupTitle">Herramienta</div>
+      <select id="toolSelect" class="opsInput">
+        <option value="none" disabled selected>Selecciona tipo de objeto...</option>
+        <optgroup label="DIBUJO LIBRE">
+          <option value="pencil">Lápiz/Goma</option>
+        </optgroup>
+
+        <optgroup label="PUNTOS DE INTERÉS">
+          <option value="mil">Símbolos MILI</option>
+          <option value="poi">Puntos de Interés</option>
+        </optgroup>
+
+        <optgroup label="ÁREAS DE INTERÉS">
+          <option value="circle">Círculo de cobertura</option>
+          <option value="polyline">Ruta personalizada</option>
+          <option value="grid">Cuadrantes</option>
+        </optgroup>
+
+        <optgroup label="OTROS">
+          <option value="building">Edificio</option>
+          <option value="label">Etiqueta</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <div id="pencilSubmenu"
+      style="display:none; margin-bottom: 20px; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+      <label class="fieldLabel">Herramienta de dibujo</label>
+      <div class="btnGrid" style="grid-template-columns: 1fr 1fr; margin-top: 5px;">
+        <button id="btnSelectPencil" class="btnBeige"
+          style="background: #00ffa6; color: #001b1b; box-shadow: 0 0 10px rgba(0,255,166,0.3);">Lápiz</button>
+        <button id="btnSelectEraser" class="btnBeige" style="background: rgba(255,255,255,0.1); color: #fff;">Goma</button>
+      </div>
+    </div>
+
+    <div id="gridSubmenu"
+      style="display:none; margin-bottom: 20px; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+      <label class="fieldLabel">Dimensiones</label>
+      <select id="gridSizeSelect" class="opsInput" style="margin-bottom: 10px;">
+        <option value="2x2">2 x 2</option>
+        <option value="3x3" selected>3 x 3</option>
+        <option value="4x4">4 x 4</option>
+      </select>
+      <div class="gridButtonsContainer">
+        <button id="generateGridBtn" class="btnBeige">Generar</button>
+        <button id="clearGridBtn" class="btnBeige" style="display:none;">Limpiar Cuadrícula</button>
+      </div>
+
+      <div id="gridNamesWrapper" style="display:none; margin-top: 10px;">
+        <label class="fieldLabel">Nombres de Cuadrantes</label>
+        <div id="gridNamesContainer" style="display:grid; grid-template-columns: 1fr 1fr; gap: 5px; max-height: 200px; overflow-y: auto; padding-right: 5px;">
+        </div>
+      </div>
+    </div>
+
+    <div class="groupTitle" id="milSymbolTitle" style="display:none;">Símbolos MIL</div>
+
+    <div id="milSymbolGenerator"
+      style="display:none; margin-bottom: 20px; background: rgba(0,255,166,0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(0,255,166,0.15);">
+      <div class="fieldRow">
+        <div class="fieldCol">
+          <label class="fieldLabel">Identidad</label>
+          <select id="milIdentity" class="opsInput">
+            <option value="F">Amigo (Friend)</option>
+            <option value="H">Hostil (Hostile)</option>
+            <option value="N">Neutral</option>
+            <option value="U">Desconocido</option>
+          </select>
+        </div>
+        <div class="fieldCol">
+          <label class="fieldLabel">Dimensión</label>
+          <select id="milDimension" class="opsInput">
+            <option value="G">Tierra</option>
+            <option value="A">Aire</option>
+            <option value="S">Mar</option>
+            <option value="U">Subsuperficie</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top: 10px;">
+        <label class="fieldLabel">Tipo de Unidad / Función</label>
+        <select id="milIcon" class="opsInput">
+          <optgroup label="TIERRA">
+            <option value="UCI---">Infantería</option>
+            <option value="UCD---">Blindada / Tanques</option>
+            <option value="UCA---">Artillería</option>
+            <option value="UCR---">Reconocimiento / Exploración</option>
+            <option value="UCJ---">Ingenieros</option>
+            <option value="UCM---">Médica</option>
+            <option value="UCM---">Comunicaciones</option>
+          </optgroup>
+          <optgroup label="INSTALACIONES">
+            <option value="IP----">Punto de Control</option>
+            <option value="IB----">Base / Cuartel</option>
+            <option value="IR----">Radar</option>
+          </optgroup>
+          <optgroup label="OTROS">
+            <option value="UCL---">Abastecimiento / Logística</option>
+            <option value="UCP---">Policía / Seguridad</option>
+            <option value="---">Genérico</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div style="margin-top: 15px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+        <div id="milPreviewContainer" class="milPreviewBox" draggable="true" title="Arrastra este icono al mapa">
+          <!-- Canvas se insertará aquí -->
+        </div>
+        <span style="font-size: 10px; color: #a0c4ff; font-weight: 600;">ARRASTRA EL ICONO AL MAPA</span>
+      </div>
+    </div>
+
+    <div id="buildingPreview" style="display:none; margin-bottom: 20px; background: rgba(0,255,166,0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(0,255,166,0.15);">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+        <div id="buildingPreviewDrag" class="milPreviewBox" style="width: 80px; height: 80px;" draggable="true" title="Arrastra este icono al mapa">
+          <img src="img/estructuras/casa.png" alt="Edificio" style="max-width: 64px; max-height: 64px; pointer-events: none;">
+        </div>
+      </div>
+    </div>
+
+    <div id="symLabelContainer" class="tacticalField tacticalFieldFull">
+      <label class="fieldLabel" for="symLabel">Nombre</label>
+      <input id="symLabel" class="opsInput" placeholder="Texto / etiqueta" autocomplete="off" disabled />
+    </div>
+
+    <div class="styleGrid tacticalStyleGrid">
+      <div id="colorContainer" class="tacticalField">
+        <label class="fieldLabel controlLabel" for="colorSelect">
+          <span>Color</span>
+        </label>
+        <select id="colorSelect" class="opsInput">
+          <option value="red">Rojo</option>
+          <option value="blue">Azul</option>
+          <option value="black">Negro</option>
+          <option value="yellow">Amarillo</option>
+          <option value="green">Verde</option>
+          <option value="orange">Naranja</option>
+          <option value="white">Blanco</option>
+        </select>
+      </div>
+
+      <div id="opacityContainer" class="tacticalField" style="display:none;">
+        <label class="fieldLabel controlLabel" for="opacityRange">
+          <span>Opacidad</span>
+          <output id="opacityValue" class="rangeValue" for="opacityRange">35%</output>
+        </label>
+        <input id="opacityRange" type="range" min="0.1" max="1" step="0.05" value="0.35" data-output="opacityValue">
+      </div>
+
+      <div id="radiusContainer" class="tacticalField" style="display:none;">
+        <label class="fieldLabel" for="radiusInput">Radio (m)</label>
+        <input id="radiusInput" class="opsInput compactInput tacticalNumberInput" type="number" min="50" step="50" value="5000" inputmode="numeric">
+      </div>
+    </div>
+
+    <div id="tacticalActionButtons" class="btnGrid tacticalActionGrid" style="display:none; margin-top:20px;">
+      <button id="finishShape" class="btnBeige secondaryAction">Terminar figura</button>
+      <button id="clearTactical" class="btnBeige secondaryAction">Limpiar táctico</button>
+    </div>
+
+  </aside>
+
+  <aside id="chatAudiencePanel" class="glassPanel chatAudiencePanel">
+    <h2 class="panelTitle">Chats</h2>
+    <div class="chatChannelGroup">
+      <div class="chatAudienceHeader">
+        <div>
+          <span class="chatAudienceEyebrow">Chat activo</span>
+          <div id="chatAudienceSummary" class="chatAudienceSummary">Todos</div>
+        </div>
+        <button id="chatAudienceToggle" class="chatAudienceToggle" type="button" aria-label="Minimizar lista">⌃</button>
+      </div>
+
+      <div id="chatAudienceBody" class="chatAudienceBody">
+        <div class="chatAudiencePane">
+          <div class="chatAudienceCard">
+            <div class="chatAudienceTitle">Grupales</div>
+            <div class="chatAudienceChips">
+              <button class="chatAudienceChip" type="button" data-chat-channel="global" data-chat-avatar="T"><span>Todos</span><small>Operación completa</small></button>
+              <button class="chatAudienceChip" type="button" data-chat-channel="vehiculo" data-chat-avatar="V"><span>Vehículo</span><small>Ocupantes detectados</small></button>
+              <button class="chatAudienceChip" type="button" data-chat-channel="flotilla" data-chat-avatar="F"><span>Flotilla</span><small>CET e integrantes</small></button>
+              <button class="chatAudienceChip" type="button" data-chat-channel="grupo" data-chat-avatar="G"><span>Grupo</span><small>Integrantes del grupo</small></button>
+              <button class="chatAudienceChip" type="button" data-chat-channel="cets" data-chat-avatar="C"><span>Todos los CET</span><small>Mandos CET</small></button>
+            </div>
+          </div>
+
+          <div class="chatAudienceCard">
+            <div class="chatAudienceTitle">Personal específico</div>
+            <div class="chatAudienceChips">
+              <button class="chatAudienceChip" type="button" data-chat-channel="cet_specific" data-chat-avatar="C"><span>CET</span><small>Un mando</small></button>
+              <button class="chatAudienceChip" type="button" data-chat-channel="cell_specific" data-chat-avatar="P"><span>CELL</span><small>Una persona</small></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <select id="chatChannelType" class="opsInput legacyChatSelect" aria-hidden="true" tabindex="-1">
+        <option value="global">Global (Todos)</option>
+        <option value="cets">Todos los CETs</option>
+        <option value="cet_specific">CET Específico</option>
+        <option value="cell_specific">CELL Específico</option>
+        <option value="flotilla">Flotilla (+ CET)</option>
+        <option value="grupo">Grupo (+ CET)</option>
+        <option value="vehiculo">Vehículo</option>
+      </select>
+      <select id="chatChannelTarget" class="opsInput legacyChatSelect" aria-hidden="true" tabindex="-1">
+        <!-- Filled dynamically -->
+      </select>
+    </div>
+  </aside>
+
+  <aside id="chatPanel" class="glassPanel chatPanel">
+    <div class="chatConversationHeader">
+      <div class="chatConversationAvatar" id="chatConversationAvatar">T</div>
+      <div>
+        <h2 id="chatConversationTitle" class="chatConversationTitle">Todos</h2>
+        <div id="chatConversationSubtitle" class="chatConversationSubtitle">Operación completa</div>
+      </div>
+      <button id="chatGroupMembersToggle" class="chatGroupMembersToggle" type="button" title="Integrantes" aria-label="Integrantes" aria-expanded="false" hidden>&gt;</button>
+    </div>
+
+    <div id="chatTargetBox" class="chatTargetBox hidden">
+      <label class="chatAudienceTitle" for="chatTargetPicker">Seleccionar chat</label>
+      <select id="chatTargetPicker" class="opsInput"></select>
+    </div>
+    <div id="chatTargetEmpty" class="chatTargetEmpty hidden" aria-hidden="true"></div>
+
+    <div id="chatMessages" class="chatMessages"></div>
+
+    <div class="chatComposer">
+      <div class="chatInputBar">
+        <button id="chatAttachmentBtn" class="chatIconBtn" type="button" title="Adjuntar foto o video" aria-label="Adjuntar foto o video">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="m21.4 11.6-8.8 8.8a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"></path>
+          </svg>
+        </button>
+        <textarea id="chatInput" placeholder="Escribe un mensaje"></textarea>
+        <button id="sendChatBtn" class="chatIconBtn sendChatBtn" type="button" title="Enviar" aria-label="Enviar">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M5 12h13"></path>
+            <path d="m13 6 6 6-6 6"></path>
+          </svg>
+        </button>
+        <button id="chatAudioBtn" class="chatIconBtn voiceBtn" type="button" title="Grabar audio" aria-label="Grabar audio">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <path d="M12 19v3"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="chatAttachStatus" class="voiceStatus" style="display:none;"></div>
+      <input id="chatAttachmentInput" type="file" accept="image/*,video/*" hidden>
+    </div>
+  </aside>
+
+  <aside id="chatGroupMembersPanel" class="glassPanel chatGroupMembersPanel">
+    <div class="chatGroupMembersHeader">
+      <h2 class="chatGroupMembersTitle">Integrantes</h2>
+      <span id="chatGroupMembersCount" class="chatGroupMembersCount">0</span>
+    </div>
+    <div id="chatGroupMembersList" class="chatGroupMembersList"></div>
+  </aside>
+
+  <aside id="cameraPanel" class="glassPanel cameraPanel">
+    <div class="cameraLayoutControls" role="group" aria-label="Vista de camaras">
+      <span class="cameraDragHandle" title="Arrastrar camaras" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <circle cx="9" cy="6" r="1.5"></circle>
+          <circle cx="15" cy="6" r="1.5"></circle>
+          <circle cx="9" cy="12" r="1.5"></circle>
+          <circle cx="15" cy="12" r="1.5"></circle>
+          <circle cx="9" cy="18" r="1.5"></circle>
+          <circle cx="15" cy="18" r="1.5"></circle>
+        </svg>
+      </span>
+      <button id="cameraLayoutGrid" class="layoutBtn active" type="button" title="Vista en cuadricula" aria-label="Vista en cuadricula" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect>
+        </svg>
+      </button>
+      <button id="cameraLayoutSpeaker" class="layoutBtn" type="button" title="Vista personal" aria-label="Vista personal" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"></path>
+          <path d="M5 21a7 7 0 0 1 14 0"></path>
+        </svg>
+      </button>
+    </div>
+
+    <button id="cameraPrevBtn" class="cameraSideNav cameraSideNavPrev" type="button" title="Camara anterior" aria-label="Camara anterior" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M15 18 9 12l6-6"></path>
+      </svg>
+    </button>
+
+    <div id="cameraFeeds" class="cameraFeeds grid-layout">
+      <!-- Camera feeds will be inserted here -->
+    </div>
+
+    <button id="cameraNextBtn" class="cameraSideNav cameraSideNavNext" type="button" title="Camara siguiente" aria-label="Camara siguiente" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="m9 18 6-6-6-6"></path>
+      </svg>
+    </button>
+
+    <div class="cameraBottomControls">
+      <div class="cameraProtocolTabs" role="group" aria-label="Filtrar camaras por protocolo">
+        <button id="cameraWebRtcBtn" class="cameraSourceBtn" type="button" title="Mostrar WebRTC" aria-pressed="false">WebRTC</button>
+        <button id="cameraRtmpBtn" class="cameraSourceBtn" type="button" title="Mostrar RTMP" aria-pressed="false">RTMP</button>
+      </div>
+    </div>
+    <button id="cameraResizeHandle" class="cameraResizeHandle" type="button" title="Cambiar tamaño" aria-label="Cambiar tamaño del panel de cámaras">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M14 4h6v6"></path><path d="m20 4-7 7"></path>
+        <path d="M10 20H4v-6"></path><path d="m4 20 7-7"></path>
+      </svg>
+    </button>
+  </aside>
+
+  <script type="module" src="js/dashboard/dashboard.js?v=20260828-ptt-zones-pulse"></script>
+
+</body>
+
+</html>

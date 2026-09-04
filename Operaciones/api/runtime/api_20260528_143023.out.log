@@ -1,0 +1,3 @@
+DB CONFIG TEST: { host: 'localhost', port: 5432, user: 'postgres', database: 'ops_db' }
+API + WS en http://192.168.202.103:3001
+[AUTO-ACTIVACION] Revisor iniciado cada 15000ms.

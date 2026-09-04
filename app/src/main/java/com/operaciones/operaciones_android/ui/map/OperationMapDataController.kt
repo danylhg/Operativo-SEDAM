@@ -32,6 +32,7 @@ class OperationMapDataController(
         fun getMapDataOperationId(): Int
         fun getMapDataToken(): String
         fun getMapDataCurrentUserId(): Int
+        fun getMapDataCurrentUserTabla(): String
         fun getMapDataCurrentUserLabel(): String
         fun isMapDataCesiumReady(): Boolean
         fun runMapDataOnUi(block: () -> Unit)
@@ -60,7 +61,8 @@ class OperationMapDataController(
         val color: String,
         val iconoSrc: String? = null,
         val sidc: String? = null,
-        val creatorLabel: String = ""
+        val creatorLabel: String = "",
+        val editorLabel: String = ""
     )
 
     private data class PendingCoverageCircleAddition(
@@ -117,6 +119,7 @@ class OperationMapDataController(
     private val pendingStructureAdditions = mutableListOf<PendingStructureAddition>()
 
     private var lastMapSyncAt = 0L
+    private var operationViewApplied = false
 
     private val trackingTimestampFormats = listOf(
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.US),
@@ -207,12 +210,19 @@ class OperationMapDataController(
         tipo: String,
         color: String,
         iconoSrc: String?,
-        sidc: String?
+        sidc: String?,
+        visibility: String = "PRIVADO",
+        creatorType: String = "",
+        creatorUserId: Int? = null,
+        creatorPersonalId: Int? = null,
+        editorLabel: String = "",
+        creatorLabel: String = "",
+        creatorRank: String = ""
     ) {
         if (idPoi <= 0) return
 
         val resolvedIcon = resolvePoiIconUrl(iconoSrc)
-        val creatorLabel = currentUserLabel()
+        val resolvedCreatorLabel = creatorLabel.ifBlank { currentUserLabel() }
         val newItem = PoiItem(
             idPoi = idPoi,
             nombre = nombre,
@@ -222,14 +232,20 @@ class OperationMapDataController(
             color = color,
             iconoSrc = resolvedIcon,
             sidc = sidc,
-            creatorLabel = creatorLabel
+            creatorLabel = resolvedCreatorLabel,
+            creatorRank = creatorRank,
+            visibility = visibility.uppercase(),
+            creatorType = creatorType.uppercase(),
+            creatorUserId = creatorUserId,
+            creatorPersonalId = creatorPersonalId,
+            editorLabel = editorLabel
         )
         currentPois = currentPois.filterNot { it.idPoi == idPoi } + newItem
 
         if (host.isMapDataCesiumReady()) {
-            cesiumWebController.addPoiToMap(idPoi, lat, lon, nombre, tipo, color, resolvedIcon, sidc, creatorLabel)
+            cesiumWebController.loadPois("[${poiJson(newItem)}]", replace = false)
         } else {
-            pendingPoiAdditions.add(PendingPoiAddition(idPoi, lat, lon, nombre, tipo, color, resolvedIcon, sidc, creatorLabel))
+            pendingPoiAdditions.add(PendingPoiAddition(idPoi, lat, lon, nombre, tipo, color, resolvedIcon, sidc, resolvedCreatorLabel, editorLabel))
         }
     }
 
@@ -361,7 +377,8 @@ class OperationMapDataController(
         applyOperationZone(data.operationZone)
         applyOperationGrid(data.operationGrid)
 
-        data.rutasNavegacion?.let { routesJson ->
+        val navigationRoutesJson = data.rutasNavegacion?.let(::enrichOwnNavigationRoutes)
+        navigationRoutesJson?.let { routesJson ->
             host.onMapDataNavigationRoutesLoaded(routesJson)
             webView.postDelayed({
                 cesiumWebController.evaluate(
@@ -370,7 +387,7 @@ class OperationMapDataController(
             }, CESIUM_LOAD_DELAY_MS)
         }
 
-        loadOrPendingRemoteRoutes(data.rutasNavegacion ?: "[]", replace = true)
+        loadOrPendingRemoteRoutes(navigationRoutesJson ?: "[]", replace = true)
         loadOrPendingTacticalRoutes(data.rutasTacticas ?: "[]", replace = true)
 
         val trackingDelayMs = if (host.isMapDataCesiumReady()) 0L else CESIUM_LOAD_DELAY_MS
@@ -381,6 +398,28 @@ class OperationMapDataController(
         syncMapObjectLayers(data)
     }
 
+    private fun enrichOwnNavigationRoutes(routesJson: String): String = runCatching {
+        val routes = JSONArray(routesJson)
+        val currentId = host.getMapDataCurrentUserId()
+        val currentTable = host.getMapDataCurrentUserTabla()
+        val currentLabel = host.getMapDataCurrentUserLabel()
+        for (index in 0 until routes.length()) {
+            val route = routes.optJSONObject(index) ?: continue
+            val creatorType = route.optString("created_by_tipo", "").uppercase()
+            val creatorId = if (currentTable.equals("personal", ignoreCase = true)) {
+                route.optInt("id_personal", -1)
+            } else {
+                route.optInt("id_usuario", -1)
+            }
+            val expectedType = if (currentTable.equals("personal", ignoreCase = true)) "PERSONAL" else "USUARIO"
+            if (creatorType == expectedType && creatorId == currentId && currentLabel.isNotBlank()) {
+                route.put("creador_nombre", currentLabel)
+                route.put("creador_puesto", "")
+            }
+        }
+        routes.toString()
+    }.getOrDefault(routesJson)
+
     private fun applyOperationZone(zone: OperationZoneItem?) {
         if (zone == null) {
             cesiumWebController.applyOperationView()
@@ -388,7 +427,10 @@ class OperationMapDataController(
         }
 
         host.onMapDataOperationZoneChanged(zone.centerLat, zone.centerLon, zone.zoomInicial)
-        cesiumWebController.setOperationView(zone.centerLat, zone.centerLon, zone.zoomInicial)
+        if (!operationViewApplied) {
+            cesiumWebController.setOperationView(zone.centerLat, zone.centerLon, zone.zoomInicial)
+            operationViewApplied = true
+        }
         loadOrPendingOperationZone(operationZoneJson(zone).toString())
     }
 
@@ -517,7 +559,8 @@ class OperationMapDataController(
                 poi.color,
                 poi.iconoSrc,
                 poi.sidc,
-                poi.creatorLabel
+                poi.creatorLabel,
+                poi.editorLabel
             )
         }
         pendingPoiAdditions.clear()
@@ -750,8 +793,16 @@ class OperationMapDataController(
             .put("cols", grid.cols)
             .put("names", JSONArray().apply { grid.names.forEach { put(it) } })
 
-    private fun poiJson(poi: PoiItem): JSONObject =
-        JSONObject()
+    private fun poiJson(poi: PoiItem): JSONObject {
+        val currentUserId = host.getMapDataCurrentUserId()
+        val currentUserTable = host.getMapDataCurrentUserTabla()
+        val currentUserLabel = host.getMapDataCurrentUserLabel().trim()
+        val isMine = if (currentUserTable.equals("personal", ignoreCase = true)) {
+            poi.creatorType == "PERSONAL" && poi.creatorPersonalId == currentUserId
+        } else {
+            poi.creatorType == "USUARIO" && poi.creatorUserId == currentUserId
+        } || (currentUserLabel.isNotBlank() && poi.creatorLabel.contains(currentUserLabel, ignoreCase = true))
+        return JSONObject()
             .put("id_poi", poi.idPoi)
             .put("nombre", poi.nombre)
             .put("tipo_poi", poi.tipoPoi)
@@ -759,10 +810,23 @@ class OperationMapDataController(
             .put("longitud", poi.lon)
             .put("color", poi.color)
             .put("creatorLabel", poi.creatorLabel)
+            .put("creador_label", poi.creatorLabel)
+            .put("creador", poi.creatorLabel)
+            .put("creatorRank", poi.creatorRank)
+            .put("creador_puesto", poi.creatorRank)
+            .put("visibilidad", poi.visibility)
+            .put("tipo_creador", poi.creatorType)
+            .put("id_usuario", poi.creatorUserId ?: JSONObject.NULL)
+            .put("id_personal", poi.creatorPersonalId ?: JSONObject.NULL)
+            .put("isMine", isMine)
+            .put("editorLabel", poi.editorLabel)
+            .put("editor_nombre", poi.editorLabel)
+            .put("modificado_por", poi.editorLabel)
             .apply {
                 poi.iconoSrc?.let { put("icono_src", resolvePoiIconUrl(it)) }
                 poi.sidc?.let { put("sidc", it) }
             }
+    }
 
     private fun coverageCircleJson(circle: CoverageCircleItem): JSONObject =
         JSONObject()

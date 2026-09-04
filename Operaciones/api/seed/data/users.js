@@ -1,0 +1,57 @@
+export const users = [
+  // Usuario administrador (tabla usuario)
+  { rol: "ADMIN", nombre: "Admin", apellido: "Principal", puesto: "Sistema", username: "admin" },
+
+  // ===== Personal (tabla personal) =====
+  // CUT
+  { rol: "CUT", nombre: "Carlos", apellido: "Ramírez", puesto: "Coronel", username: "cramirez", apodo: "Ramírez" },
+  { rol: "CUT", nombre: "Ana", apellido: "Torres", puesto: "Teniente Coronel", username: "atorres", apodo: "Torres" },
+  { rol: "CUT", nombre: "Jorge", apellido: "Salinas", puesto: "Coronel", username: "jsalinas", apodo: "Salinas" },
+  { rol: "CUT", nombre: "Patricia", apellido: "Delgado", puesto: "Teniente Coronel", username: "pdelgado", apodo: "Delgado" },
+  { rol: "CUT", nombre: "Manuel", apellido: "Esquivel", puesto: "Mayor", username: "mesquivel", apodo: "Esquivel" },
+
+  // CET
+  { rol: "CET", nombre: "Luis", apellido: "Hernández", puesto: "Mayor", username: "lhernandez", apodo: "Hernández" },
+  { rol: "CET", nombre: "María", apellido: "López", puesto: "Capitán", username: "mlopez", apodo: "López" },
+  { rol: "CET", nombre: "Ricardo", apellido: "Vega", puesto: "Teniente", username: "rvega", apodo: "Vega" },
+  { rol: "CET", nombre: "Gabriela", apellido: "Pineda", puesto: "Capitán", username: "gpineda", apodo: "Pineda" },
+  { rol: "CET", nombre: "Raúl", apellido: "Campos", puesto: "Teniente", username: "rcampos", apodo: "Campos" },
+  { rol: "CET", nombre: "Teresa", apellido: "Mora", puesto: "Mayor", username: "tmora", apodo: "Mora" },
+  { rol: "CET", nombre: "Arturo", apellido: "Benítez", puesto: "Capitán", username: "abenitez", apodo: "Benítez" },
+
+  // CELL
+  { rol: "CELL", nombre: "José", apellido: "Martínez", puesto: "Sargento Primero", username: "jmartinez", apodo: "Martínez" },
+  { rol: "CELL", nombre: "Pedro", apellido: "Sánchez", puesto: "Sargento Segundo", username: "psanchez", apodo: "Sánchez" },
+  { rol: "CELL", nombre: "Miguel", apellido: "Cruz", puesto: "Cabo", username: "mcruz", apodo: "Cruz" },
+  { rol: "CELL", nombre: "Laura", apellido: "Gómez", puesto: "Soldado / Marinero", username: "lgomez", apodo: "Gómez" },
+  { rol: "CELL", nombre: "Juan", apellido: "Flores", puesto: "Soldado / Marinero", username: "jflores", apodo: "Flores" },
+  { rol: "CELL", nombre: "Sofía", apellido: "Morales", puesto: "Cabo", username: "smorales", apodo: "Morales" },
+  { rol: "CELL", nombre: "Daniel", apellido: "Ríos", puesto: "Soldado / Marinero", username: "drios", apodo: "Ríos" },
+  { rol: "CELL", nombre: "Fernanda", apellido: "Silva", puesto: "Soldado / Marinero", username: "fsilva", apodo: "Silva" },
+  { rol: "CELL", nombre: "Andrés", apellido: "Navarro", puesto: "Cabo", username: "anavarro", apodo: "Navarro" },
+  { rol: "CELL", nombre: "Paola", apellido: "Mendoza", puesto: "Soldado / Marinero", username: "pmendoza", apodo: "Mendoza" },
+  { rol: "CELL", nombre: "Hugo", apellido: "Castillo", puesto: "Sargento Segundo", username: "hcastillo", apodo: "Castillo" },
+  { rol: "CELL", nombre: "Elena", apellido: "Ruiz", puesto: "Soldado / Marinero", username: "eruiz", apodo: "Ruiz" },
+  { rol: "CELL", nombre: "Iván", apellido: "Pérez", puesto: "Cabo", username: "iperez", apodo: "Pérez" },
+  { rol: "CELL", nombre: "Diana", apellido: "Ortega", puesto: "Soldado / Marinero", username: "dortega", apodo: "Ortega" },
+  { rol: "CELL", nombre: "Óscar", apellido: "Reyes", puesto: "Cabo", username: "oreyes", apodo: "Reyes" },
+  { rol: "CELL", nombre: "Daniela", apellido: "Pérez", puesto: "Soldado / Marinero", username: "dperez", apodo: "Pérez" },
+  { rol: "CELL", nombre: "Diana", apellido: "Ortiz", puesto: "Soldado / Marinero", username: "dortiz", apodo: "Ortiz" },
+  { rol: "CELL", nombre: "Odalis", apellido: "Lopez", puesto: "Soldado / Marinero", username: "olopez", apodo: "López" },
+  { rol: "CELL", nombre: "Marco", apellido: "Salazar", puesto: "Cabo", username: "msalazar", apodo: "Salazar" },
+  { rol: "CELL", nombre: "Valeria", apellido: "Nunez", puesto: "Soldado / Marinero", username: "vnunez", apodo: "Nunez" },
+  { rol: "CELL", nombre: "Gerardo", apellido: "Acosta", puesto: "Sargento Segundo", username: "gacosta", apodo: "Acosta" },
+  { rol: "CELL", nombre: "Brenda", apellido: "Tapia", puesto: "Soldado / Marinero", username: "btapia", apodo: "Tapia" },
+  { rol: "CELL", nombre: "Ulises", apellido: "Fuentes", puesto: "Cabo", username: "ufuentes", apodo: "Fuentes" },
+  { rol: "CELL", nombre: "Karen", apellido: "Ibarra", puesto: "Soldado / Marinero", username: "kibarra", apodo: "Ibarra" },
+  { rol: "CELL", nombre: "Ruben", apellido: "Lara", puesto: "Sargento Primero", username: "rlara", apodo: "Lara" },
+  { rol: "CELL", nombre: "Monica", apellido: "Valdez", puesto: "Soldado / Marinero", username: "mvaldez", apodo: "Valdez" },
+  { rol: "CELL", nombre: "Samuel", apellido: "Cervantes", puesto: "Cabo", username: "scervantes", apodo: "Cervantes" },
+  { rol: "CELL", nombre: "Natalia", apellido: "Rosales", puesto: "Soldado / Marinero", username: "nrosales", apodo: "Rosales" },
+  { rol: "CELL", nombre: "Edgar", apellido: "Bautista", puesto: "Sargento Segundo", username: "ebautista", apodo: "Bautista" },
+  { rol: "CELL", nombre: "Ximena", apellido: "Soto", puesto: "Soldado / Marinero", username: "xsoto", apodo: "Soto" },
+  { rol: "CELL", nombre: "Julio", apellido: "Cardenas", puesto: "Cabo", username: "jcardenas", apodo: "Cardenas" },
+  { rol: "CELL", nombre: "Nadia", apellido: "Mejia", puesto: "Soldado / Marinero", username: "nmejia", apodo: "Mejia" },
+  { rol: "CELL", nombre: "Alberto", apellido: "Galvan", puesto: "Soldado / Marinero", username: "agalvan", apodo: "Galvan" },
+  { rol: "CELL", nombre: "Lucia", apellido: "Carrillo", puesto: "Cabo", username: "lcarrillo", apodo: "Carrillo" },
+];

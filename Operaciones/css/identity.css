@@ -1,0 +1,75 @@
+/* ═══════════════════════════════════════════════════════════════
+   SEDAM — IDENTIDAD GRÁFICA
+   Sistema Operativo Táctico
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Escala navy */
+  --navy-950: #020617;
+  --navy-900: #081426;
+  --navy-800: #0A1E3F;
+  --navy-700: #0f274f;
+
+  /* Escala gold */
+  --gold-500:  #C9A227;
+  --gold-400:  #E3C565;
+  --gold-300:  #F3DA8C;
+  --gold-alt:  #ffb700;
+
+  /* Semánticos */
+  --ok:        #4ade80;
+  --ok-dim:    #16a34a;
+  --cyan:      #22d3ee;
+  --warning:   #f97316;
+  --danger:    #ef4444;
+  --danger-hi: #dc2626;
+  --info:      #3b82f6;
+  --info-hi:   #2563eb;
+
+  /* Texto / alpha */
+  --text-primary: rgba(255, 255, 255, 1.00);
+  --text-high:    rgba(255, 255, 255, 0.80);
+  --text-medium:  rgba(255, 255, 255, 0.60);
+  --text-low:     rgba(255, 255, 255, 0.40);
+  --text-ghost:   rgba(255, 255, 255, 0.25);
+
+  /* Bordes */
+  --border-strong:  rgba(255, 255, 255, 0.20);
+  --border-subtle:  rgba(255, 255, 255, 0.10);
+  --border-gold:    rgba(201, 162, 39, 0.40);
+  --border-gold-lo: rgba(201, 162, 39, 0.20);
+
+  /* Gradientes */
+  --gradient-navy:  linear-gradient(135deg, #0f274f 0%, #0A1E3F 50%, #081426 100%);
+  --gradient-gold:  linear-gradient(to bottom, #E3C565, #C9A227);
+  --gradient-panel: linear-gradient(180deg, rgba(15,39,79,0.95) 0%, rgba(8,20,38,0.98) 100%);
+  --gradient-danger: linear-gradient(135deg, rgba(127,29,29,0.95), rgba(185,28,28,0.90));
+
+  /* Sombras */
+  --shadow-military: 0 20px 60px rgba(0, 0, 0, 0.65);
+  --shadow-panel:    0 8px 32px rgba(0, 0, 0, 0.55);
+  --shadow-card:     0 4px 16px rgba(0, 0, 0, 0.50);
+  --shadow-gold:     0 0 30px rgba(201, 162, 39, 0.25);
+  --shadow-gold-sm:  0 0 12px rgba(201, 162, 39, 0.20);
+  --shadow-danger:   0 10px 32px rgba(0, 0, 0, 0.50), 0 0 0 0 rgba(239, 68, 68, 0.70);
+
+  /* Blur */
+  --blur-panel:  blur(12px);
+  --blur-subtle: blur(4px);
+
+  /* Radios */
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+  --radius-pill: 9999px;
+
+  /* Z-index (capas del mapa táctico) */
+  --z-map:        0;
+  --z-overlay:    1000;
+  --z-panel:      1001;
+  --z-alarm:      1003;
+  --z-modal:      9998;
+  --z-top:        9999;
+  --z-critical:   10000;
+}

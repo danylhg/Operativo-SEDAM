@@ -1,0 +1,1917 @@
+MANUAL DE ENDPOINTS - FLUJO, VALIDACIONES Y CASOS
+Proyecto: Operaciones API
+Fecha de revision: 2026-05-04
+Base URL local: http://localhost:3001
+Archivo relacionado: endpoints_postman.txt
+
+============================================================
+COMO USAR ESTE TXT
+============================================================
+
+Este archivo complementa endpoints_postman.txt.
+
+Aqui se documenta por endpoint:
+- Que pide: params, query, body y auth.
+- Que devuelve: forma general de la respuesta.
+- Validaciones: reglas que pueden cortar con 400, 401, 403, 404, 409, etc.
+- Flujo: que hace internamente.
+- Casos: escenarios utiles para probar en Postman.
+- Prueba/hallazgo: estado de lo que ya se probo.
+
+Headers para rutas protegidas:
+
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+Login base:
+
+POST {{base_url}}/auth/login
+Body:
+{
+  "username": "admin",
+  "password": "1234"
+}
+
+Respuesta:
+- 200 OK
+- ok=true
+- token
+- usuario
+
+============================================================
+RESUMEN DE LO QUE YA SE HIZO EN endpoints_postman.txt
+============================================================
+
+Pruebas GET seguras:
+- OK /health
+- OK /db-test
+- OK /auth/login
+- OK /me
+- OK /config/cesium-token
+- OK listado/detalle de operaciones
+- OK catalogos
+- OK consultas de asignaciones
+- OK mapa, capas, chat, avisos, tracking, replay
+- OK /validate/disponibilidad despues del fix
+- OK 400 esperado en /route/osrm sin query params
+
+Pruebas de escritura:
+- Se hicieron solo con operaciones y registros POSTMAN_TEST.
+- Operacion PLANIFICADA de prueba: id=5.
+- Operacion ACTIVA de prueba: id=6.
+- CRUD temporal de catalogos probado:
+  - personal id=47
+  - vehiculo id=21
+  - equipo id=15
+- Registros de soporte para PLANIFICADA:
+  - personal 48, 49, 50
+  - vehiculo 22
+  - equipo 16
+- Registros de soporte para ACTIVA:
+  - personal 51, 52, 53
+  - vehiculo 23
+  - equipo 17
+
+Escrituras confirmadas OK en PLANIFICADA id=5 y ACTIVA id=6:
+- POST /ops/:id/personal
+- POST /ops/:id/mando
+- POST /ops/:id/grupos
+- POST /ops/:id/vehiculos
+- POST /ops/:id/equipos
+- POST/DELETE /ops/:id/zona
+- POST/PUT/DELETE/restore /ops/:id/pois
+- POST/PUT/DELETE/restore /ops/:id/areas
+- POST/PUT/DELETE/restore /ops/:id/edificios
+- POST/DELETE/restore /ops/:id/dibujos
+- POST/PATCH estado/DELETE/restore /ops/:id/rutas
+- POST/DELETE /ops/:id/rutas/navegacion
+- POST/PATCH /ops/:id/avisos
+- POST tracking personal y vehiculos
+- POST /ops/:id/chat/messages
+- POST /ops/:id/chat en ACTIVA
+
+Nota GeoJSON:
+- En Postman conviene pegar JSON crudo en Body raw.
+- PowerShell aplano arrays GeoJSON en un primer intento y dio errores falsos.
+- Con JSON crudo correcto, zona y areas pasaron.
+
+Diferencia entre objetos creados en PLANIFICADA y ACTIVA:
+- Cambio aplicado 2026-05-04.
+- Ahora la BD y la API usan el campo:
+  estado_operacion_creacion
+- Este campo guarda el estado real de la operacion al momento de crear el objeto.
+- Valores esperados:
+  - PLANIFICADA: objeto creado durante planeacion.
+  - ACTIVA: objeto creado durante ejecucion activa.
+- Si despues se cambia el estado de la operacion, el objeto conserva su estado_operacion_creacion original.
+- El campo se llena automaticamente con trigger de BD en inserts nuevos.
+- Se agrego backfill a registros existentes usando el estado actual de su operacion. Nota: para datos historicos previos al cambio no se puede reconstruir el estado exacto de creacion.
+- Tablas cubiertas:
+  asignacion_operacion_personal, vehiculo_operacion, operacion_equipo, uso_equipo_operacion, grupo_operacion, grupo_personal, grupo_equipo, grupo_vehiculo, mando_operacion, chat_operacion, mensaje_chat, puntos_interes, dibujo_libre_operacion, area_interes, ruta_operacion, marca_edificio, ruta_navegacion, zona_operacion, tracking_personal, tracking_vehiculo, aviso_operacion, novedad_operacion, operacion_evento.
+- Endpoints que ya exponen ese campo en respuestas principales:
+  asignaciones, mapa/capas, POIs, areas, edificios, dibujos, rutas tacticas, rutas de navegacion, tracking, avisos, chat y replay.
+- La operacion sigue teniendo su estado actual en operacion.estado. Ese campo no reemplaza estado_operacion_creacion; son cosas distintas.
+- Las rutas tacticas tambien tienen su propio estado de ruta: PLANIFICADA, ACTIVA, COMPLETADA o CANCELADA. Ese estado es de la ruta, no necesariamente el estado de la operacion al crearla.
+- Prueba tecnica:
+  INSERT temporal en puntos_interes dentro de op ACTIVA devolvio ACTIVA.
+  INSERT temporal en puntos_interes dentro de op PLANIFICADA devolvio PLANIFICADA.
+  Ambos inserts se hicieron dentro de transaccion con ROLLBACK.
+- Prueba API local 3001:
+  /ops/2/personal, /ops/2/mapa, /ops/2/zona, /ops/2/vehiculos-asignados, /ops/2/equipos-asignados, /ops/2/chat/messages y /ops/2/rutas/navegacion devuelven estado_operacion_creacion cuando hay datos.
+
+Fix confirmado:
+- validation.routes.js ya no usa FINALIZADA.
+- /validate/disponibilidad ahora filtra con:
+  estado IN ('PLANIFICADA', 'ACTIVA')
+- Estados canonicos de operacion:
+  PLANIFICADA, ACTIVA, CERRADA, CANCELADA
+- No usar:
+  TERMINADA, FINALIZADA
+
+Integracion dashboard -> asignacion -> dashboard:
+- Cambio aplicado 2026-05-04.
+- Cuando se entra desde el dashboard a editar una operacion PLANIFICADA, los campos de cabecera en asignacion (nombre, descripcion, fecha_inicio, hora_inicio y prioridad) se guardan localmente y disparan PUT /ops/:id con debounce.
+- Al presionar volver al dashboard, la vista de asignacion ejecuta el guardado pendiente antes de navegar. Asi el dashboard, que lee GET /ops/:id/mapa, ya recibe la fecha actualizada desde BD.
+- Si la operacion ya esta ACTIVA, CERRADA o CANCELADA, el frontend no intenta editar cabecera y el backend tambien lo bloquea.
+- Prueba local: PUT /ops/2 cambio temporalmente fecha_inicio a 2025-09-29T12:00:00.000Z, GET /ops/2/mapa devolvio esa misma fecha, y luego se restauro a 2025-07-01T14:00:00.000Z.
+
+============================================================
+1. SISTEMA Y AUTENTICACION
+============================================================
+
+GET /health
+Auth: no
+Pide:
+- Nada.
+Devuelve:
+- ok=true
+- mensaje de salud de API.
+Validaciones:
+- No aplica.
+Flujo:
+- Responde inmediatamente sin tocar BD.
+Casos:
+- 200 si la API esta arriba.
+Prueba:
+- OK 200.
+
+GET /db-test
+Auth: no
+Pide:
+- Nada.
+Devuelve:
+- conectado=true
+- hora_db
+Validaciones:
+- No aplica en request.
+Flujo:
+- Ejecuta SELECT NOW() en PostgreSQL.
+Casos:
+- 200 si BD responde.
+- 500 si falla la conexion o query.
+Prueba:
+- OK 200.
+
+POST /auth/login
+Auth: no
+Pide body:
+{
+  "username": "admin",
+  "password": "1234"
+}
+Devuelve:
+- ok=true
+- token JWT valido por 8h
+- usuario con id_usuario o id_personal, username, rol, nombre, apellido, puesto, tabla
+Validaciones:
+- 400 si faltan username o password.
+- 401 si no existe usuario/personal o password no coincide.
+- 403 si el usuario existe pero activo=false.
+Flujo:
+- Busca primero en tabla usuario.
+- Si no encuentra, busca en tabla personal.
+- Valida activo.
+- Compara password con bcrypt.
+- Actualiza ultimo_acceso.
+- Firma JWT con sub, username, rol y tabla.
+Casos:
+- Login admin correcto.
+- Password incorrecto.
+- Usuario inexistente.
+- Usuario inactivo.
+Prueba:
+- OK 200 con admin/1234.
+
+GET /me
+Auth: si
+Pide:
+- JWT.
+Devuelve:
+- id_usuario, username, rol, nombre, apellido.
+Validaciones:
+- 401 si no hay token valido.
+- 404 si req.user.sub no existe en tabla usuario.
+Flujo:
+- Lee req.user.sub y consulta tabla usuario.
+Caso importante:
+- Si el token viene de personal, puede responder 404 porque esta ruta consulta usuario, no personal.
+Prueba:
+- OK 200 con admin.
+
+GET /config/cesium-token
+Auth: si
+Pide:
+- JWT.
+Devuelve:
+- ok=true
+- token de Cesium.
+Validaciones:
+- 401 si no hay token valido.
+- 404 si la variable/token esta vacia.
+Flujo:
+- Lee configuracion de servidor y responde el token.
+Prueba:
+- OK 200. No se pego el valor real porque es sensible.
+
+============================================================
+2. OPERACIONES
+============================================================
+
+GET /ops
+Auth: si
+Pide:
+- JWT.
+Devuelve:
+- ok=true
+- items[] con id_operacion, codigo, nombre, descripcion, prioridad, estado, fechas, creada_por.
+Validaciones:
+- 401 si no hay token valido.
+Flujo:
+- Lista todas las operaciones ordenadas por id_operacion DESC.
+Casos:
+- Lista con datos.
+- Lista vacia.
+Prueba:
+- OK 200.
+
+GET /ops/by-codigo/:codigo
+Auth: si
+Pide params:
+- codigo.
+Devuelve:
+- Objeto de operacion.
+Validaciones:
+- 404 si no existe.
+Flujo:
+- Busca operacion por codigo exacto.
+Casos:
+- Codigo existente.
+- Codigo inexistente.
+Prueba:
+- OK 200 con OP-NORTE-002.
+
+GET /ops/:id
+Auth: si
+Pide params:
+- id entero.
+Devuelve:
+- Objeto de operacion.
+Validaciones:
+- 400 si id no es entero.
+- 404 si no existe.
+Flujo:
+- Busca operacion por id_operacion.
+Prueba:
+- OK 200 con /ops/2.
+
+POST /ops
+Auth: si
+Pide body:
+{
+  "nombre": "Operacion prueba",
+  "descripcion": "Creada desde Postman",
+  "prioridad": "MEDIA",
+  "fecha_inicio": "2026-05-04T10:00:00.000Z"
+}
+Devuelve:
+- Operacion creada con id_operacion, codigo, estado, fechas.
+Validaciones:
+- 400 si falta nombre.
+- 400 si prioridad no es BAJA, MEDIA o ALTA.
+- 400 si fecha_inicio es invalida.
+Flujo:
+- Genera codigo OP-{timestamp}.
+- Usa req.user.sub como creada_por.
+- Inserta operacion con fecha_fin=null.
+Casos:
+- Crear con prioridad default MEDIA.
+- Crear con fecha_inicio null.
+- Intentar prioridad invalida.
+Prueba:
+- OK. Se crearon operaciones POSTMAN_TEST id=5 e id=6.
+Hallazgo:
+- Al crear operacion por POST /ops se genera/queda disponible chat asociado para /chat/messages.
+
+PUT /ops/:id
+Auth: si
+Pide params:
+- id entero.
+Pide body:
+{
+  "nombre": "Operacion editada",
+  "descripcion": "Actualizada desde Postman",
+  "prioridad": "ALTA",
+  "fecha_inicio": "2026-05-04T10:00:00.000Z"
+}
+Devuelve:
+- Operacion actualizada.
+Validaciones:
+- 400 si id invalido.
+- 404 si la operacion no existe.
+- 400 si la operacion no esta PLANIFICADA.
+- 400 si falta nombre.
+- 400 si prioridad invalida.
+- 400 si fecha_inicio invalida.
+Flujo:
+- Lee estado actual.
+- Solo actualiza nombre, descripcion, prioridad y fecha_inicio.
+- No cambia codigo, estado, fecha_fin ni creada_por.
+- En la UI de asignacion este endpoint se usa para autoguardar cabecera cuando la operacion esta PLANIFICADA. Al volver al dashboard se fuerza el guardado pendiente antes de cambiar de pagina.
+Casos:
+- Editar PLANIFICADA: 200.
+- Editar ACTIVA/CERRADA/CANCELADA: 400.
+Prueba:
+- OK con operacion POSTMAN_TEST planificada.
+- OK flujo dashboard/asignacion con /ops/2: PUT temporal + GET /ops/2/mapa confirmo la fecha y despues se restauro.
+
+PATCH /ops/:id/estado
+Auth: si
+Pide params:
+- id entero.
+Pide body:
+{
+  "estado": "ACTIVA"
+}
+Devuelve:
+- ok=true
+- operacion actualizada.
+Validaciones:
+- 400 si id invalido.
+- 400 si estado no es PLANIFICADA, ACTIVA, CERRADA, CANCELADA.
+- 404 si operacion no existe.
+- 409 si la transicion no esta permitida.
+Flujo:
+- Usa transaccion.
+- Maquina de estados:
+  PLANIFICADA -> ACTIVA o CANCELADA
+  ACTIVA -> CERRADA o CANCELADA
+  CERRADA -> ninguna
+  CANCELADA -> ninguna
+- Si pasa a ACTIVA:
+  - fecha_inicio=NOW()
+  - crea/reactiva chat_operacion
+  - agrega mensaje SISTEMA de activacion
+- Si pasa a CERRADA:
+  - fecha_fin=NOW()
+  - agrega mensaje SISTEMA de cierre
+  - desactiva chat
+  - conserva asignaciones para historial
+- Si pasa a CANCELADA:
+  - libera personal, vehiculos y equipos
+  - desactiva chat
+  - agrega " - CANCELADA" al nombre
+Casos:
+- PLANIFICADA a ACTIVA: 200.
+- ACTIVA a CERRADA: 200.
+- ACTIVA a PLANIFICADA: 409.
+- CERRADA a ACTIVA: 409.
+Prueba:
+- Se uso para preparar operacion ACTIVA id=6.
+
+============================================================
+3. CATALOGOS
+============================================================
+
+GET /catalog/personal
+Auth: si
+Query:
+- rol: CUT, CET o CELL. Obligatorio.
+- exclude_op: id de operacion opcional para no contar esa operacion al marcar ocupacion.
+Devuelve:
+- ok=true
+- items[] con personal, username, activo, ultimo_acceso, en_operacion, nombre_operacion.
+Validaciones:
+- 400 si rol no es CUT, CET o CELL.
+Flujo:
+- Lista personal por rol.
+- Marca en_operacion si esta asignado a una operacion ACTIVA o PLANIFICADA y no esta LIBERADO.
+Casos:
+- rol=CUT, CET, CELL.
+- rol invalido.
+Prueba:
+- OK 200 para CUT, CET y CELL.
+
+POST /catalog/personal
+Auth: si
+Body:
+{
+  "rol": "CELL",
+  "nombre": "Nombre",
+  "apellido": "Apellido",
+  "puesto": "Cabo",
+  "apodo": "Apodo",
+  "username": "usuario.prueba",
+  "password": "1234"
+}
+Devuelve:
+- ok=true
+- item con personal creado
+- tempPassword
+Validaciones:
+- 400 si rol no es CUT, CET o CELL.
+- 400 si falta nombre.
+- 400 si falta apellido.
+- 401 si req.user.sub no es id valido para creado_por.
+- 400 si username tiene caracteres fuera de letras, numeros, punto, guion y guion bajo.
+Flujo:
+- Genera apodo unico.
+- Genera username unico desde username enviado o nombre/apellido.
+- Si no hay password, genera Temp-######.
+- Guarda password_hash con bcrypt.
+Casos:
+- Crear con username propio.
+- Crear sin username ni password.
+- Username duplicado: genera variante unica.
+Prueba:
+- OK con registro temporal id_personal=47 y soportes 48-53.
+
+PUT /catalog/personal/:id
+Auth: si
+Params:
+- id entero.
+Body parcial:
+{
+  "apodo": "Nuevo apodo",
+  "nombre": "Nuevo",
+  "apellido": "Apellido",
+  "puesto": "Mayor",
+  "activo": true,
+  "username": "nuevo.username",
+  "password": "1234"
+}
+Devuelve:
+- ok=true
+- item actualizado.
+Validaciones:
+- 400 si id invalido.
+- 404 si no existe.
+- 400 si username/apodo/nombre/apellido vienen vacios.
+- 400 si username tiene caracteres invalidos.
+- 400 si no hay nada para actualizar.
+Flujo:
+- Usa transaccion.
+- Actualiza solo campos presentes.
+- Si cambia nombre/apellido y no se envio username, regenera username.
+- Si llega password, actualiza password_hash.
+Prueba:
+- OK con registro temporal id_personal=47.
+
+DELETE /catalog/personal/:id
+Auth: si
+Params:
+- id entero.
+Query:
+- hard=1 opcional.
+Devuelve:
+- Sin hard: ok=true, item con activo=false.
+- Con hard: ok=true, deleted=true, hard=true.
+Validaciones:
+- 400 si id invalido.
+- 404 si soft delete no encuentra personal.
+- 409 si hard delete viola FK.
+Flujo:
+- Sin hard desactiva.
+- Con hard borra fisicamente.
+Prueba:
+- OK con registro temporal id_personal=47.
+
+GET /catalog/vehiculos
+Auth: si
+Devuelve:
+- ok=true
+- items[] con id_vehiculo, imagen, codigo_interno, tipo, alias, estado, capacidad, fecha_registro.
+Validaciones:
+- 401 si no hay token.
+Flujo:
+- Lista vehiculos ordenados por codigo_interno.
+Prueba:
+- OK 200.
+
+POST /catalog/vehiculos
+Auth: si
+Body:
+{
+  "codigo_interno": "VH-POSTMAN-001",
+  "tipo": "Camioneta",
+  "alias": "Unidad Postman",
+  "imagen_veh": null,
+  "capacidad": 5,
+  "estado": "DISPONIBLE"
+}
+Devuelve:
+- ok=true
+- item creado.
+Validaciones:
+- 400 si falta codigo_interno.
+- 400 si capacidad no es entero >= 0.
+- 400 si estado no es DISPONIBLE, ASIGNADO, MANTENIMIENTO o BAJA.
+- 409 si codigo_interno ya existe.
+Flujo:
+- Normaliza strings y estado a mayusculas.
+- Inserta vehiculo.
+Prueba:
+- OK con registro temporal id_vehiculo=21 y soportes 22, 23.
+
+PUT /catalog/vehiculos/:id
+Auth: si
+Params:
+- id entero.
+Body parcial:
+{
+  "codigo_interno": "VH-EDIT-001",
+  "tipo": "Camioneta",
+  "alias": "Alias editado",
+  "capacidad": 4,
+  "estado": "DISPONIBLE"
+}
+Devuelve:
+- ok=true
+- item actualizado.
+Validaciones:
+- 400 si id invalido.
+- 400 si codigo_interno viene vacio.
+- 400 si capacidad invalida.
+- 400 si estado invalido.
+- 400 si no hay campos para actualizar.
+- 404 si vehiculo no existe.
+- 409 si codigo_interno ya existe.
+Flujo:
+- Arma UPDATE dinamico con solo los campos enviados.
+Prueba:
+- OK con registro temporal id_vehiculo=21.
+
+DELETE /catalog/vehiculos/:id
+Auth: si
+Params:
+- id entero.
+Devuelve:
+- ok=true, deleted=true, id_vehiculo.
+Validaciones:
+- 400 si id invalido.
+- 409 si hay FK en operaciones o grupos.
+Flujo:
+- Borra fisicamente de vehiculo.
+Prueba:
+- OK con registro temporal id_vehiculo=21.
+
+GET /catalog/equipos
+Auth: si
+Devuelve:
+- ok=true
+- items[] con equipo base mas imagen/detalles consolidados.
+Validaciones:
+- 401 si no hay token.
+Flujo:
+- Une equipo con equipo_comunicacion y equipo_tactico.
+Prueba:
+- OK 200.
+
+POST /catalog/equipos
+Auth: si
+Body comunicacion:
+{
+  "numero_serie": "EQ-COM-POSTMAN-001",
+  "nombre": "Radio prueba",
+  "categoria": "COMUNICACION",
+  "estado": "DISPONIBLE",
+  "imagen_eq": null,
+  "marca": "Marca",
+  "modelo": "Modelo",
+  "detalles": "Notas"
+}
+Body tactico:
+{
+  "numero_serie": "EQ-TAC-POSTMAN-001",
+  "nombre": "Equipo tactico prueba",
+  "categoria": "TACTICO",
+  "estado": "DISPONIBLE",
+  "imagen_eq": null,
+  "tipo_tactico": "GENERAL",
+  "calibre": null,
+  "nivel": null,
+  "detalles": "Notas"
+}
+Devuelve:
+- ok=true
+- item consolidado.
+Validaciones:
+- 400 si faltan numero_serie, nombre o categoria.
+- 400 si categoria no es COMUNICACION o TACTICO.
+Flujo:
+- Usa transaccion.
+- Inserta en equipo.
+- Inserta en tabla hija segun categoria.
+- Borra la tabla hija contraria para evitar mezcla.
+Prueba:
+- OK con registro temporal id_equipo=15 y soportes 16, 17.
+
+PUT /catalog/equipos/:id
+Auth: si
+Params:
+- id entero.
+Body:
+- Igual que POST /catalog/equipos.
+Devuelve:
+- ok=true
+- item consolidado.
+Validaciones:
+- 400 si id invalido.
+- 400 si faltan campos obligatorios.
+- 400 si categoria invalida.
+- 404 si el equipo no existe.
+Flujo:
+- Usa transaccion.
+- Actualiza equipo base.
+- Upsert en tabla hija correcta.
+- Borra tabla hija contraria.
+Prueba:
+- OK con registro temporal id_equipo=15.
+
+DELETE /catalog/equipos/:id
+Auth: si
+Params:
+- id entero.
+Devuelve:
+- ok=true, deleted=true, id_equipo.
+Validaciones:
+- 400 si id invalido.
+- 409 si hay referencias en operaciones, grupos o asignaciones.
+Flujo:
+- Borra fisicamente equipo.
+Prueba:
+- OK con registro temporal id_equipo=15.
+
+============================================================
+4. ASIGNACIONES Y CONSULTAS DE OPERACION
+============================================================
+
+GET /ops/personal/:id_personal
+Auth: si
+Params:
+- id_personal entero.
+Devuelve:
+- ok=true
+- operacion vigente con zona si existe.
+Validaciones:
+- 400 si id_personal invalido.
+- 404 si no tiene operacion asignada.
+Flujo:
+- Busca operacion ACTIVA o PLANIFICADA donde el personal no este LIBERADO.
+- Prioriza ACTIVA sobre PLANIFICADA.
+- Adjunta zona_operacion si existe.
+Prueba:
+- OK 200 con id_personal=2.
+
+GET /ops/:id/personal
+Auth: si
+Params:
+- id entero de operacion.
+Devuelve:
+- ok=true
+- items[] con personal asignado, rol operativo, grupo/celula/flotilla, CET de referencia, ultima posicion y estado_operacion_creacion.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lee asignacion_operacion_personal.
+- Enriquese con personal, grupos, mando y v_ultima_posicion_personal.
+- Excluye LIBERADO.
+Prueba:
+- OK 200.
+
+POST /ops/:id/personal
+Auth: si
+Params:
+- id entero de operacion.
+Body:
+{
+  "asignado_por": 1,
+  "items": [
+    {
+      "id_personal": 48,
+      "rol_en_operacion": "CET",
+      "estado_asignacion": "ASIGNADO"
+    }
+  ]
+}
+Devuelve:
+- ok=true.
+Validaciones:
+- 400 si id invalido.
+- 400 si items no es arreglo no vacio.
+- 404 si operacion no existe.
+- 400 si operacion esta CERRADA o CANCELADA.
+Flujo:
+- Usa transaccion.
+- Por cada item con id_personal valido hace insert/upsert.
+- Si un item trae id invalido lo ignora.
+Casos:
+- Asignar personal nuevo.
+- Reasignar misma persona actualizando rol/estado.
+- Enviar operacion CERRADA/CANCELADA.
+Prueba:
+- OK en operaciones de prueba id=5 e id=6.
+
+POST /ops/:id/mando
+Auth: si
+Params:
+- id entero de operacion.
+Body:
+{
+  "asignado_por": 1,
+  "items": [
+    { "id_cet": 48, "id_cell": 49 }
+  ]
+}
+Devuelve:
+- ok=true.
+Validaciones:
+- 400 si id invalido.
+- 400 si items no es arreglo.
+Flujo:
+- Usa transaccion.
+- Borra mando_operacion previo de esa operacion.
+- Inserta relaciones CET -> CELL validas.
+- Si un par tiene ids invalidos lo ignora.
+Casos:
+- items vacio limpia mando.
+- items con relaciones nuevas reemplaza todo.
+Prueba:
+- OK en id=5 e id=6.
+
+POST /ops/:id/grupos
+Auth: si
+Params:
+- id entero de operacion.
+Body:
+{
+  "asignado_por": 1,
+  "grupos": [
+    {
+      "flotilla": "Flotilla Alfa",
+      "nombre": "Celula 1",
+      "id_cet": 48,
+      "cet_nombre": "CET ejemplo",
+      "integrantes": [49, 50],
+      "vehiculos": [
+        { "id_vehiculo": 22, "id_personal": 49 }
+      ]
+    }
+  ],
+  "directos": {
+    "48": [50]
+  }
+}
+Devuelve:
+- ok=true
+- flotillas: mapa nombre -> id_grupo_operacion
+- celulas: mapa nombre -> id_grupo_operacion
+Validaciones:
+- 400 si id invalido.
+- 400 si grupos no es arreglo.
+- 404 si operacion no existe.
+- 400 si operacion esta CERRADA o CANCELADA.
+- 400 si algun grupo no trae flotilla.
+- 400 si dos flotillas tienen el mismo nombre.
+- 400 si flotilla o grupo usa nombre reservado "Mando Operativo".
+- 400 si dos grupos tienen el mismo nombre.
+- 400 si un grupo se llama igual que una flotilla.
+- 400 si un personal ya esta en otro grupo de la misma operacion.
+Flujo:
+- Ruta destructiva para la jerarquia.
+- Limpia grupo_vehiculo, grupo_equipo, uso_equipo_operacion, vehiculo_operacion, grupo_personal, mando_operacion y grupo_operacion.
+- Crea raiz "Mando Operativo".
+- Crea flotillas.
+- Crea celulas.
+- Mete CET e integrantes a grupos.
+- Crea relaciones mando CET -> CELL.
+- Asigna vehiculos a grupo/persona.
+- Inserta relaciones directos si llegan.
+Casos:
+- Rehacer jerarquia completa.
+- Enviar nombre duplicado.
+- Enviar operacion cerrada/cancelada.
+Prueba:
+- OK en id=5 e id=6.
+
+GET /ops/:id/vehiculos-asignados
+Auth: si
+Params:
+- id entero.
+Devuelve:
+- ok=true
+- items[] con vehiculo, custodio, grupo/flotilla, tracking y estado_operacion_creacion.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lee vehiculo_operacion, vehiculo, contexto de personal, grupo y ultima posicion.
+- Excluye LIBERADO.
+Prueba:
+- OK 200.
+
+POST /ops/:id/vehiculos
+Auth: si
+Params:
+- id entero.
+Body:
+{
+  "asignado_por": 1,
+  "items": [
+    {
+      "id_vehiculo": 22,
+      "id_personal": 49,
+      "id_grupo_operacion": null,
+      "nivel_asignacion": "OPERACION"
+    }
+  ]
+}
+Devuelve:
+- ok=true.
+Validaciones:
+- 400 si id invalido.
+- 400 si items no es arreglo.
+- 404 si operacion no existe.
+- 400 si operacion esta CERRADA o CANCELADA.
+- 400 si id_grupo_operacion no pertenece a la operacion.
+- 400 si vehiculo ya esta activo en otra operacion abierta.
+Flujo:
+- Usa transaccion.
+- Borra vehiculo_operacion previo de esa operacion.
+- Verifica cada vehiculo unico contra otras operaciones ACTIVA/PLANIFICADA.
+- Inserta pares vehiculo + custodio.
+- Si id_vehiculo o id_personal no son validos, el item se ignora.
+Casos:
+- Asignar vehiculo a custodio.
+- Vehiculo ocupado en otra operacion.
+- Grupo que no pertenece a operacion.
+Prueba:
+- OK en id=5 e id=6.
+
+GET /ops/:id/equipos-asignados
+Auth: si
+Params:
+- id entero.
+Devuelve:
+- ok=true
+- items[] con equipo, cantidad, estado, destino resuelto, datos de personal/vehiculo/grupo y estado_operacion_creacion.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lee operacion_equipo y uso_equipo_operacion.
+- Une equipo base con tablas hijas.
+- Resuelve tipo_destino PERSONAL, VEHICULO o GRUPO.
+- Excluye LIBERADO.
+Prueba:
+- OK 200.
+
+POST /ops/:id/equipos
+Auth: si
+Params:
+- id entero.
+Body:
+{
+  "asignado_por": 1,
+  "items": [
+    {
+      "id_equipo": 16,
+      "cantidad": 1,
+      "tipo_destino": "PERSONAL",
+      "id_personal": 49
+    }
+  ]
+}
+Destinos:
+- PERSONAL: requiere id_personal.
+- VEHICULO: requiere id_vehiculo; toma custodio desde vehiculo_operacion si no viene id_personal.
+- GRUPO: requiere id_grupo_operacion.
+Devuelve:
+- ok=true.
+Validaciones:
+- 400 si id invalido.
+- 400 si items no es arreglo.
+- 404 si operacion no existe.
+- 400 si operacion esta CERRADA o CANCELADA.
+- 400 si tipo_destino invalido.
+- 400 si no hay exactamente un destino.
+- 400 si vehiculo destino no esta asignado a la operacion.
+- 400 si grupo destino no pertenece a la operacion.
+- 400 si equipo ya esta asignado a ese mismo destino.
+- 400 si equipo ya esta activo en otra operacion abierta.
+- 400 si vehiculo destino no tiene custodio.
+Flujo:
+- Usa transaccion.
+- Borra operacion_equipo y uso_equipo_operacion previos de esa operacion.
+- Valida destino por item.
+- Inserta reserva agregada en operacion_equipo.
+- Inserta uso real en uso_equipo_operacion.
+Casos:
+- Equipo a personal.
+- Equipo a vehiculo.
+- Equipo a grupo.
+- Equipo ocupado en otra operacion.
+Prueba:
+- OK en id=5 e id=6.
+
+============================================================
+5. ZONA, MAPA, POIS, AREAS, EDIFICIOS Y DIBUJOS
+============================================================
+
+GET /ops/:id/zona
+Auth: si
+Params:
+- id entero.
+Devuelve:
+- ok=true
+- zona con id_zona, geometria, centroide, zoom_inicial y color.
+Validaciones:
+- 400 si id invalido.
+- 404 si no hay zona definida.
+Flujo:
+- Busca zona_operacion por id_operacion.
+Prueba:
+- OK 200 en operacion seed.
+
+POST /ops/:id/zona
+Auth: si
+Permisos:
+- Solo ADMIN o CUT.
+Body:
+{
+  "nombre": "Zona principal",
+  "geometria": {
+    "type": "Polygon",
+    "coordinates": [[[-103.407,25.542],[-103.406,25.542],[-103.406,25.543],[-103.407,25.543],[-103.407,25.542]]]
+  },
+  "color": "#3b82f6"
+}
+Devuelve:
+- ok=true
+- zona creada/actualizada.
+Validaciones:
+- 400 si id invalido.
+- 403 si rol no es ADMIN ni CUT.
+- 400 si geometria no es GeoJSON Polygon valido.
+- 400 si no se puede calcular centroide.
+Flujo:
+- Calcula centroide.
+- Upsert por id_operacion.
+- zoom_inicial default 1000.
+Prueba:
+- OK en id=5 e id=6 usando JSON crudo.
+
+DELETE /ops/:id/zona
+Auth: si
+Permisos:
+- Solo ADMIN o CUT.
+Devuelve:
+- ok=true
+- deleted=id_zona.
+Validaciones:
+- 400 si id invalido.
+- 403 si rol no es ADMIN ni CUT.
+- 404 si no existe zona para esa operacion.
+Flujo:
+- Borra zona_operacion fisicamente por id_operacion.
+Prueba:
+- OK en id=5 e id=6.
+
+GET /ops/:id/mapa
+Auth: si
+Params:
+- id entero.
+Devuelve:
+- ok=true
+- operacion
+- zona_operacion
+- capas
+- pois
+- personal
+- vehiculos
+- equipos
+- rutas_navegacion
+- estado_operacion_creacion en zona, capas y recursos hijos cuando aplica.
+Validaciones:
+- 400 si id invalido.
+- 404 si operacion no existe.
+Flujo:
+- Ejecuta varias queries en paralelo.
+- Arma paquete tactico para dashboard/mapa.
+Prueba:
+- OK 200.
+
+GET /ops/:id/pois
+Auth: si
+Devuelve:
+- ok=true
+- items[] de POIs activos.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lee v_poi_detalle donde activo=true.
+Prueba:
+- OK 200.
+
+POST /ops/:id/pois
+Auth: si
+Body:
+{
+  "nombre": "POI Postman",
+  "tipo_poi": "REFERENCIA",
+  "latitud": 25.542,
+  "longitud": -103.406,
+  "descripcion": "Creado desde Postman",
+  "color": "#FFD700",
+  "icono_src": null,
+  "sidc": null,
+  "tipo_creador": "USUARIO",
+  "id_usuario": 1,
+  "id_personal": null
+}
+Devuelve:
+- ok=true
+- poi.
+Validaciones:
+- 400 si id invalido.
+- 400 si falta nombre.
+- 400 si falta tipo_poi.
+- 400 si falta latitud/longitud.
+- 400 si tipo_creador no es USUARIO o PERSONAL.
+Flujo:
+- Inserta puntos_interes.
+- Registra evento timeline.
+- Emite socket de POI creado.
+Prueba:
+- OK en id=5 e id=6.
+
+PUT /ops/:id/pois/:id_poi
+Auth: si
+Body:
+{
+  "latitud": 25.543,
+  "longitud": -103.407
+}
+Devuelve:
+- ok=true
+- poi actualizado.
+Validaciones:
+- 400 si id_operacion o id_poi invalidos.
+- 400 si falta latitud/longitud.
+- 404 si el POI no existe, no pertenece a operacion o no esta activo.
+Flujo:
+- Actualiza latitud/longitud.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+DELETE /ops/:id/pois/:id_poi
+Auth: si
+Devuelve:
+- ok=true
+- item/poi segun implementacion.
+Validaciones:
+- 400 si id invalido.
+- 404 si no existe.
+Flujo:
+- Soft delete: activo=false.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+PATCH /ops/:id/pois/:id_poi/restore
+Auth: si
+Devuelve:
+- ok=true.
+Validaciones:
+- 400 si id invalido.
+- 404 si no existe.
+Flujo:
+- Reactiva con activo=true.
+- Emite socket como POI creado.
+Prueba:
+- OK en id=5 e id=6.
+
+GET /ops/:id/areas
+Auth: si
+Devuelve:
+- ok=true
+- items[] de areas con estado ACTIVA.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lee area_interes por operacion y estado ACTIVA.
+Prueba:
+- OK 200.
+
+POST /ops/:id/areas
+Auth: si
+Body:
+{
+  "nombre": "Area Postman",
+  "descripcion": "Area de prueba",
+  "geometria": {
+    "type": "Polygon",
+    "coordinates": [[[-103.407,25.542],[-103.406,25.542],[-103.406,25.543],[-103.407,25.543],[-103.407,25.542]]]
+  },
+  "color": "#FF4500",
+  "tipo_creador": "USUARIO",
+  "id_usuario": 1,
+  "id_personal": null
+}
+Devuelve:
+- ok=true
+- area.
+Validaciones:
+- 400 si id invalido.
+- 400 si falta nombre.
+- 400 si falta geometria.
+- 400 si tipo_creador no es USUARIO o PERSONAL.
+Flujo:
+- Guarda geometria serializada.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6 usando JSON crudo.
+
+PUT /ops/:id/areas/:id_area
+Auth: si
+Body:
+{
+  "latitud": 25.543,
+  "longitud": -103.407
+}
+Devuelve:
+- ok=true
+- area actualizada.
+Validaciones:
+- 400 si ids invalidos.
+- 400 si falta latitud/longitud.
+- 404 si area no existe, no pertenece a operacion o no esta ACTIVA.
+- 400 si no es area circular con geometria.meta.shape="circle" y radius_m valido.
+Flujo:
+- Solo mueve areas circulares.
+- Recalcula coordenadas del poligono circular.
+- Actualiza meta.center.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6 con area circular.
+
+DELETE /ops/:id/areas/:id_area
+Auth: si
+Devuelve:
+- ok=true
+- item actualizado.
+Validaciones:
+- 400 si id_area invalido.
+- 404 si no existe.
+Flujo:
+- Soft delete: estado=ELIMINADA.
+- Registra evento y emite socket.
+Nota:
+- La implementacion del delete actual valida id_area, pero no valida fuertemente que pertenezca a :id.
+Prueba:
+- OK en id=5 e id=6.
+
+PATCH /ops/:id/areas/:id_area/restore
+Auth: si
+Devuelve:
+- ok=true.
+Validaciones:
+- 400 si ids invalidos.
+- 404 si no existe.
+Flujo:
+- Reactiva con estado=ACTIVA.
+- Emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+GET /ops/:id/edificios
+Auth: si
+Devuelve:
+- ok=true
+- items[] con marca_edificio en estado ACTIVO.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lista estructuras activas.
+Prueba:
+- OK 200.
+
+POST /ops/:id/edificios
+Auth: si
+Body:
+{
+  "nombre": "Edificio Postman",
+  "tipo_estructura": "CASA",
+  "latitud": 25.542,
+  "longitud": -103.406,
+  "tipo_creador": "USUARIO",
+  "id_usuario": 1,
+  "id_personal": null
+}
+Devuelve:
+- ok=true
+- edificio.
+Validaciones:
+- 400 si id invalido.
+- 400 si falta nombre.
+- 400 si falta tipo_estructura.
+- 400 si falta latitud/longitud.
+- 400 si tipo_creador invalido.
+- 403 si rol del token es CELL.
+Flujo:
+- Inserta marca_edificio.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+PUT /ops/:id/edificios/:id_marca
+Auth: si
+Body:
+{
+  "latitud": 25.543,
+  "longitud": -103.407
+}
+Devuelve:
+- ok=true
+- edificio actualizado.
+Validaciones:
+- 400 si ids invalidos.
+- 400 si falta latitud/longitud.
+- 404 si no existe, no pertenece a operacion o no esta ACTIVO.
+Flujo:
+- Actualiza coordenadas.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+DELETE /ops/:id/edificios/:id_marca
+Auth: si
+Devuelve:
+- ok=true
+- item actualizado.
+Validaciones:
+- 400 si id_marca invalido.
+- 404 si no existe.
+Flujo:
+- Soft delete: estado=INACTIVO.
+- Registra evento y emite socket.
+Nota:
+- La implementacion del delete actual valida id_marca, pero no valida fuertemente que pertenezca a :id.
+Prueba:
+- OK en id=5 e id=6.
+
+PATCH /ops/:id/edificios/:id_marca/restore
+Auth: si
+Devuelve:
+- ok=true.
+Validaciones:
+- 400 si ids invalidos.
+- 404 si no existe.
+Flujo:
+- Reactiva con estado=ACTIVO.
+- Emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+GET /ops/:id/dibujos
+Auth: si
+Devuelve:
+- ok=true
+- items[] con id_dibujo, puntos, color, grosor.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lista dibujo_libre_operacion donde activo=true.
+Prueba:
+- OK 200.
+
+POST /ops/:id/dibujos
+Auth: si
+Body:
+{
+  "puntos": [
+    { "lat": 25.542, "lng": -103.406 },
+    { "lat": 25.543, "lng": -103.407 }
+  ],
+  "color": "#FFFFFF",
+  "grosor": 3,
+  "tipo_creador": "USUARIO",
+  "id_usuario": 1,
+  "id_personal": null
+}
+Devuelve:
+- ok=true
+- dibujo.
+Validaciones:
+- 400 si id invalido.
+- 400 si puntos no es arreglo con minimo 2 puntos.
+- 400 si tipo_creador no es USUARIO o PERSONAL.
+Flujo:
+- Inserta puntos como jsonb.
+- Default color #FFFFFF y grosor 3.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+DELETE /ops/:id/dibujos/:id_dibujo
+Auth: si
+Devuelve:
+- ok=true.
+Validaciones:
+- 400 si ids invalidos.
+- 404 si no existe, no pertenece a operacion o ya esta inactivo.
+Flujo:
+- Soft delete: activo=false.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+PATCH /ops/:id/dibujos/:id_dibujo/restore
+Auth: si
+Devuelve:
+- ok=true.
+Validaciones:
+- 400 si ids invalidos.
+- 404 si no existe.
+Flujo:
+- Reactiva con activo=true.
+- Emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+============================================================
+6. RUTAS TACTICAS, NAVEGACION Y OSRM
+============================================================
+
+GET /ops/:id/rutas
+Auth: si
+Devuelve:
+- ok=true
+- items[] de ruta_operacion con estado PLANIFICADA o ACTIVA.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lista rutas tacticas activas/planificadas por fecha_creacion DESC.
+Prueba:
+- OK 200.
+
+POST /ops/:id/rutas
+Auth: si
+Body:
+{
+  "nombre": "Ruta tactica Postman",
+  "descripcion": "Prueba",
+  "geometria": {
+    "type": "LineString",
+    "coordinates": [[-103.406,25.542],[-103.407,25.543]]
+  },
+  "color": "#1E90FF",
+  "tipo_creador": "USUARIO",
+  "id_usuario": 1,
+  "id_personal": null
+}
+Devuelve:
+- ok=true
+- ruta.
+Validaciones:
+- 400 si id invalido.
+- 400 si falta nombre.
+- 400 si falta geometria.
+- 400 si tipo_creador no es USUARIO o PERSONAL.
+Flujo:
+- Inserta ruta_operacion.
+- Serializa geometria.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+DELETE /ops/:id/rutas/:id_ruta
+Auth: si
+Devuelve:
+- ok=true
+- item con id_ruta y estado.
+Validaciones:
+- 400 si ids invalidos.
+- 404 si no existe, no pertenece a operacion o ya no esta PLANIFICADA/ACTIVA.
+Flujo:
+- Soft delete: estado=CANCELADA.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+PATCH /ops/:id/rutas/:id_ruta/restore
+Auth: si
+Devuelve:
+- ok=true
+- ruta.
+Validaciones:
+- 400 si ids invalidos.
+- 404 si no existe.
+Flujo:
+- Cambia estado a PLANIFICADA.
+- Emite socket de ruta creada.
+Prueba:
+- OK en id=5 e id=6.
+
+PATCH /ops/:id/rutas/:id_ruta/estado
+Auth: si
+Body:
+{
+  "estado": "ACTIVA"
+}
+Devuelve:
+- ok=true
+- item con id_ruta y estado.
+Validaciones:
+- 400 si id_ruta invalido.
+- 400 si estado no es PLANIFICADA, ACTIVA, COMPLETADA o CANCELADA.
+- 404 si ruta no existe.
+Flujo:
+- Actualiza ruta_operacion por id_ruta.
+Nota:
+- La implementacion no valida fuerte que la ruta pertenezca a :id en este PATCH.
+Prueba:
+- OK en id=5 e id=6.
+
+GET /ops/:id/rutas/navegacion
+Auth: si
+Devuelve:
+- ok=true
+- items[] con rutas activas de navegacion.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Admin/CUT/CET ven todas las rutas activas.
+- CELL ve rutas generales sin vehiculo o rutas del vehiculo asignado a esa persona.
+Prueba:
+- OK 200.
+
+POST /ops/:id/rutas/navegacion
+Auth: si
+Body:
+{
+  "geojson": {
+    "type": "LineString",
+    "coordinates": [[-103.406,25.542],[-103.407,25.543]]
+  },
+  "origen_lat": 25.542,
+  "origen_lon": -103.406,
+  "destino_lat": 25.543,
+  "destino_lon": -103.407,
+  "distancia_m": 250,
+  "duracion_s": 60,
+  "id_vehiculo": null
+}
+Devuelve:
+- 201
+- ok=true
+- mensaje
+- ruta.
+Validaciones:
+- 400 si id_operacion no es entero positivo.
+- 400 si id_vehiculo viene y no es entero positivo.
+- 400 si geojson falta o no es objeto.
+- 400 si geojson no es LineString con minimo 2 coordenadas.
+- 400 si origen/destino no son numeros finitos.
+- 400 si latitud esta fuera de -90 a 90.
+- 400 si longitud esta fuera de -180 a 180.
+- 400 si distancia_m o duracion_s son negativos/no finitos.
+- 404 si operacion no existe.
+- 409 si operacion esta CERRADA o CANCELADA.
+- 401 si no se puede identificar creador.
+Flujo:
+- Valida datos.
+- Verifica operacion modificable.
+- Detecta creador como USUARIO o PERSONAL desde token.
+- Inserta ruta_navegacion.
+- Registra evento y emite socket filtrado.
+Prueba:
+- OK en id=5 e id=6.
+
+DELETE /ops/:id/rutas/navegacion/:id_ruta
+Auth: si
+Devuelve:
+- ok=true
+- mensaje
+- id_ruta
+- id_operacion
+Validaciones:
+- 400 si id_operacion o id_ruta no son enteros positivos.
+- 404 si ruta no existe o ya estaba inactiva.
+Flujo:
+- Soft delete: activo=false.
+- Guarda fecha_eliminacion y actor eliminador.
+- Registra evento y emite socket.
+Prueba:
+- OK en id=5 e id=6.
+
+GET /route/osrm
+Auth: si
+Query:
+- startLon
+- startLat
+- endLon
+- endLat
+Ejemplo:
+GET /route/osrm?startLon=-103.406&startLat=25.542&endLon=-103.407&endLat=25.543
+Devuelve:
+- ok=true
+- routes[] de OSRM.
+Validaciones:
+- 400 si faltan parametros o no son numericos.
+- 502 si OSRM responde error o no se puede contactar.
+- 504 si OSRM tarda mas de 10 segundos.
+- 404 si OSRM no encuentra ruta.
+Flujo:
+- Arma URL hacia router.project-osrm.org.
+- Hace fetch con timeout de 10s.
+- Regresa data.routes.
+Prueba:
+- OK 400 esperado sin query params.
+Pendiente:
+- Probar caso 200 con internet disponible.
+
+============================================================
+7. CHAT Y AVISOS
+============================================================
+
+GET /ops/:id/chat
+Auth: si
+Devuelve:
+- ok=true
+- items[] de mensajes enriquecidos.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lee mensajes desde chat_operacion/mensaje_chat.
+- ADMIN y CUT ven todo.
+- Otros roles ven mensajes globales, de su rol, donde son autor o dirigidos por destino.
+- Oculta mensajes SISTEMA legados de triggers.
+Prueba:
+- OK 200.
+
+POST /ops/:id/chat
+Auth: si
+Body:
+{
+  "contenido": "Mensaje desde Postman",
+  "tipo_mensaje": "NORMAL",
+  "destinatario_rol": "GLOBAL",
+  "destino_tipo": null,
+  "destino_id": null,
+  "destino_label": null
+}
+Devuelve:
+- ok=true
+- mensaje enriquecido.
+Validaciones:
+- 400 si id invalido.
+- 400 si falta contenido.
+- 400 si tipo_mensaje no es NORMAL, URGENTE o SISTEMA.
+- 409 si no hay chat activo.
+Flujo:
+- Busca chat activo.
+- Crea/obtiene participante_chat para actor.
+- Inserta mensaje_chat.
+- Registra evento.
+- Emite socket filtrado.
+Prueba:
+- OK en ACTIVA id=6.
+
+GET /ops/:id/chat/messages
+Auth: si
+Devuelve:
+- ok=true
+- items[] de mensajes del chat.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Busca chat de la operacion.
+- Si no hay chat, devuelve items=[].
+- Aplica visibilidad para roles que no sean ADMIN/CUT.
+- Oculta mensajes SISTEMA legados.
+Prueba:
+- OK 200.
+
+POST /ops/:id/chat/messages
+Auth: si
+Body:
+{
+  "contenido": "Mensaje desde Postman",
+  "tipo_mensaje": "NORMAL",
+  "destinatario_rol": "GLOBAL",
+  "destino_tipo": null,
+  "destino_id": null,
+  "destino_label": null
+}
+Devuelve:
+- ok=true
+- item con mensaje y autor.
+Validaciones:
+- 400 si id invalido.
+- 400 si contenido vacio.
+- 400 si tipo_mensaje no es NORMAL, SISTEMA o URGENTE.
+- 404 si la operacion no tiene chat.
+Flujo:
+- Busca chat.
+- Crea/actualiza participante por usuario o personal.
+- Inserta mensaje.
+- Resuelve autor.
+- Registra evento.
+- Emite socket filtrado.
+Prueba:
+- OK en PLANIFICADA id=5 y ACTIVA id=6.
+Hallazgo:
+- Una operacion PLANIFICADA creada con POST /ops ya acepto mensaje porque tenia chat asociado.
+
+GET /ops/:id/avisos
+Auth: si
+Devuelve:
+- ok=true
+- items[] de avisos con emisor/receptor enriquecido.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lista aviso_operacion por id_operacion, ordenado por fecha_envio DESC.
+Prueba:
+- OK 200.
+
+POST /ops/:id/avisos
+Auth: si
+Body:
+{
+  "id_personal_emisor": 49,
+  "tipo_aviso": "INFORMATIVO",
+  "contenido": "Aviso desde Postman",
+  "tipo_receptor": null,
+  "id_personal_receptor": null,
+  "id_usuario_receptor": null
+}
+Devuelve:
+- ok=true
+- aviso.
+Validaciones:
+- 400 si id invalido.
+- 400 si falta id_personal_emisor.
+- 400 si falta contenido.
+- 400 si tipo_aviso no es NOVEDAD, CONTACTO, EMERGENCIA o INFORMATIVO.
+Flujo:
+- Inserta aviso_operacion.
+Nota:
+- No valida que el emisor pertenezca realmente a la operacion.
+Prueba:
+- OK en id=5 e id=6.
+
+PATCH /ops/:id/avisos/:id_aviso
+Auth: si
+Body:
+{
+  "estado": "ATENDIDO"
+}
+Devuelve:
+- ok=true
+- aviso.
+Validaciones:
+- 400 si id_aviso invalido.
+- 400 si estado no es RECIBIDO o ATENDIDO.
+- 404 si aviso no existe.
+Flujo:
+- Actualiza estado.
+- Guarda fecha_atencion=NOW().
+Nota:
+- No valida que el aviso pertenezca a la operacion del path.
+Prueba:
+- OK en id=5 e id=6.
+
+============================================================
+8. TRACKING
+============================================================
+
+POST /ops/:id/tracking/personal
+Auth: si
+Body:
+{
+  "id_personal": 49,
+  "latitud": 25.542,
+  "longitud": -103.406,
+  "altitud": null,
+  "precision_m": 8
+}
+Devuelve:
+- ok=true
+- tracking con id_tracking y timestamp.
+Validaciones:
+- 400 si id_operacion invalido.
+- 400 si falta id_personal valido.
+- 400 si falta latitud/longitud.
+Flujo:
+- Inserta tracking_personal.
+- Consulta ultima posicion.
+- Emite socket tracking_personal.
+Prueba:
+- OK en id=5 e id=6.
+
+GET /ops/:id/tracking/personal
+Auth: si
+Devuelve:
+- ok=true
+- items[] con ultima posicion de todo el personal.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lee v_ultima_posicion_personal.
+Prueba:
+- OK 200.
+
+GET /ops/:id/tracking/personal/:id_personal/historial
+Auth: si
+Devuelve:
+- ok=true
+- items[] historicos ordenados por timestamp ASC.
+Validaciones:
+- 400 si id_operacion o id_personal invalidos.
+Flujo:
+- Lee tracking_personal por operacion/persona.
+Prueba:
+- OK 200 con id_personal=2.
+
+POST /ops/:id/tracking/vehiculos
+Auth: si
+Body:
+{
+  "id_vehiculo": 22,
+  "latitud": 25.542,
+  "longitud": -103.406,
+  "altitud": null,
+  "velocidad_kmh": 0,
+  "rumbo_grados": 180,
+  "precision_m": 8
+}
+Devuelve:
+- ok=true
+- tracking con id_tracking y timestamp.
+Validaciones:
+- 400 si id_operacion invalido.
+- 400 si falta id_vehiculo valido.
+- 400 si falta latitud/longitud.
+Flujo:
+- Inserta tracking_vehiculo.
+- Consulta ultima posicion.
+- Emite socket tracking_vehiculo.
+Prueba:
+- OK en id=5 e id=6.
+
+GET /ops/:id/tracking/vehiculos
+Auth: si
+Devuelve:
+- ok=true
+- items[] con ultima posicion de vehiculos.
+Validaciones:
+- 400 si id invalido.
+Flujo:
+- Lee v_ultima_posicion_vehiculo.
+Prueba:
+- OK 200.
+
+GET /ops/:id/tracking/vehiculos/:id_vehiculo/historial
+Auth: si
+Devuelve:
+- ok=true
+- items[] historicos ordenados por timestamp ASC.
+Validaciones:
+- 400 si id_operacion o id_vehiculo invalidos.
+Flujo:
+- Lee tracking_vehiculo por operacion/vehiculo.
+Prueba:
+- OK 200 con id_vehiculo=11.
+
+============================================================
+9. VALIDACION Y REPLAY
+============================================================
+
+POST /validate/disponibilidad
+Auth: si
+Body:
+{
+  "fecha_inicio": null,
+  "fecha_fin": null,
+  "personal_ids": [2],
+  "vehiculo_ids": [11],
+  "equipo_ids": [8]
+}
+Devuelve:
+- ok=true
+- disponible=true/false
+- conflictos.personal[]
+- conflictos.vehiculos[]
+- conflictos.equipos[]
+Validaciones:
+- 400 si no llega ningun id valido en personal_ids, vehiculo_ids o equipo_ids.
+- Ignora ids que no se puedan convertir a entero.
+Flujo:
+- Para personal: busca asignaciones no LIBERADO.
+- Para vehiculos: busca vehiculo_operacion no LIBERADO.
+- Para equipos: busca operacion_equipo no LIBERADO.
+- En los tres casos solo considera operaciones PLANIFICADA o ACTIVA.
+- Si llegan fecha_inicio/fecha_fin, aplica condicion de solape:
+  - o.fecha_inicio <= fecha_fin
+  - o.fecha_fin es null o >= fecha_inicio
+Casos:
+- Sin conflictos: disponible=true.
+- Con personal ocupado: disponible=false.
+- Con vehiculo ocupado: disponible=false.
+- Con equipo ocupado: disponible=false.
+- Sin ids: 400.
+Prueba:
+- Antes fallaba 400 por FINALIZADA.
+- Fix aplicado: estado IN ('PLANIFICADA', 'ACTIVA').
+- Despues del reinicio: OK 200.
+- Body probado: personal_ids=[2], vehiculo_ids=[11], equipo_ids=[8].
+- Resultado: disponible=false con conflictos reales.
+
+GET /ops/:id/replay
+Auth: si
+Params:
+- id entero.
+Devuelve:
+- ok=true
+- operacion/timeline/snapshots/capas/eventos segun schema de replay.
+Validaciones:
+- 400 si id invalido.
+- 404 si operacion no existe.
+Flujo:
+- Asegura schema de timeline.
+- Recolecta zona, eventos, chat, tracking, capas y snapshots.
+Prueba:
+- OK 200.
+
+============================================================
+10. CASOS GENERALES PARA POSTMAN
+============================================================
+
+Auth:
+- Sin token en rutas protegidas: esperar 401.
+- Token invalido o expirado: esperar 401.
+
+IDs:
+- Enviar id no numerico en params: normalmente 400.
+- Enviar id inexistente: normalmente 404.
+
+Operaciones cerradas/canceladas:
+- Asignaciones de personal, grupos, vehiculos, equipos y rutas de navegacion deben bloquear modificaciones en CERRADA/CANCELADA.
+
+Soft delete:
+- POIs: DELETE activo=false, restore activo=true.
+- Areas: DELETE estado=ELIMINADA, restore estado=ACTIVA.
+- Edificios: DELETE estado=INACTIVO, restore estado=ACTIVO.
+- Dibujos: DELETE activo=false, restore activo=true.
+- Rutas tacticas: DELETE estado=CANCELADA, restore estado=PLANIFICADA.
+- Rutas navegacion: DELETE activo=false; no existe restore.
+
+GeoJSON:
+- Usar Body raw JSON en Postman.
+- Evitar scripts/herramientas que serialicen mal arrays anidados.
+
+Estado de creacion de objetos:
+- Revisar estado_operacion_creacion en respuestas.
+- Si es PLANIFICADA, el objeto fue creado mientras la operacion estaba en planeacion.
+- Si es ACTIVA, el objeto fue creado mientras la operacion estaba activa.
+- Este campo queda fijo aunque despues cambie operacion.estado.
+- Para datos creados antes del parche, el valor fue rellenado con el estado actual de la operacion al momento de aplicar la migracion.
+
+Enums canonicos:
+- Operacion: PLANIFICADA, ACTIVA, CERRADA, CANCELADA.
+- Prioridad: BAJA, MEDIA, ALTA.
+- Personal rol: CUT, CET, CELL.
+- Vehiculo estado: DISPONIBLE, ASIGNADO, MANTENIMIENTO, BAJA.
+- Equipo categoria: COMUNICACION, TACTICO.
+- Creador: USUARIO, PERSONAL.
+- Chat tipo_mensaje: NORMAL, URGENTE, SISTEMA.
+- Aviso tipo_aviso: NOVEDAD, CONTACTO, EMERGENCIA, INFORMATIVO.
+- Aviso estado: RECIBIDO, ATENDIDO.
+- Ruta tactica estado: PLANIFICADA, ACTIVA, COMPLETADA, CANCELADA.
+
+============================================================
+11. PENDIENTES / SIGUIENTE PASO
+============================================================
+
+1. Probar GET /route/osrm con coordenadas reales e internet disponible para confirmar 200.
+2. Si se quiere limpieza de datos POSTMAN_TEST, hacerla con cuidado desde BD porque no existe DELETE /ops.

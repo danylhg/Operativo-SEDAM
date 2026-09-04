@@ -1,0 +1,9 @@
+DB CONFIG TEST: {
+  host: 'localhost',
+  port: 5433,
+  user: 'postgres',
+  password: 'pollito',
+  database: 'ops_db'
+}
+API + WS en http://192.168.202.103:3002
+DB OK: { current_user: 'postgres', current_database: 'ops_db' }

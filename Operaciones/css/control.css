@@ -1,0 +1,208 @@
+@import 'identity.css';
+
+:root {
+  --bg: #f6f8ff;
+  --card: rgba(255,255,255,0.72);
+  --stroke: rgba(2, 6, 23, .10);
+  --text: #0b1220;
+  --muted: rgba(11, 18, 32, .65);
+
+  --blue: var(--info);
+  --blue2: var(--info-hi);
+  --blueSoft: rgba(59,130,246,.12);
+  --shadow: 0 20px 60px rgba(2, 6, 23, .12);
+  --shadow2: 0 10px 30px rgba(2, 6, 23, .10);
+  --radius: 22px;
+}
+
+* { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #ffffff, var(--bg));
+  color: var(--text);
+  overflow-x: hidden;
+}
+
+/* ===== Topbar ===== */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px;
+  background: rgba(255,255,255,.75);
+  border-bottom: 1px solid rgba(2,6,23,.08);
+  backdrop-filter: blur(10px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.logo {
+  width: 40px; height: 40px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(59,130,246,1), rgba(99,102,241,.95));
+  box-shadow: 0 10px 18px rgba(59,130,246,.22);
+}
+.brandName { font-weight: 800; letter-spacing: .2px; }
+.brandSub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.btnTop {
+  border: 1px solid rgba(2,6,23,.14);
+  background: rgba(255,255,255,.65);
+  padding: 10px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: .25s ease;
+  box-shadow: 0 10px 18px rgba(2,6,23,.06);
+}
+.btnTop:hover {
+  transform: translateY(-1px);
+  border-color: rgba(59,130,246,.35);
+  box-shadow: 0 14px 24px rgba(2,6,23,.09);
+}
+
+/* ===== Main ===== */
+.wrap {
+  position: relative;
+  z-index: 1;
+  min-height: calc(100vh - 76px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px 70px;
+}
+.hero {
+  width: min(900px, 95vw);
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: .2px;
+}
+.subtitle {
+  margin: 10px 0 22px;
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+/* ===== Card ===== */
+.card {
+  text-align: left;
+  padding: 18px 18px 16px;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid rgba(2,6,23,.10);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+  position: relative;
+  overflow: hidden;
+}
+
+.cardHeader {
+  position: relative;
+  z-index: 1;
+  padding: 8px 6px 12px;
+}
+.pill {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.75);
+  border: 1px solid rgba(2,6,23,.10);
+  font-weight: 700;
+  font-size: 12px;
+  color: rgba(11,18,32,.75);
+  box-shadow: 0 10px 18px rgba(2,6,23,.06);
+}
+.cardTitle {
+  margin-top: 10px;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+/* ===== Filters ===== */
+.filters {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0;
+}
+.filters input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(2,6,23,.15);
+}
+.filters button {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(59,130,246,.25);
+  background: rgba(59,130,246,.10);
+  color: var(--blue2);
+  cursor: pointer;
+  font-weight: 700;
+}
+.filters button:hover {
+  background: rgba(59,130,246,.16);
+}
+
+/* ===== Table ===== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+}
+thead {
+  background: rgba(59,130,246,.12);
+}
+thead th {
+  padding: 12px;
+  text-align: left;
+  font-weight: 800;
+  color: var(--blue2);
+}
+tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(2,6,23,.08);
+}
+tbody tr {
+  cursor: pointer;
+  transition: .2s ease;
+}
+tbody tr:hover {
+  background: rgba(59,130,246,.08);
+}
+tbody tr.selected {
+  background: rgba(59,130,246,.18);
+  font-weight: 700;
+}
+
+/* ===== Actions ===== */
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+.actions button {
+  flex: 1;
+  padding: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(59,130,246,.25);
+  background: rgba(59,130,246,.10);
+  color: var(--blue2);
+  cursor: pointer;
+  font-weight: 700;
+  transition: .25s ease;
+}
+.actions button:hover {
+  background: rgba(59,130,246,.16);
+  transform: translateY(-2px);
+}

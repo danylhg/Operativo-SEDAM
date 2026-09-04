@@ -119,7 +119,6 @@ class BluetoothController(
         lastPressAt = now
         val active = !isAlertActive
         togglePttAlert(active)
-        toast(if (active) "ALERTA PTT ACTIVADA" else "Alerta PTT cancelada")
     }
 
     private fun setConnected(connected: Boolean, name: String? = null) {

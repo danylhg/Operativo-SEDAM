@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="1; url=/Operaciones/login.html" />
+    <title>Operaciones</title>
+    <script>
+      (function () {
+        var cleanUrl = "/Operaciones/login";
+        var fallbackUrl = "/Operaciones/login.html";
+
+        fetch(cleanUrl, { method: "HEAD", cache: "no-store" })
+          .then(function (response) {
+            window.location.replace(response.ok ? cleanUrl : fallbackUrl);
+          })
+          .catch(function () {
+            window.location.replace(fallbackUrl);
+          });
+      })();
+    </script>
+  </head>
+  <body>
+    <a href="/Operaciones/login.html">Ir al login</a>
+  </body>
+</html>
