@@ -2,26 +2,40 @@ package com.operaciones.operaciones_android.ui.adapter
 
 import android.app.Dialog
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.content.ActivityNotFoundException
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.SurfaceTexture
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.GradientDrawable
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.util.LruCache
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.Surface
+import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Button
+import android.widget.ProgressBar
+import android.widget.SeekBar
 import android.widget.ImageView
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.MediaController
 import android.widget.TextView
+import android.widget.Toast
 import android.widget.VideoView
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.operaciones.operaciones_android.R
@@ -40,8 +54,13 @@ import kotlin.math.abs
 
 class ChatAdapter(
     private val messages: List<ChatMessage>,
-    private val isPersonal: Boolean = false
+    private val isPersonal: Boolean = false,
+    private val onForwardVideo: ((File, ChatMessage) -> Unit)? = null,
+    private val onForwardImage: ((File, ChatMessage) -> Unit)? = null,
+    private val onSelectionChanged: ((List<ChatMessage>) -> Unit)? = null
 ) : RecyclerView.Adapter<ChatAdapter.ViewHolder>() {
+
+    private val selectedPositions = linkedSetOf<Int>()
 
     companion object {
         private const val LEGACY_ATTACHMENT_PREFIX = "CHAT_ATTACHMENT:"
@@ -56,6 +75,9 @@ class ChatAdapter(
         private val COLOR_TEXT_SYSTEM = Color.parseColor("#A7B6C8")
         private val mainHandler = Handler(Looper.getMainLooper())
         private val attachmentHttp = OkHttpClient()
+        private val imageCache = object : LruCache<String, android.graphics.Bitmap>(24 * 1024) {
+            override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = value.byteCount / 1024
+        }
     }
 
     private var activeAudioPlayer: MediaPlayer? = null
@@ -69,12 +91,14 @@ class ChatAdapter(
         val meta: TextView = view.findViewById(R.id.msgMeta)
         val text: TextView = view.findViewById(R.id.msgText)
         val imageAttachment: ImageView = view.findViewById(R.id.msgImageAttachment)
+        val uploadProgress: ProgressBar = view.findViewById(R.id.msgUploadProgress)
         val videoAttachment: VideoView = view.findViewById(R.id.msgVideoAttachment)
         val audioPlayer: LinearLayout = view.findViewById(R.id.msgAudioPlayer)
         val audioPlay: TextView = view.findViewById(R.id.msgAudioPlay)
         val audioWaveform: AudioWaveformView = view.findViewById(R.id.msgAudioWaveform)
         val audioDuration: TextView = view.findViewById(R.id.msgAudioDuration)
         val attachment: TextView = view.findViewById(R.id.msgAttachment)
+        val selectionIndicator: TextView = view.findViewById(R.id.msgSelectionIndicator)
     }
 
     private data class LegacyAttachment(
@@ -155,6 +179,48 @@ class ChatAdapter(
             }
         }
         holder.text.visibility = if (holder.text.text.isNullOrBlank()) View.GONE else View.VISIBLE
+        holder.itemView.setOnLongClickListener {
+            toggleSelection(holder.bindingAdapterPosition)
+            true
+        }
+        val selectFromAttachment = View.OnLongClickListener {
+            toggleSelection(holder.bindingAdapterPosition)
+            true
+        }
+        holder.imageAttachment.setOnLongClickListener(selectFromAttachment)
+        holder.videoAttachment.setOnLongClickListener(selectFromAttachment)
+        holder.audioPlayer.setOnLongClickListener(selectFromAttachment)
+        holder.attachment.setOnLongClickListener(selectFromAttachment)
+        holder.itemView.setOnClickListener {
+            if (selectedPositions.isNotEmpty()) toggleSelection(holder.bindingAdapterPosition)
+        }
+        holder.bubble.alpha = if (position in selectedPositions) 0.72f else 1f
+        holder.selectionIndicator.visibility = if (selectedPositions.isNotEmpty()) View.VISIBLE else View.GONE
+        holder.selectionIndicator.text = if (position in selectedPositions) "✓" else ""
+        holder.selectionIndicator.setTextColor(
+            if (position in selectedPositions) Color.WHITE else Color.parseColor("#9BB4C5")
+        )
+        holder.selectionIndicator.setBackgroundResource(
+            if (position in selectedPositions) R.drawable.bg_message_selection else R.drawable.bg_message_selection_empty
+        )
+        if (selectedPositions.isNotEmpty()) {
+            val params = holder.bubble.layoutParams as FrameLayout.LayoutParams
+            params.marginStart += (42 * dm.density + 0.5f).toInt()
+            holder.bubble.layoutParams = params
+        }
+    }
+
+    private fun toggleSelection(position: Int) {
+        if (position == RecyclerView.NO_POSITION) return
+        if (!selectedPositions.add(position)) selectedPositions.remove(position)
+        notifyDataSetChanged()
+        onSelectionChanged?.invoke(selectedPositions.mapNotNull { messages.getOrNull(it) })
+    }
+
+    fun clearSelection() {
+        selectedPositions.clear()
+        notifyDataSetChanged()
+        onSelectionChanged?.invoke(emptyList())
     }
 
     override fun getItemCount() = messages.size
@@ -194,14 +260,23 @@ class ChatAdapter(
         val location = when {
             msg.destinoTipo.equals("UBICACION", true) -> msg.destinoId?.split(',')
             msg.destinoLabel?.startsWith("UBICACION:") == true -> msg.destinoLabel.removePrefix("UBICACION:").split(',')
-            else -> null
+            else -> {
+                val labeled = Regex(
+                    "LAT\\s*:\\s*(-?\\d+(?:[.,]\\d+)?)\\s*,?\\s*LON\\s*:\\s*(-?\\d+(?:[.,]\\d+)?)",
+                    RegexOption.IGNORE_CASE
+                ).find(msg.text)
+                val raw = Regex("(-?\\d+(?:[.,]\\d+)?)\\s*,\\s*(-?\\d+(?:[.,]\\d+)?)").find(msg.text)
+                (labeled ?: raw)?.destructured?.let { (lat, lon) ->
+                    listOf(lat.replace(',', '.'), lon.replace(',', '.'))
+                }
+            }
         }
         if (location?.size == 2) {
             val lat = location[0].toDoubleOrNull()
             val lon = location[1].toDoubleOrNull()
             if (lat != null && lon != null) {
                 holder.attachment.visibility = View.VISIBLE
-                holder.attachment.text = "Ver ubicación  •  %.5f, %.5f".format(lat, lon)
+                holder.attachment.text = "LAT: %.5f   LON: %.5f\nVer ubicación".format(lat, lon)
                 holder.attachment.tag = holder.attachment.text.toString()
                 holder.attachment.setBackgroundColor(Color.TRANSPARENT)
                 holder.attachment.setPadding(0, 4, 0, 0)
@@ -218,9 +293,10 @@ class ChatAdapter(
         }
 
         val fullUrl = absoluteAttachmentUrl(url)
+        if (msg.isUploading) holder.uploadProgress.visibility = View.VISIBLE
         when (attachmentKind(msg)) {
-            "IMAGE" -> bindImageAttachment(holder, fullUrl)
-            "VIDEO" -> bindVideoAttachment(holder, fullUrl)
+            "IMAGE" -> bindImageAttachment(holder, fullUrl, msg)
+            "VIDEO" -> bindVideoAttachment(holder, fullUrl, msg)
             "AUDIO" -> bindAudioAttachment(holder, fullUrl, msg)
             else -> bindFileAttachment(holder, fullUrl, msg)
         }
@@ -228,7 +304,9 @@ class ChatAdapter(
 
     private fun resetAttachmentViews(holder: ViewHolder) {
         holder.imageAttachment.visibility = View.GONE
+        holder.uploadProgress.visibility = View.GONE
         holder.imageAttachment.setImageDrawable(null)
+        holder.imageAttachment.foreground = null
         holder.imageAttachment.tag = null
         holder.imageAttachment.setOnClickListener(null)
 
@@ -251,6 +329,7 @@ class ChatAdapter(
     }
 
     private fun absoluteAttachmentUrl(url: String): String {
+        if (url.startsWith("content://") || url.startsWith("file://")) return url
         if (url.startsWith("/api/")) {
             val base = Uri.parse(ApiConfig.BASE_URL)
             return base.buildUpon()
@@ -291,17 +370,31 @@ class ChatAdapter(
     }
 
     private fun displayText(msg: ChatMessage): String {
+        if (attachmentKind(msg) == "IMAGE") return imageCaptionText(msg.text)
+        if (msg.text.contains("Ver ubicación", ignoreCase = true)) return ""
         if (attachmentKind(msg) == "IMAGE") {
-            val text = msg.text.trim()
-            return if (text.equals("Imagen adjunta", ignoreCase = true) || text.equals("Foto", ignoreCase = true)) "" else text
+            // La imagen ya identifica el adjunto; evitar repetir caption y
+            // coordenadas en el texto blanco. La ubicación queda en su bloque inferior.
+            return ""
         }
         if (attachmentKind(msg) == "VIDEO") {
-            val text = msg.text.trim()
-            return if (text.equals("Video adjunto", ignoreCase = true) || text.equals("Video", ignoreCase = true)) "" else text
+            // La información del video se muestra en la miniatura; si tiene
+            // ubicación, se conserva únicamente el bloque inferior de ubicación.
+            return ""
         }
         if (attachmentKind(msg) == "AUDIO" && msg.text.trim().equals("Mensaje de voz", ignoreCase = true)) return ""
         val legacy = legacyAttachment(msg) ?: return callHistoryText(msg.text)
         return legacy.caption?.takeIf { it.isNotBlank() } ?: legacyLabel(legacy)
+    }
+
+    private fun imageCaptionText(text: String): String {
+        val lines = text.lines()
+        val locationStart = lines.indexOfFirst {
+            it.trim().matches(Regex("LAT\\s*:\\s*-?\\d+(?:[.,]\\d+)?\\s*,?\\s*LON\\s*:\\s*-?\\d+(?:[.,]\\d+)?", RegexOption.IGNORE_CASE))
+        }
+        return lines.take(if (locationStart >= 0) locationStart else lines.size)
+            .joinToString("\\n")
+            .trim()
     }
 
     private fun isCallHistory(msg: ChatMessage): Boolean {
@@ -361,6 +454,7 @@ class ChatAdapter(
     private fun bindDataImageAttachment(holder: ViewHolder, dataUrl: String) {
         holder.imageAttachment.visibility = View.VISIBLE
         holder.imageAttachment.tag = dataUrl
+        holder.imageAttachment.scaleType = ImageView.ScaleType.FIT_CENTER
         holder.imageAttachment.setBackgroundColor(Color.parseColor("#0f172a"))
 
         Thread {
@@ -368,6 +462,7 @@ class ChatAdapter(
             mainHandler.post {
                 if (holder.imageAttachment.tag == dataUrl && bitmap != null) {
                     holder.imageAttachment.setImageBitmap(bitmap)
+                    holder.imageAttachment.requestLayout()
                 }
             }
         }.start()
@@ -379,6 +474,22 @@ class ChatAdapter(
         val bytes = Base64.decode(dataUrl.substring(comma + 1), Base64.DEFAULT)
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
     }.getOrNull()
+
+    private fun decodeSampledImage(bytes: ByteArray) = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        while (bounds.outWidth / sample > 2048 || bounds.outHeight / sample > 2048) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    }.getOrNull()
+
+    private fun cachedImageFile(context: android.content.Context, url: String): File {
+        return File(context.filesDir, "chat_images/img_${abs(url.hashCode())}.jpg")
+    }
 
     private fun attachmentKind(msg: ChatMessage): String {
         val kind = msg.attachmentKind?.uppercase().orEmpty()
@@ -392,53 +503,107 @@ class ChatAdapter(
         }
     }
 
-    private fun bindImageAttachment(holder: ViewHolder, fullUrl: String) {
+    private fun bindImageAttachment(holder: ViewHolder, fullUrl: String, msg: ChatMessage) {
         val context = holder.itemView.context.applicationContext
         holder.imageAttachment.visibility = View.VISIBLE
         holder.imageAttachment.tag = fullUrl
+        holder.imageAttachment.scaleType = ImageView.ScaleType.FIT_CENTER
         holder.imageAttachment.setBackgroundColor(Color.parseColor("#0f172a"))
         holder.imageAttachment.setOnClickListener {
-            holder.imageAttachment.drawable?.let { drawable -> showImagePreview(holder.itemView.context, drawable) }
+            holder.imageAttachment.drawable?.let { drawable -> showImagePreview(holder.itemView.context, drawable, msg) }
+        }
+
+        if (!fullUrl.startsWith("content://") && !fullUrl.startsWith("file://")) {
+            val cachedFile = cachedImageFile(context, fullUrl)
+            if (cachedFile.exists() && cachedFile.length() > 0L) {
+                decodeSampledImage(cachedFile.readBytes())?.let {
+                    imageCache.put(fullUrl, it)
+                    holder.imageAttachment.setImageBitmap(it)
+                    return
+                }
+            }
+        }
+
+        imageCache.get(fullUrl)?.let {
+            holder.imageAttachment.setImageBitmap(it)
+            return
         }
 
         Thread {
             val bitmap = runCatching {
-                val token = AuthManager.getToken(context)
-                val request = Request.Builder()
-                    .url(fullUrl)
-                    .apply {
-                        if (token.isNotBlank()) addHeader("Authorization", "Bearer $token")
+                if (fullUrl.startsWith("content://") || fullUrl.startsWith("file://")) {
+                    context.contentResolver.openInputStream(Uri.parse(fullUrl))?.use { decodeSampledImage(it.readBytes()) }
+                } else {
+                    val token = AuthManager.getToken(context)
+                    val request = Request.Builder()
+                        .url(fullUrl)
+                        .apply { if (token.isNotBlank()) addHeader("Authorization", "Bearer $token") }
+                        .build()
+                    attachmentHttp.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) return@runCatching null
+                        response.body?.bytes()?.let { bytes ->
+                            runCatching {
+                                val cachedFile = cachedImageFile(context, fullUrl)
+                                cachedFile.parentFile?.mkdirs()
+                                cachedFile.outputStream().use { it.write(bytes) }
+                            }
+                            decodeSampledImage(bytes)
+                        }
                     }
-                    .build()
-
-                attachmentHttp.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@runCatching null
-                    response.body?.byteStream()?.use { BitmapFactory.decodeStream(it) }
                 }
             }.getOrNull()
 
             mainHandler.post {
                 if (holder.imageAttachment.tag == fullUrl && bitmap != null) {
+                    imageCache.put(fullUrl, bitmap)
                     holder.imageAttachment.setImageBitmap(bitmap)
+                    holder.imageAttachment.requestLayout()
                 }
             }
         }.start()
     }
 
-    private fun bindVideoAttachment(holder: ViewHolder, fullUrl: String) {
+    private fun bindVideoAttachment(holder: ViewHolder, fullUrl: String, msg: ChatMessage) {
         val context = holder.itemView.context.applicationContext
-        val controller = MediaController(context)
-        holder.videoAttachment.visibility = View.VISIBLE
-        holder.videoAttachment.tag = fullUrl
-        // El video ya es la vista previa; no mostrar el texto genérico "Video adjunto".
         val locationLabel = holder.attachment.tag as? String
-        holder.videoAttachment.setMediaController(controller)
-        controller.setAnchorView(holder.videoAttachment)
+        val savedVideo = File(context.cacheDir, "chat_share_${abs(fullUrl.hashCode())}.mp4")
+            .takeIf { it.exists() && it.length() > 0L }
+        // VideoView dentro del RecyclerView pinta un Surface negro en este
+        // dispositivo aun con un MP4 correcto. Mostramos un control claro y
+        // abrimos el reproductor solo al tocarlo.
+        holder.videoAttachment.stopPlayback()
+        holder.videoAttachment.visibility = View.GONE
+        holder.imageAttachment.visibility = View.VISIBLE
+        holder.imageAttachment.tag = fullUrl
+        val thumbnail = msg.attachmentName
+            ?.let { File(context.cacheDir, "chat_thumb_$it.jpg") }
+            ?.takeIf { it.exists() }
+            ?.let { BitmapFactory.decodeFile(it.absolutePath) }
+        if (thumbnail != null) holder.imageAttachment.setImageBitmap(thumbnail)
+        else holder.imageAttachment.setImageResource(R.drawable.ic_media_play)
+        holder.imageAttachment.scaleType = if (thumbnail != null) {
+            ImageView.ScaleType.CENTER_CROP
+        } else {
+            ImageView.ScaleType.CENTER
+        }
+        holder.imageAttachment.setBackgroundColor(Color.parseColor("#0B1625"))
+        // El icono se mantiene encima de la miniatura, como control de reproducción.
+        holder.imageAttachment.foreground = ContextCompat.getDrawable(context, R.drawable.ic_media_play)
+        holder.imageAttachment.foregroundGravity = Gravity.CENTER
+        holder.imageAttachment.contentDescription = "Reproducir video"
+        holder.imageAttachment.setOnClickListener {
+            if (savedVideo != null) showVideoPreview(holder.itemView.context, savedVideo, msg)
+            else showVideoPreviewUrl(holder.itemView.context, fullUrl, msg)
+        }
         if (locationLabel == null) {
             holder.attachment.visibility = View.VISIBLE
-            holder.attachment.text = "Cargando video..."
+            holder.attachment.text = "Reproducir video"
+            holder.attachment.setOnClickListener {
+                if (savedVideo != null) showVideoPreview(holder.itemView.context, savedVideo, msg)
+                else showVideoPreviewUrl(holder.itemView.context, fullUrl, msg)
+            }
         }
-        holder.attachment.setOnClickListener(null)
+        return
 
         Thread {
             val cachedFile = runCatching {
@@ -459,13 +624,12 @@ class ChatAdapter(
                             input.copyTo(output)
                         }
                     } ?: return@runCatching null
-                    val retriever = MediaMetadataRetriever()
-                    val valid = runCatching {
-                        retriever.setDataSource(file.absolutePath)
-                        (retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) > 0L
-                    }.getOrDefault(false)
-                    retriever.release()
-                    if (valid) file else null
+                    // Algunos MP4 vÃ¡lidos (en especial los grabados por
+                    // MediaRecorder en Samsung) no reportan duraciÃ³n al
+                    // MediaMetadataRetriever hasta que se abren en VideoView.
+                    // No los descartamos: basta con que la descarga exista y
+                    // tenga contenido; VideoView informarÃ¡ si no puede abrirlo.
+                    if (file.length() > 0L) file else null
                 }
             }.getOrNull()
 
@@ -473,64 +637,388 @@ class ChatAdapter(
                 if (holder.videoAttachment.tag != fullUrl) return@post
 
                 if (cachedFile == null || !cachedFile.exists()) {
+                    holder.videoAttachment.visibility = View.GONE
                     holder.attachment.text = locationLabel ?: "Abrir video"
                     holder.attachment.setOnClickListener { openExternal(holder, fullUrl) }
                     return@post
                 }
+                val localFile = cachedFile ?: return@post
 
-                holder.videoAttachment.setOnPreparedListener {
-                    holder.videoAttachment.background = null
-                    holder.videoAttachment.seekTo(1)
-                    // VideoView sólo dibuja el fotograma si se inicia y se pausa una vez.
-                    holder.videoAttachment.start()
-                    holder.videoAttachment.postDelayed({
-                        if (holder.videoAttachment.tag == fullUrl) holder.videoAttachment.pause()
-                    }, 80L)
-                    if (locationLabel != null) {
-                        holder.attachment.visibility = View.VISIBLE
-                        holder.attachment.text = locationLabel
-                    } else holder.attachment.visibility = View.GONE
-                    holder.videoAttachment.setOnClickListener {
-                        if (holder.videoAttachment.isPlaying) holder.videoAttachment.pause()
-                        else holder.videoAttachment.start()
-                    }
-                }
-                holder.videoAttachment.setOnErrorListener { _, _, _ ->
-                    holder.videoAttachment.visibility = View.GONE
-                    holder.attachment.text = "Abrir video"
-                    holder.attachment.setOnClickListener { openExternal(holder, fullUrl) }
-                    true
-                }
-                runCatching {
+                // VideoView dentro de RecyclerView deja un Surface negro en
+                // varios Samsung. Se muestra una miniatura y se reproduce en
+                // una ventana propia, fuera de la lista desplazable.
+                val thumbnail = runCatching {
                     val retriever = MediaMetadataRetriever()
-                    retriever.setDataSource(cachedFile.absolutePath)
-                    retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let {
-                        holder.videoAttachment.background = BitmapDrawable(holder.itemView.resources, it)
-                    }
+                    retriever.setDataSource(localFile.absolutePath)
+                    val frame = retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                     retriever.release()
+                    frame
+                }.getOrNull()
+                holder.videoAttachment.stopPlayback()
+                holder.videoAttachment.visibility = View.GONE
+                holder.imageAttachment.visibility = View.VISIBLE
+                holder.imageAttachment.tag = fullUrl
+                holder.imageAttachment.setImageBitmap(thumbnail)
+                holder.imageAttachment.setBackgroundColor(Color.parseColor("#0B1625"))
+                holder.imageAttachment.setOnClickListener {
+                    showVideoPreview(holder.itemView.context, localFile)
                 }
-                // Registrar los listeners antes de abrir el archivo evita que VideoView
-                // pierda el evento de preparación en equipos rápidos.
-                holder.videoAttachment.setVideoURI(Uri.fromFile(cachedFile))
-                holder.videoAttachment.requestFocus()
+                if (locationLabel != null) {
+                    holder.attachment.visibility = View.VISIBLE
+                    holder.attachment.text = locationLabel
+                } else {
+                    holder.attachment.visibility = View.VISIBLE
+                    holder.attachment.text = "Reproducir video"
+                    holder.attachment.setOnClickListener { showVideoPreview(holder.itemView.context, localFile) }
+                }
             }
         }
     }
 
-    private fun showImagePreview(context: android.content.Context, drawable: android.graphics.drawable.Drawable) {
+    private fun showVideoPreview(context: android.content.Context, file: File, sourceMessage: ChatMessage? = null) {
+        showVideoPreviewSource(context, file = file, sourceMessage = sourceMessage) { player ->
+            player.setDataSource(file.absolutePath)
+        }
+    }
+
+    private fun showVideoPreviewSource(
+        context: android.content.Context,
+        file: File? = null,
+        remoteUrl: String? = null,
+        sourceMessage: ChatMessage? = null,
+        setDataSource: (MediaPlayer) -> Unit
+    ) {
         val dialog = Dialog(context)
+        val density = context.resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
+        val texture = TextureView(context)
+        val control = ImageView(context).apply {
+            setImageResource(R.drawable.ic_media_pause)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            setBackgroundResource(R.drawable.bg_video_circle)
+            backgroundTintList = null
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            contentDescription = "Pausar video"
+        }
+        val close = ImageButton(context).apply {
+            setImageResource(R.drawable.ic_chat_back)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            setBackgroundResource(R.drawable.bg_video_circle)
+            backgroundTintList = null
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            stateListAnimator = null
+            contentDescription = "Volver al chat"
+        }
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            clipChildren = false
+            clipToPadding = false
+            setPadding(0, 0, 0, 0)
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        val save = ImageButton(context).apply {
+            setImageResource(R.drawable.ic_video_download)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            contentDescription = "Guardar video"
+            setBackgroundResource(R.drawable.bg_video_circle)
+            backgroundTintList = null
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            stateListAnimator = null
+        }
+        val share = ImageButton(context).apply {
+            setImageResource(R.drawable.ic_forward_video)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            contentDescription = "Compartir video"
+            setBackgroundResource(R.drawable.bg_video_circle)
+            backgroundTintList = null
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            stateListAnimator = null
+        }
+        actions.addView(save, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(16) })
+        actions.addView(share, LinearLayout.LayoutParams(dp(48), dp(48)))
+        root.addView(texture, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        root.addView(control, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER))
+        root.addView(actions, FrameLayout.LayoutParams(dp(112), dp(48), Gravity.TOP or Gravity.END).apply { topMargin = dp(14); rightMargin = dp(16) })
+        root.addView(close, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.START).apply { topMargin = dp(14); leftMargin = dp(14) })
+        val seek = SeekBar(context).apply {
+            max = 1000
+            splitTrack = false
+            setProgressDrawable(resources.getDrawable(R.drawable.seek_video_progress, context.theme))
+            thumb = resources.getDrawable(R.drawable.seek_video_thumb, context.theme)
+        }
+        val timeline = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(3), dp(18), dp(3))
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        val time = TextView(context).apply {
+            setTextColor(Color.rgb(225, 242, 255))
+            textSize = 12f
+            text = "0:00 / 0:00"
+        }
+        timeline.addView(time, LinearLayout.LayoutParams(dp(66), dp(30)))
+        timeline.addView(seek, LinearLayout.LayoutParams(0, dp(26), 1f))
+        root.addView(timeline, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38), Gravity.BOTTOM).apply {
+            bottomMargin = dp(10)
+        })
+        val loading = ProgressBar(context).apply { visibility = View.VISIBLE }
+        root.addView(loading, FrameLayout.LayoutParams(72, 72, Gravity.CENTER))
+
+        var surface: Surface? = null
+        var player: MediaPlayer? = null
+        var isPrepared = false
+        var controlsVisible = true
+        fun setControlsVisible(visible: Boolean) {
+            controlsVisible = visible
+            control.visibility = if (visible) View.VISIBLE else View.GONE
+            timeline.visibility = if (visible) View.VISIBLE else View.GONE
+            actions.visibility = if (visible) View.VISIBLE else View.GONE
+            close.visibility = if (visible) View.VISIBLE else View.GONE
+        }
+        texture.setOnClickListener {
+            val active = player ?: return@setOnClickListener
+            if (!isPrepared) return@setOnClickListener
+            if (active.isPlaying) {
+                active.pause()
+                control.setImageResource(R.drawable.ic_media_play)
+                control.contentDescription = "Reproducir video"
+            }
+            setControlsVisible(true)
+        }
+        val progressHandler = Handler(Looper.getMainLooper())
+        val progressUpdate = object : Runnable {
+            override fun run() {
+                val active = player
+                if (active != null && isPrepared && active.duration > 0) {
+                    seek.progress = (active.currentPosition * 1000 / active.duration).coerceIn(0, 1000)
+                    time.text = "${formatVideoTime(active.currentPosition)} / ${formatVideoTime(active.duration)}"
+                }
+                progressHandler.postDelayed(this, 500)
+            }
+        }
+        fun releasePlayer() {
+            progressHandler.removeCallbacks(progressUpdate)
+            player?.runCatching { stop() }
+            player?.release()
+            player = null
+            surface?.release()
+            surface = null
+        }
+        texture.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+            override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+                surface = Surface(surfaceTexture)
+                player = MediaPlayer().apply {
+                    setDataSource(this)
+                    setSurface(surface)
+                    setOnPreparedListener {
+                        isPrepared = true
+                        progressHandler.post(progressUpdate)
+                        loading.visibility = View.GONE
+                        start()
+                        control.setImageResource(R.drawable.ic_media_pause)
+                        setControlsVisible(false)
+                    }
+                    setOnCompletionListener {
+                        control.setImageResource(R.drawable.ic_media_play)
+                        control.contentDescription = "Reproducir video"
+                        setControlsVisible(true)
+                    }
+                    setOnErrorListener { _, _, _ ->
+                        loading.visibility = View.GONE
+                        Toast.makeText(context, "No se pudo reproducir el video", Toast.LENGTH_SHORT).show()
+                        true
+                    }
+                    prepareAsync()
+                }
+            }
+
+            override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) = Unit
+            override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                releasePlayer()
+                return true
+            }
+            override fun onSurfaceTextureUpdated(surface: SurfaceTexture) = Unit
+        }
+        close.setOnClickListener { dialog.dismiss() }
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                if (fromUser && isPrepared) player?.seekTo((player?.duration ?: 0) * value / 1000)
+            }
+            override fun onStartTrackingTouch(bar: SeekBar?) = Unit
+            override fun onStopTrackingTouch(bar: SeekBar?) = Unit
+        })
+        fun downloadForAction(action: (File) -> Unit) {
+            if (file != null) { action(file); return }
+            val url = remoteUrl ?: return
+            loading.visibility = View.VISIBLE
+            Thread {
+                val downloaded = runCatching {
+                    val request = Request.Builder().url(url).apply {
+                        AuthManager.getToken(context.applicationContext).takeIf { it.isNotBlank() }?.let { addHeader("Authorization", "Bearer $it") }
+                    }.build()
+                    attachmentHttp.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) return@runCatching null
+                        val target = File(context.cacheDir, "chat_share_${abs(url.hashCode())}.mp4")
+                        response.body?.byteStream()?.use { input -> FileOutputStream(target).use { input.copyTo(it) } }
+                        target.takeIf { it.length() > 0L }
+                    }
+                }.getOrNull()
+                mainHandler.post {
+                    loading.visibility = View.GONE
+                    if (downloaded == null) Toast.makeText(context, "No se pudo descargar el video", Toast.LENGTH_SHORT).show()
+                    else action(downloaded)
+                }
+            }.start()
+        }
+        save.setOnClickListener { downloadForAction { saveVideo(context, it) } }
+        share.setOnClickListener {
+            downloadForAction { file ->
+                if (sourceMessage != null) onForwardVideo?.invoke(file, sourceMessage)
+                else shareVideo(context, file)
+            }
+        }
+        control.setOnClickListener {
+            val activePlayer = player ?: return@setOnClickListener
+            if (!isPrepared) return@setOnClickListener
+            if (activePlayer.isPlaying) {
+                activePlayer.pause()
+                control.setImageResource(R.drawable.ic_media_play)
+                control.contentDescription = "Reproducir video"
+                setControlsVisible(true)
+            } else {
+                activePlayer.start()
+                control.setImageResource(R.drawable.ic_media_pause)
+                control.contentDescription = "Pausar video"
+                setControlsVisible(false)
+            }
+        }
+        dialog.setOnDismissListener { releasePlayer() }
+        dialog.setContentView(root)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.black)
+        dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+    }
+
+    private fun showVideoPreviewUrl(context: android.content.Context, url: String, sourceMessage: ChatMessage? = null) {
+        // ReproducciÃ³n progresiva: no esperamos a descargar el archivo completo.
+        val remoteContext = context.applicationContext
+        val remoteToken = AuthManager.getToken(remoteContext)
+        showVideoPreviewSource(context, remoteUrl = url, sourceMessage = sourceMessage) { player ->
+            val headers = if (remoteToken.isBlank()) emptyMap() else mapOf("Authorization" to "Bearer $remoteToken")
+            player.setDataSource(remoteContext, Uri.parse(url), headers)
+        }
+        return
+
+        // El reproductor de este dispositivo deja negro el Surface cuando la
+        // fuente es HTTP. Se descarga primero a la cachÃ© y se reproduce el MP4
+        // local, manteniendo la reproducciÃ³n dentro de la aplicaciÃ³n.
+        Toast.makeText(context, "Cargando video...", Toast.LENGTH_SHORT).show()
+        val appContext = context.applicationContext
+        Thread {
+            val localFile = runCatching {
+                val token = AuthManager.getToken(appContext)
+                val request = Request.Builder()
+                    .url(url)
+                    .apply {
+                        if (token.isNotBlank()) addHeader("Authorization", "Bearer $token")
+                    }
+                    .build()
+                attachmentHttp.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@runCatching null
+                    val extension = videoExtension(url, response.header("Content-Type").orEmpty())
+                    val file = File(appContext.cacheDir, "chat_play_${abs(url.hashCode())}$extension")
+                    response.body?.byteStream()?.use { input ->
+                        FileOutputStream(file).use { output -> input.copyTo(output) }
+                    } ?: return@runCatching null
+                    file.takeIf { it.length() > 0L }
+                }
+            }.getOrNull()
+            mainHandler.post {
+                if (localFile == null) {
+                    Toast.makeText(context, "No se pudo cargar el video", Toast.LENGTH_SHORT).show()
+                } else {
+                    showVideoPreview(context, localFile)
+                }
+            }
+        }.start()
+    }
+
+    private fun formatVideoTime(milliseconds: Int): String {
+        val totalSeconds = (milliseconds / 1000).coerceAtLeast(0)
+        return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+    }
+
+    private fun saveVideo(context: android.content.Context, file: File) {
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, file.name)
+            put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/Operaciones")
+        }
+        val uri = context.contentResolver.insert(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+        if (uri == null) { Toast.makeText(context, "No se pudo guardar el video", Toast.LENGTH_SHORT).show(); return }
+        runCatching { context.contentResolver.openOutputStream(uri)?.use { output -> file.inputStream().use { it.copyTo(output) } } }
+            .onSuccess { Toast.makeText(context, "Video guardado en Movies/Operaciones", Toast.LENGTH_SHORT).show() }
+            .onFailure { context.contentResolver.delete(uri, null, null); Toast.makeText(context, "No se pudo guardar el video", Toast.LENGTH_SHORT).show() }
+    }
+
+    private fun shareVideo(context: android.content.Context, file: File) {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "video/mp4"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try { context.startActivity(Intent.createChooser(intent, "Compartir video")) }
+        catch (_: ActivityNotFoundException) { Toast.makeText(context, "No hay aplicaciones para compartir", Toast.LENGTH_SHORT).show() }
+    }
+
+    private fun showImagePreview(context: android.content.Context, drawable: android.graphics.drawable.Drawable, sourceMessage: ChatMessage? = null) {
+        val dialog = Dialog(context)
+        val density = context.resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
         val image = ImageView(context).apply {
             setImageDrawable(drawable)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            setBackgroundColor(Color.BLACK)
-            setOnClickListener { dialog.dismiss() }
-            contentDescription = "Vista ampliada de la imagen"
+            contentDescription = "Vista ampliada de la imagen. Toca para cerrar"
         }
-        dialog.setContentView(image)
+        root.addView(image, FrameLayout.LayoutParams(-1, -1))
+        val close = ImageButton(context).apply {
+            setImageResource(R.drawable.ic_chat_back); imageTintList = ColorStateList.valueOf(Color.WHITE)
+            setBackgroundResource(R.drawable.bg_video_circle); setPadding(dp(10), dp(10), dp(10), dp(10))
+            setOnClickListener { dialog.dismiss() }
+        }
+        image.setOnClickListener { dialog.dismiss() }
+        val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val save = ImageButton(context).apply { setImageResource(R.drawable.ic_video_download); imageTintList = ColorStateList.valueOf(Color.WHITE); setBackgroundResource(R.drawable.bg_video_circle); setPadding(dp(10), dp(10), dp(10), dp(10)); setOnClickListener { saveImage(context, drawable.toBitmap()); Toast.makeText(context, "Imagen guardada", Toast.LENGTH_SHORT).show() } }
+        val share = ImageButton(context).apply { setImageResource(R.drawable.ic_forward_video); imageTintList = ColorStateList.valueOf(Color.WHITE); setBackgroundResource(R.drawable.bg_video_circle); setPadding(dp(10), dp(10), dp(10), dp(10)); setOnClickListener { shareImage(context, drawable.toBitmap(), sourceMessage) } }
+        actions.addView(save, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(16) }); actions.addView(share, LinearLayout.LayoutParams(dp(48), dp(48)))
+        root.addView(close, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.START).apply { topMargin = dp(14); leftMargin = dp(14) })
+        root.addView(actions, FrameLayout.LayoutParams(dp(112), dp(48), Gravity.TOP or Gravity.END).apply { topMargin = dp(14); rightMargin = dp(16) })
+        dialog.setContentView(root)
         dialog.window?.setBackgroundDrawableResource(android.R.color.black)
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         dialog.show()
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+    }
+
+    private fun saveImage(context: android.content.Context, bitmap: android.graphics.Bitmap) {
+        val values = android.content.ContentValues().apply { put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "imagen_${System.currentTimeMillis()}.jpg"); put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg"); put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Operaciones") }
+        context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)?.let { uri -> context.contentResolver.openOutputStream(uri)?.use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) } }
+    }
+
+    private fun shareImage(context: android.content.Context, bitmap: android.graphics.Bitmap, sourceMessage: ChatMessage? = null) {
+        val file = File(context.cacheDir, "shared_image_${System.currentTimeMillis()}.jpg")
+        FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
+        if (sourceMessage != null) { onForwardImage?.invoke(file, sourceMessage); return }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "image/jpeg"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Compartir imagen"))
     }
 
     private fun videoExtension(url: String, contentType: String): String {

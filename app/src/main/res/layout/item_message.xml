@@ -5,6 +5,19 @@
     android:paddingHorizontal="14dp"
     android:paddingVertical="2dp">
 
+    <TextView
+        android:id="@+id/msgSelectionIndicator"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:layout_gravity="start|center_vertical"
+        android:background="@drawable/bg_message_selection"
+        android:gravity="center"
+        android:text="✓"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/bubble"
         android:layout_width="wrap_content"
@@ -24,16 +37,29 @@
             android:textSize="10sp"
             android:layout_marginBottom="3dp"/>
 
-        <ImageView
-            android:id="@+id/msgImageAttachment"
+        <FrameLayout
             android:layout_width="240dp"
-            android:layout_height="160dp"
-            android:layout_marginTop="2dp"
-            android:adjustViewBounds="true"
-            android:background="#0B1625"
-            android:contentDescription="Imagen adjunta"
-            android:scaleType="centerCrop"
-            android:visibility="gone" />
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp">
+
+            <ImageView
+                android:id="@+id/msgImageAttachment"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:adjustViewBounds="true"
+                android:background="#0B1625"
+                android:contentDescription="Imagen adjunta"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
+
+            <ProgressBar
+                android:id="@+id/msgUploadProgress"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_gravity="center"
+                android:indeterminate="true"
+                android:visibility="gone" />
+        </FrameLayout>
 
         <VideoView
             android:id="@+id/msgVideoAttachment"

@@ -239,7 +239,15 @@ class MainActivity : AppCompatActivity(),
     ) { result ->
         if (result.resultCode == RESULT_OK) {
             result.data?.data?.let { uri ->
-                sendChatAttachmentUri(uri = uri, forcedKind = null, fallbackName = null)
+                runCatching {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                runCatching {
+                    sendChatAttachmentUri(uri = uri, forcedKind = null, fallbackName = null)
+                }.onFailure { error ->
+                    android.util.Log.e("CHAT_ATTACHMENT", "No se pudo preparar la foto", error)
+                    Toast.makeText(this, "No se pudo preparar la foto seleccionada", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -1531,6 +1539,11 @@ class MainActivity : AppCompatActivity(),
             startVoiceMessageRecording()
         }
 
+        if (requestCode == REQUEST_CHAT_VIDEO_AUDIO_PERMISSION &&
+            grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Se necesita acceso al micrÃ³fono para grabar video", Toast.LENGTH_SHORT).show()
+        }
+
         if (requestCode == REQUEST_VOICE_CALL_AUDIO_PERMISSION) {
             val selection = pendingVoiceCallSelection
             pendingVoiceCallSelection = null
@@ -1798,12 +1811,30 @@ class MainActivity : AppCompatActivity(),
             "gallery" -> openChatGalleryPicker()
             "file" -> openChatFilePicker()
             "camera" -> chooseChatCameraMode()
+            "location" -> {
+                val lat = lastKnownLat
+                val lon = lastKnownLon
+                if (lat == null || lon == null) {
+                    Toast.makeText(this, "Esperando tu ubicación actual", Toast.LENGTH_SHORT).show()
+                    if (::locationHelper.isInitialized) locationHelper.requestLocationPermissionOrStart()
+                } else {
+                    chatController.sendMessage(
+                        text = String.format(java.util.Locale.US, "LAT: %.5f, LON: %.5f\nVer ubicación", lat, lon),
+                        alert = false,
+                        destinatarioRol = destinatarioRol,
+                        destinoTipo = destinoTipo,
+                        destinoId = destinoId,
+                        destinoLabel = destinoLabel
+                    )
+                }
+            }
         }
     }
 
     private fun openChatGalleryPicker() {
         val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
             type = "image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         pickChatMediaLauncher.launch(intent)
     }
@@ -1815,14 +1846,16 @@ class MainActivity : AppCompatActivity(),
         pendingCropOutputUri = null
     }
 
-    private fun confirmCameraAttachment(uri: Uri, kind: String) {
+    private fun confirmCameraAttachment(uri: Uri, kind: String, initialCaption: String = "") {
         val uiDensity = resources.displayMetrics.density
         fun dp(value: Int) = (value * uiDensity).toInt()
         val dialog = Dialog(this)
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val drawingModeControls = mutableListOf<View>()
         var preparedPlayer: MediaPlayer? = null
         var trimStart = 0
         var trimEnd = 1000
+        var videoDurationMs = 0L
         val preview: View = if (kind == "VIDEO") {
             VideoView(this).apply {
                 setVideoURI(uri)
@@ -1832,7 +1865,10 @@ class MainActivity : AppCompatActivity(),
                 }
             }
         } else {
-            ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_CENTER; setImageURI(uri) }
+            ImageView(this).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setImageBitmap(decodeChatCameraPreview(uri))
+            }
         }
         root.addView(preview, FrameLayout.LayoutParams(-1, -1))
         if (kind == "VIDEO") {
@@ -1840,6 +1876,7 @@ class MainActivity : AppCompatActivity(),
                 preparedPlayer = player
                 player.isLooping = true
                 player.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+                videoDurationMs = player.duration.toLong().coerceAtLeast(0L)
                 preview.post {
                     val videoWidth = player.videoWidth
                     val videoHeight = player.videoHeight
@@ -1867,6 +1904,7 @@ class MainActivity : AppCompatActivity(),
                 text = "▶"
                 setImageResource(R.drawable.ic_media_play)
                 scaleType = ImageView.ScaleType.CENTER
+                elevation = dp(24).toFloat()
                 setPadding(0, 0, 0, 0)
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
                 setOnClickListener {
@@ -1899,6 +1937,25 @@ class MainActivity : AppCompatActivity(),
                 setPadding(0, 0, 0, 0)
             }
             root.addView(timelineStrip, FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP).apply { leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(82) })
+            timelineStrip.elevation = dp(24).toFloat()
+            fun formatVideoTime(milliseconds: Long): String {
+                val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
+                return "%02d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
+            }
+            val durationLabel = TextView(this).apply {
+                text = "00:00 / 00:00"
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setShadowLayer(dp(3).toFloat(), 0f, 1f, Color.BLACK)
+            }
+            root.addView(durationLabel, FrameLayout.LayoutParams(-2, dp(28), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(140) })
+            durationLabel.elevation = dp(24).toFloat()
+            fun updateDurationLabel(currentMs: Long = (preview as VideoView).currentPosition.toLong()) {
+                val duration = videoDurationMs.coerceAtLeast((preview as VideoView).duration.toLong())
+                durationLabel.text = "${formatVideoTime(currentMs)} / ${formatVideoTime(duration)}"
+            }
             val trimFrame = object : View(this) {
                 private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
                 override fun onDraw(canvas: android.graphics.Canvas) {
@@ -1921,7 +1978,8 @@ class MainActivity : AppCompatActivity(),
                 }
             }
             root.addView(trimFrame, FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP).apply { leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(82) })
-            val playhead = View(this).apply { setBackgroundColor(Color.WHITE); elevation = dp(3).toFloat() }
+            trimFrame.elevation = dp(24).toFloat()
+            val playhead = View(this).apply { setBackgroundColor(Color.WHITE); elevation = dp(26).toFloat() }
             root.addView(playhead, FrameLayout.LayoutParams(dp(3), dp(56), Gravity.TOP).apply { topMargin = dp(82); leftMargin = dp(24) })
             var draggingPlayhead = false
             var lastPlayheadSeekAt = 0L
@@ -1957,10 +2015,20 @@ class MainActivity : AppCompatActivity(),
                     override fun onStopTrackingTouch(b: SeekBar?) {}
                 })
             }
-            val startBar = trimBar(0) { trimStart = it.coerceAtMost(trimEnd - 10); (preview as VideoView).seekTo((preview as VideoView).duration * trimStart / 1000) }
-            val endBar = trimBar(1000) { trimEnd = it.coerceAtLeast(trimStart + 10) }
+            val startBar = trimBar(0) {
+                trimStart = it.coerceAtMost(trimEnd - 10)
+                val video = preview as VideoView
+                video.seekTo((video.duration * trimStart / 1000))
+                updateDurationLabel(video.currentPosition.toLong())
+            }
+            val endBar = trimBar(1000) {
+                trimEnd = it.coerceAtLeast(trimStart + 10)
+                updateDurationLabel()
+            }
             root.addView(startBar, FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP).apply { leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(82) })
             root.addView(endBar, FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP).apply { leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(82) })
+            startBar.elevation = dp(24).toFloat()
+            endBar.elevation = dp(24).toFloat()
             val trimTouchLayer = View(this).apply {
                 var activeHandle = 0
                 setOnTouchListener { view, event ->
@@ -1987,11 +2055,13 @@ class MainActivity : AppCompatActivity(),
                                 trimStart = ((event.x / width) * 1000).toInt().coerceIn(0, trimEnd - 10)
                                 startBar.progress = trimStart
                                 trimFrame.invalidate()
+                                updateDurationLabel(video.currentPosition.toLong())
                             }
                             if (activeHandle == 2) {
                                 trimEnd = ((event.x / width) * 1000).toInt().coerceIn(trimStart + 10, 1000)
                                 endBar.progress = trimEnd
                                 trimFrame.invalidate()
+                                updateDurationLabel()
                             }
                             if (activeHandle == 3 && video.duration > 0) {
                                 val position = (event.x / width * video.duration).toInt().coerceIn(0, video.duration)
@@ -2003,6 +2073,7 @@ class MainActivity : AppCompatActivity(),
                                     video.seekTo(position)
                                     lastPlayheadSeekAt = now
                                 }
+                                updateDurationLabel(position.toLong())
                             }
                             true
                         }
@@ -2015,9 +2086,17 @@ class MainActivity : AppCompatActivity(),
                 }
             }
             root.addView(trimTouchLayer, FrameLayout.LayoutParams(-1, dp(56), Gravity.TOP).apply { leftMargin = dp(24); rightMargin = dp(24); topMargin = dp(82) })
+            trimTouchLayer.elevation = dp(25).toFloat()
             val playheadUpdater = object : Runnable {
                 override fun run() {
                     val video = preview as VideoView
+                    if (video.isPlaying && video.duration > 0) {
+                        val selectedEnd = video.duration * trimEnd / 1000
+                        if (video.currentPosition >= selectedEnd) {
+                            video.seekTo(video.duration * trimStart / 1000)
+                        }
+                    }
+                    updateDurationLabel(video.currentPosition.toLong())
                     if (!draggingPlayhead && video.duration > 0 && timelineStrip.width > 0) {
                         (playhead.layoutParams as FrameLayout.LayoutParams).apply {
                             leftMargin = dp(24) + (timelineStrip.width * video.currentPosition / video.duration)
@@ -2027,18 +2106,37 @@ class MainActivity : AppCompatActivity(),
                 }
             }
             playhead.post(playheadUpdater)
-            timelineStrip.post {
+            // Generar los cuadros fuera del hilo principal evita que la vista
+            // previa se congele mientras se prepara la barra de recorte.
+            Thread {
+                val frames = mutableListOf<Bitmap>()
                 val retriever = MediaMetadataRetriever()
                 runCatching {
                     retriever.setDataSource(this@MainActivity, uri)
                     val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                    repeat(12) { index ->
-                        val frame = retriever.getFrameAtTime((duration * index / 11L) * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                        timelineStrip.addView(ImageView(this).apply { setImageBitmap(frame); scaleType = ImageView.ScaleType.CENTER_CROP }, LinearLayout.LayoutParams(0, dp(56), 1f))
+                    repeat(8) { index ->
+                        val frame = retriever.getFrameAtTime(
+                            (duration * index / 7L) * 1000L,
+                            MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                        ) ?: return@repeat
+                        val thumbnail = Bitmap.createScaledBitmap(frame, dp(120), dp(56), true)
+                        if (thumbnail !== frame) frame.recycle()
+                        frames += thumbnail
                     }
                 }
                 retriever.release()
-            }
+                runOnUiThread {
+                    frames.forEach { frame ->
+                        timelineStrip.addView(
+                            ImageView(this).apply {
+                                setImageBitmap(frame)
+                                scaleType = ImageView.ScaleType.CENTER_CROP
+                            },
+                            LinearLayout.LayoutParams(0, dp(56), 1f)
+                        )
+                    }
+                }
+            }.start()
             val soundButton = ImageButton(this).apply {
                 text = "🔊"
                 setImageResource(R.drawable.ic_volume_on)
@@ -2056,21 +2154,27 @@ class MainActivity : AppCompatActivity(),
                 }
             }
             root.addView(soundButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { rightMargin = dp(76); topMargin = dp(24) })
+            soundButton.elevation = dp(24).toFloat()
+            drawingModeControls.addAll(
+                listOf(playButton, timelineStrip, trimFrame, playhead, startBar, endBar, trimTouchLayer, soundButton)
+            )
         }
         val caption = EditText(this).apply {
             hint = "Escribe un texto..."
+            setText(initialCaption)
             setSingleLine(true)
             setTextColor(Color.WHITE)
             setHintTextColor(Color.LTGRAY)
             setPadding(dp(18), 0, dp(18), 0)
-            background = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = dp(28).toFloat(); setColor(Color.argb(215, 8, 25, 40)); setStroke(dp(1), Color.rgb(120, 185, 230)) }
+            background = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = dp(24).toFloat(); setColor(Color.argb(215, 8, 25, 40)); setStroke(dp(1), Color.rgb(120, 185, 230)) }
             visibility = View.VISIBLE
         }
-        val captionParams = FrameLayout.LayoutParams(-1, dp(56), Gravity.BOTTOM)
+        val captionParams = FrameLayout.LayoutParams(-1, dp(48), Gravity.BOTTOM)
         captionParams.bottomMargin = dp(16)
         captionParams.leftMargin = dp(16)
         captionParams.rightMargin = dp(76)
         root.addView(caption, captionParams)
+        caption.elevation = dp(20).toFloat()
         val close = TextView(this).apply {
             text = "X"
             textSize = 20f
@@ -2081,7 +2185,8 @@ class MainActivity : AppCompatActivity(),
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(175, 8, 55, 92)); setStroke(dp(1), Color.rgb(125, 205, 255)) }
             setOnClickListener { dialog.dismiss() }
         }
-        root.addView(close, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.LEFT).apply { topMargin = if (kind == "VIDEO") dp(24) else dp(56); leftMargin = dp(16) })
+        root.addView(close, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.LEFT).apply { topMargin = if (kind == "VIDEO") dp(24) else dp(12); leftMargin = dp(16) })
+        close.elevation = dp(20).toFloat()
         close.elevation = dp(20).toFloat()
         var drawingColor = Color.RED
         val colors = LinearLayout(this).apply {
@@ -2151,9 +2256,11 @@ class MainActivity : AppCompatActivity(),
             setOnClickListener {
                 drawing.drawingActive = !drawing.drawingActive
                 colors.visibility = if (drawing.drawingActive) View.VISIBLE else View.GONE
+                val controlsVisibility = if (drawing.drawingActive) View.GONE else View.VISIBLE
+                drawingModeControls.forEach { it.visibility = controlsVisibility }
             }
         }
-        root.addView(drawButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { topMargin = if (kind == "VIDEO") dp(24) else dp(56); rightMargin = dp(12) })
+        root.addView(drawButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { topMargin = if (kind == "VIDEO") dp(24) else dp(12); rightMargin = dp(12) })
         drawButton.elevation = dp(20).toFloat()
         val cropButton = TextView(this).apply {
             text = "⛶"
@@ -2162,47 +2269,70 @@ class MainActivity : AppCompatActivity(),
             gravity = Gravity.CENTER
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(175, 8, 55, 92)); setStroke(dp(1), Color.rgb(125, 205, 255)) }
             setOnClickListener {
+                val captionText = caption.text.toString()
+                var cropUri = uri
+                if (kind == "IMAGE" && drawing.strokes.isNotEmpty()) {
+                    composeChatDrawing(uri, drawing.strokes, root.width, root.height)?.let { cropUri = it }
+                }
                 dialog.dismiss()
-                showInternalCropEditor(uri, kind)
+                showInternalCropEditor(cropUri, kind, captionText)
             }
         }
-        root.addView(cropButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { topMargin = if (kind == "VIDEO") dp(24) else dp(56); rightMargin = dp(76) })
+        root.addView(cropButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { topMargin = if (kind == "VIDEO") dp(24) else dp(12); rightMargin = dp(76) })
         cropButton.elevation = dp(20).toFloat()
         if (kind == "VIDEO") cropButton.visibility = View.GONE
-        val send = TextView(this).apply {
+        val send = Button(this).apply {
+            contentDescription = "Enviar foto"
             text = "➤"
             textSize = 28f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             includeFontPadding = false
+            isAllCaps = false
+            minWidth = 0
+            minHeight = 0
+            stateListAnimator = null
             setPadding(0, 0, 0, dp(3))
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(30, 105, 190)) }
             setOnClickListener {
+                Toast.makeText(this@MainActivity, "Enviando foto...", Toast.LENGTH_SHORT).show()
+                isEnabled = false
                 var attachmentUri = uri
                 if (kind == "IMAGE" && drawing.strokes.isNotEmpty()) {
-                    runCatching {
-                        val source = contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it) }
-                            ?: error("No se pudo leer la imagen")
-                        val composed = android.graphics.Bitmap.createBitmap(source.width, source.height, android.graphics.Bitmap.Config.ARGB_8888)
-                        val canvas = android.graphics.Canvas(composed)
-                        canvas.drawBitmap(source, 0f, 0f, null)
-                        val paint = android.graphics.Paint().apply { style = android.graphics.Paint.Style.STROKE; strokeWidth = 5f; strokeCap = android.graphics.Paint.Cap.ROUND; strokeJoin = android.graphics.Paint.Join.ROUND }
-                        drawing.strokes.forEach { (strokeColor, path) -> paint.color = strokeColor; canvas.drawPath(path, paint) }
-                        val file = createChatMediaFile("chat_edited_", ".jpg")
-                        file.outputStream().use { composed.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
-                        source.recycle(); composed.recycle()
-                        attachmentUri = FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider", file)
-                    }
+                    composeChatDrawing(uri, drawing.strokes, root.width, root.height)?.let { attachmentUri = it }
                 }
                 if (kind == "VIDEO" && trimStart > 0 || kind == "VIDEO" && trimEnd < 1000) {
                     val duration = MediaMetadataRetriever().runCatching { setDataSource(this@MainActivity, uri); extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L }.getOrDefault(0L)
                     trimVideo(uri, duration * trimStart / 1000, duration * trimEnd / 1000)?.let { attachmentUri = Uri.fromFile(it) }
                 }
-                sendChatAttachmentUri(attachmentUri, kind, if (kind == "VIDEO") "camara_video.mp4" else "camara_foto.jpg", if (kind == "VIDEO") "video/mp4" else "image/jpeg", caption = caption.text.toString().trim())
-                dialog.dismiss()
+                runCatching {
+                    contentResolver.openInputStream(attachmentUri)?.use { input ->
+                        check(input.read() != -1) { "La foto está vacía" }
+                    } ?: error("No se pudo abrir la foto")
+                    sendChatAttachmentUri(
+                        attachmentUri,
+                        kind,
+                        if (kind == "VIDEO") "camara_video.mp4" else "camara_foto.jpg",
+                        if (kind == "VIDEO") "video/mp4" else "image/jpeg",
+                        caption = caption.text.toString().trim()
+                    )
+                    dialog.dismiss()
+                }.onFailure { error ->
+                    isEnabled = true
+                    drawingModeControls.forEach { it.visibility = View.VISIBLE }
+                    android.util.Log.e("CHAT_ATTACHMENT", "No se pudo iniciar el envío de la foto", error)
+                    Toast.makeText(this@MainActivity, "No se pudo iniciar el envío de la foto", Toast.LENGTH_LONG).show()
+                }
+            }
+            setOnTouchListener { view, event ->
+                if (event.action == android.view.MotionEvent.ACTION_UP) {
+                    view.performClick()
+                }
+                true
             }
         }
-        root.addView(send, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.RIGHT).apply { bottomMargin = dp(16); rightMargin = dp(16) })
+        drawingModeControls.addAll(listOf(close, cropButton, caption, send))
+        root.addView(send, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.BOTTOM or Gravity.RIGHT).apply { bottomMargin = dp(16); rightMargin = dp(16) })
         send.elevation = dp(20).toFloat()
         dialog.setContentView(root)
         dialog.show()
@@ -2210,8 +2340,53 @@ class MainActivity : AppCompatActivity(),
         dialog.window?.setLayout(-1, -1)
     }
 
-    private fun showInternalCropEditor(uri: Uri, kind: String) {
-        val bitmap = contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it) } ?: return
+    private fun composeChatDrawing(
+        uri: Uri,
+        strokes: List<Pair<Int, android.graphics.Path>>,
+        viewWidth: Int,
+        viewHeight: Int
+    ): Uri? = runCatching {
+        val source = decodeChatCameraPreview(uri) ?: error("No se pudo leer la imagen")
+        val scale = minOf(
+            viewWidth.toFloat() / source.width,
+            viewHeight.toFloat() / source.height
+        ).coerceAtLeast(0.0001f)
+        val imageLeft = (viewWidth - source.width * scale) / 2f
+        val imageTop = (viewHeight - source.height * scale) / 2f
+        val composed = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(composed)
+        canvas.drawBitmap(source, 0f, 0f, null)
+        val paint = android.graphics.Paint().apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = 5f / scale
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+            isAntiAlias = true
+        }
+        val matrix = Matrix().apply {
+            setValues(floatArrayOf(
+                1f / scale, 0f, -imageLeft / scale,
+                0f, 1f / scale, -imageTop / scale,
+                0f, 0f, 1f
+            ))
+        }
+        strokes.forEach { (strokeColor, path) ->
+            paint.color = strokeColor
+            val imagePath = android.graphics.Path(path)
+            imagePath.transform(matrix)
+            canvas.drawPath(imagePath, paint)
+        }
+        val file = createChatMediaFile("chat_edited_", ".jpg")
+        file.outputStream().use { composed.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+        source.recycle()
+        composed.recycle()
+        FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+    }.onFailure {
+        android.util.Log.e("CHAT_ATTACHMENT", "No se pudo integrar el dibujo", it)
+    }.getOrNull()
+
+    private fun showInternalCropEditor(uri: Uri, kind: String, captionText: String = "") {
+        val bitmap = decodeChatCameraPreview(uri) ?: return
         val dp = resources.displayMetrics.density
         fun px(value: Int) = (value * dp).toInt()
         val dialog = Dialog(this)
@@ -2266,7 +2441,7 @@ class MainActivity : AppCompatActivity(),
             setOnClickListener {
                 bitmap.recycle()
                 dialog.dismiss()
-                confirmCameraAttachment(uri, kind)
+                confirmCameraAttachment(uri, kind, captionText)
             }
         }
         root.addView(cancel, FrameLayout.LayoutParams(px(52), px(52), Gravity.BOTTOM or Gravity.LEFT).apply { leftMargin = px(42); bottomMargin = px(12) })
@@ -2283,7 +2458,7 @@ class MainActivity : AppCompatActivity(),
                 val file = createChatMediaFile("chat_crop_", ".jpg")
                 file.outputStream().use { cropped.compress(Bitmap.CompressFormat.JPEG, 95, it) }
                 bitmap.recycle(); cropped.recycle(); dialog.dismiss()
-                confirmCameraAttachment(FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider", file), kind)
+                confirmCameraAttachment(FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider", file), kind, captionText)
             }
         }
         root.addView(accept, FrameLayout.LayoutParams(px(52), px(52), Gravity.BOTTOM or Gravity.RIGHT).apply { rightMargin = px(42); bottomMargin = px(12) })
@@ -2369,6 +2544,7 @@ class MainActivity : AppCompatActivity(),
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         val root = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        val drawingModeControls = mutableListOf<View>()
         val preview = SurfaceView(this)
         root.addView(preview, FrameLayout.LayoutParams(-1, -1))
         val density = resources.displayMetrics.density
@@ -2463,6 +2639,22 @@ class MainActivity : AppCompatActivity(),
         var camera: Camera? = null
         var cameraFacing = Camera.CameraInfo.CAMERA_FACING_BACK
         var flashEnabled = false
+        fun configureChatCamera(activeCamera: Camera) {
+            runCatching {
+                val parameters = activeCamera.parameters
+                val focusModes = parameters.supportedFocusModes.orEmpty()
+                when {
+                    focusModes.contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE) ->
+                        parameters.focusMode = Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE
+                    focusModes.contains(Camera.Parameters.FOCUS_MODE_AUTO) ->
+                        parameters.focusMode = Camera.Parameters.FOCUS_MODE_AUTO
+                }
+                parameters.supportedPictureSizes.maxByOrNull { it.width.toLong() * it.height }
+                    ?.let { parameters.setPictureSize(it.width, it.height) }
+                parameters.setJpegQuality(100)
+                activeCamera.parameters = parameters
+            }
+        }
         val flashButton = ImageButton(this).apply {
             setImageResource(R.drawable.ic_flash_off)
             imageTintList = ColorStateList.valueOf(Color.WHITE)
@@ -2475,7 +2667,7 @@ class MainActivity : AppCompatActivity(),
                 imageTintList = ColorStateList.valueOf(if (flashEnabled) Color.rgb(100, 190, 255) else Color.WHITE)
             }
         }
-        root.addView(flashButton, FrameLayout.LayoutParams(controlSize, controlSize, Gravity.TOP or Gravity.RIGHT).apply { topMargin = (24 * density).toInt(); rightMargin = (16 * density).toInt() })
+        root.addView(flashButton, FrameLayout.LayoutParams(controlSize, controlSize, Gravity.TOP or Gravity.RIGHT).apply { topMargin = (24 * density).toInt(); rightMargin = (72 * density).toInt() })
         val flipButton = ImageButton(this).apply {
             setImageResource(R.drawable.ic_flip_camera)
             imageTintList = ColorStateList.valueOf(Color.WHITE)
@@ -2488,18 +2680,20 @@ class MainActivity : AppCompatActivity(),
                     camera?.release()
                     cameraFacing = if (cameraFacing == Camera.CameraInfo.CAMERA_FACING_BACK) Camera.CameraInfo.CAMERA_FACING_FRONT else Camera.CameraInfo.CAMERA_FACING_BACK
                     camera = Camera.open(cameraFacing)
+                    camera?.let(::configureChatCamera)
                     camera?.setDisplayOrientation(90)
                     camera?.setPreviewDisplay(preview.holder)
                     camera?.startPreview()
                 }.onFailure { Toast.makeText(this@MainActivity, "No se pudo cambiar la cámara", Toast.LENGTH_SHORT).show() }
             }
         }
-        root.addView(flipButton, FrameLayout.LayoutParams(controlSize, controlSize, Gravity.TOP or Gravity.RIGHT).apply { topMargin = (24 * density).toInt(); rightMargin = (72 * density).toInt() })
+        root.addView(flipButton, FrameLayout.LayoutParams(controlSize, controlSize, Gravity.TOP or Gravity.RIGHT).apply { topMargin = (24 * density).toInt(); rightMargin = (16 * density).toInt() })
         var cameraReady = false
         preview.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 camera = runCatching { Camera.open() }.getOrNull()
                 try {
+                    camera?.let(::configureChatCamera)
                     camera?.setDisplayOrientation(90)
                     camera?.setPreviewDisplay(holder)
                     camera?.startPreview()
@@ -2516,9 +2710,17 @@ class MainActivity : AppCompatActivity(),
         })
         modeButtons[0].setOnClickListener {
             if (recording) return@setOnClickListener
+            // En este equipo el Camera API heredado entrega fotogramas negros
+            // a MediaRecorder. La cámara nativa graba un MP4 compatible y al
+            // finalizar vuelve al flujo de vista previa y envío del chat.
             selectedMode = "VIDEO"
             modeButtons[0].setTextColor(Color.WHITE)
-            modeButtons[0].background = GradientDrawable().apply { shape = GradientDrawable.RECTANGLE; cornerRadius = 28f; setColor(Color.argb(105, 70, 165, 235)); setStroke(1, Color.rgb(139, 206, 255)) }
+            modeButtons[0].background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 28f
+                setColor(Color.argb(105, 70, 165, 235))
+                setStroke(1, Color.rgb(139, 206, 255))
+            }
             modeButtons[1].setTextColor(Color.WHITE)
             modeButtons[1].background = null
             take.alpha = 1f
@@ -2542,6 +2744,14 @@ class MainActivity : AppCompatActivity(),
             }
             if (selectedMode == "VIDEO") {
                 if (!recording) {
+                    if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
+                        ActivityCompat.requestPermissions(
+                            this@MainActivity,
+                            arrayOf(Manifest.permission.RECORD_AUDIO),
+                            REQUEST_CHAT_VIDEO_AUDIO_PERMISSION
+                        )
+                        return@setOnClickListener
+                    }
                     try {
                         videoFile = createChatMediaFile("chat_video_", ".mp4")
                         if (flashEnabled) runCatching {
@@ -2552,7 +2762,23 @@ class MainActivity : AppCompatActivity(),
                             setCamera(activeCamera)
                             setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
                             setVideoSource(MediaRecorder.VideoSource.CAMERA)
-                            setProfile(CamcorderProfile.get(CamcorderProfile.QUALITY_LOW))
+                            // QUALITY_LOW puede seleccionar un cÃ³dec antiguo
+                            // que algunos reproductores no muestran.  480p
+                            // produce MP4/H.264 compatible y conserva un
+                            // tamaÃ±o razonable para el chat.
+                            val profileQuality = listOf(
+                                CamcorderProfile.QUALITY_2160P,
+                                CamcorderProfile.QUALITY_1080P,
+                                CamcorderProfile.QUALITY_720P,
+                                CamcorderProfile.QUALITY_480P,
+                                CamcorderProfile.QUALITY_HIGH,
+                                CamcorderProfile.QUALITY_LOW
+                            ).first { quality ->
+                                runCatching {
+                                    CamcorderProfile.hasProfile(cameraFacing, quality)
+                                }.getOrDefault(false)
+                            }
+                            setProfile(CamcorderProfile.get(cameraFacing, profileQuality))
                             setOutputFile(videoFile!!.absolutePath)
                             setPreviewDisplay(preview.holder.surface)
                             setOrientationHint(if (cameraFacing == Camera.CameraInfo.CAMERA_FACING_BACK) 90 else 270)
@@ -2564,12 +2790,14 @@ class MainActivity : AppCompatActivity(),
                         videoCounter.text = "00:00"
                         videoTimerHandler.post(videoTimer)
                         close.visibility = View.GONE
+                        flashButton.visibility = View.GONE
                         modes.visibility = View.GONE
                         takeParams.bottomMargin = (70 * density).toInt()
                         take.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.RED); setStroke(5, Color.WHITE) }
                     } catch (_: Exception) {
                         runCatching { recorder?.release() }
                         recorder = null
+                        flashButton.visibility = View.VISIBLE
                         runCatching { activeCamera.lock(); activeCamera.startPreview() }
                         Toast.makeText(this, "No se pudo iniciar el video", Toast.LENGTH_SHORT).show()
                     }
@@ -2994,13 +3222,42 @@ class MainActivity : AppCompatActivity(),
             String.format(Locale.getDefault(), "●  Grabando audio  %d:%02d", minutes, seconds)
     }
 
+    private fun decodeChatCameraPreview(uri: Uri) = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openFileDescriptor(uri, "r")?.use {
+            BitmapFactory.decodeFileDescriptor(it.fileDescriptor, null, bounds)
+        }
+        var sample = 1
+        while (bounds.outWidth / sample > 2048 || bounds.outHeight / sample > 2048) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+        }
+        contentResolver.openFileDescriptor(uri, "r")?.use {
+            BitmapFactory.decodeFileDescriptor(it.fileDescriptor, null, options)
+        }
+    }.getOrNull()
+
+    private fun copyChatCameraFile(sourceUri: Uri): Uri? = runCatching {
+        val file = createChatMediaFile("chat_camera_", ".jpg")
+        contentResolver.openInputStream(sourceUri)?.use { input ->
+            file.outputStream().use { output -> input.copyTo(output) }
+        } ?: return@runCatching null
+        check(file.length() > 0L) { "La foto de cámara está vacía" }
+        FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+    }.onFailure {
+        android.util.Log.e("CHAT_ATTACHMENT", "No se pudo copiar la foto de cámara", it)
+    }.getOrNull()
+
     private fun sendChatAttachmentUri(
         uri: Uri,
         forcedKind: String?,
         fallbackName: String?,
         forcedMimeType: String? = null,
         durationMs: Long? = null,
-        caption: String? = null
+        caption: String? = null,
+        preservedLocation: Pair<String?, String?>? = null,
+        onComplete: ((Boolean) -> Unit)? = null
     ) {
         val mimeType = forcedMimeType ?: contentResolver.getType(uri) ?: "application/octet-stream"
         val kind = forcedKind ?: when {
@@ -3011,22 +3268,51 @@ class MainActivity : AppCompatActivity(),
         }
 
         val destination = pendingChatAttachmentDestination
-        val locationCaption = if (lastKnownLat != null && lastKnownLon != null) {
-            "\n📍 ${lastKnownLat}, ${lastKnownLon}"
-        } else ""
-        val currentLocation = if (destination?.destinoTipo.isNullOrBlank() && destination?.destinoId.isNullOrBlank() && lastKnownLat != null && lastKnownLon != null) lastKnownLat!! to lastKnownLon!! else null
+        val currentLocation = if (
+            (kind == "IMAGE" || (destination?.destinoTipo.isNullOrBlank() && destination?.destinoId.isNullOrBlank())) &&
+            lastKnownLat != null && lastKnownLon != null
+        ) lastKnownLat!! to lastKnownLon!! else null
+        val locationType = preservedLocation?.first?.takeIf { !it.isNullOrBlank() }
+        val locationId = preservedLocation?.second?.takeIf { !it.isNullOrBlank() }
+        val imageLocationId = if (kind == "IMAGE") {
+            locationId ?: currentLocation?.let { "${it.first},${it.second}" }
+        } else {
+            locationId
+        }
+        val locationCaption = imageLocationId?.split(",")?.let { parts ->
+            val lat = parts.getOrNull(0)?.trim()?.toDoubleOrNull()
+            val lon = parts.getOrNull(1)?.trim()?.toDoubleOrNull()
+            if (lat != null && lon != null) {
+                String.format(Locale.US, "LAT: %.5f, LON: %.5f\nVer ubicación", lat, lon)
+            } else {
+                "$imageLocationId\nVer ubicación"
+            }
+        }
+        val baseCaption = caption?.let { original ->
+            if (locationId.isNullOrBlank()) original
+            else "$original\n$locationId\nVer ubicación"
+        }
+        val preservedCaption = if (kind == "IMAGE" && !locationCaption.isNullOrBlank()) {
+            if (baseCaption.isNullOrBlank()) locationCaption
+            else if (baseCaption.contains("Ver ubicación", ignoreCase = true)) baseCaption
+            else "$baseCaption\n$locationCaption"
+        } else {
+            baseCaption
+        }
         val fileName = queryDisplayName(uri) ?: fallbackName ?: defaultAttachmentName(kind, mimeType)
+        if (kind == "VIDEO") cacheChatVideoThumbnail(uri, fileName)
         chatController.sendAttachment(
             uri = uri,
             fileName = fileName,
             mimeType = mimeType,
             attachmentKind = kind,
             destinatarioRol = destination?.destinatarioRol,
-            destinoTipo = destination?.destinoTipo?.takeIf { it.isNotBlank() } ?: currentLocation?.let { "UBICACION" },
-            destinoId = destination?.destinoId?.takeIf { it.isNotBlank() } ?: currentLocation?.let { "${it.first},${it.second}" },
-            destinoLabel = destination?.destinoLabel?.takeIf { it.isNotBlank() } ?: currentLocation?.let { "UBICACION:${it.first},${it.second}" },
+            destinoTipo = destination?.destinoTipo?.takeIf { it.isNotBlank() } ?: locationType ?: currentLocation?.let { "UBICACION" },
+            destinoId = destination?.destinoId?.takeIf { it.isNotBlank() } ?: locationId ?: currentLocation?.let { "${it.first},${it.second}" },
+            destinoLabel = destination?.destinoLabel?.takeIf { it.isNotBlank() } ?: locationId?.let { "UBICACION:$it" } ?: currentLocation?.let { "UBICACION:${it.first},${it.second}" },
             durationMs = durationMs,
-            caption = caption.orEmpty() + locationCaption
+            caption = preservedCaption,
+            onComplete = onComplete
         )
     }
 
@@ -3088,6 +3374,119 @@ class MainActivity : AppCompatActivity(),
     fun openChatLocation(lat: Double, lon: Double) {
         panelNavigationController.showPanel(Panel.NONE)
         cesiumWebController.centerOnLocation(lat, lon, zoom = 500, follow = false)
+    }
+
+    private fun cacheChatVideoThumbnail(uri: Uri, fileName: String) {
+        runCatching {
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(this, uri)
+            val frame = retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: return@runCatching
+            File(cacheDir, "chat_thumb_$fileName.jpg").outputStream().use {
+                frame.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it)
+            }
+            frame.recycle()
+            retriever.release()
+        }
+    }
+
+    override fun forwardChatAttachment(
+        file: File,
+        destinations: List<ChatChannelSelection>,
+        sourceMessage: ChatMessage,
+        attachmentKind: String
+    ) {
+        if (!file.exists() || file.length() == 0L || destinations.isEmpty()) return
+        val uri = Uri.fromFile(file)
+        val sourceLocationId = sourceMessage.destinoId?.takeIf { it.contains(",") }
+            ?: Regex(
+                "LAT\\s*:\\s*(-?\\d+(?:[.,]\\d+)?)\\s*,?\\s*LON\\s*:\\s*(-?\\d+(?:[.,]\\d+)?)",
+                RegexOption.IGNORE_CASE
+            ).find(sourceMessage.text)?.destructured?.let { (lat, lon) -> "$lat,$lon" }
+            ?: Regex("(-?\\d+(?:[.,]\\d+)?)\\s*,\\s*(-?\\d+(?:[.,]\\d+)?)")
+                .find(sourceMessage.text)?.value
+        destinations.forEach { destination ->
+            pendingChatAttachmentDestination = ChatAttachmentDestination(
+                destinatarioRol = destination.destinatarioRol,
+                destinoTipo = destination.destinoTipo,
+                destinoId = destination.destinoSendId ?: destination.destinoId,
+                destinoLabel = destination.destinoLabel
+            )
+            sendChatAttachmentUri(
+                uri = uri,
+                forcedKind = attachmentKind,
+                fallbackName = file.name,
+                forcedMimeType = if (attachmentKind == "IMAGE") "image/jpeg" else "video/mp4"
+                , caption = sourceMessage.text,
+                preservedLocation = "UBICACION" to sourceLocationId
+            )
+        }
+        val label = if (attachmentKind == "IMAGE") "Imagen" else if (attachmentKind == "VIDEO") "Video" else "Adjunto"
+        Toast.makeText(this, "$label enviado a ${destinations.size} chats", Toast.LENGTH_SHORT).show()
+    }
+
+    override fun forwardChatMessages(
+        messages: List<ChatMessage>,
+        destinations: List<ChatChannelSelection>
+    ) {
+        if (messages.isEmpty() || destinations.isEmpty()) return
+        messages.filter { it.type != MessageType.SYSTEM }.forEach { message ->
+            val attachmentUrl = message.attachmentUrl?.takeIf { it.isNotBlank() }
+            if (attachmentUrl == null) {
+                val forwardedText = message.text.trim()
+                if (forwardedText.isNotBlank()) {
+                    destinations.forEach { destination ->
+                        chatController.sendMessage(
+                            text = forwardedText,
+                            alert = message.type == MessageType.ALERT,
+                            destinatarioRol = destination.destinatarioRol,
+                            destinoTipo = destination.destinoTipo,
+                            destinoId = destination.destinoSendId ?: destination.destinoId,
+                            destinoLabel = destination.destinoLabel
+                        )
+                    }
+                }
+                return@forEach
+            }
+
+            Thread {
+                val kind = message.attachmentKind.orEmpty().uppercase().ifBlank { "FILE" }
+                val extension = when (kind) {
+                    "IMAGE" -> ".jpg"
+                    "VIDEO" -> ".mp4"
+                    "AUDIO" -> ".m4a"
+                    else -> message.attachmentName?.substringAfterLast('.', "bin")?.let { ".$it" } ?: ".bin"
+                }
+                val fullUrl = if (attachmentUrl.startsWith("http://") || attachmentUrl.startsWith("https://")) {
+                    attachmentUrl
+                } else {
+                    "${com.operaciones.operaciones_android.config.ApiConfig.BASE_URL}${if (attachmentUrl.startsWith('/')) "" else "/"}$attachmentUrl"
+                }
+                val downloaded = runCatching {
+                    val request = okhttp3.Request.Builder().url(fullUrl).apply {
+                        AuthManager.getToken(this@MainActivity).takeIf { it.isNotBlank() }
+                            ?.let { addHeader("Authorization", "Bearer $it") }
+                    }.build()
+                    httpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) error("HTTP ${response.code}")
+                        val file = File(cacheDir, "forward_${System.currentTimeMillis()}$extension")
+                        response.body?.byteStream()?.use { input ->
+                            file.outputStream().use { output -> input.copyTo(output) }
+                        } ?: error("Adjunto vacío")
+                        file.takeIf { it.length() > 0L } ?: error("Adjunto vacío")
+                    }
+                }.getOrNull()
+                runOnUiThread {
+                    if (downloaded == null) {
+                        Toast.makeText(this, "No se pudo preparar un adjunto", Toast.LENGTH_SHORT).show()
+                    } else {
+                        forwardChatAttachment(downloaded, destinations, message, kind)
+                    }
+                }
+            }.start()
+        }
+        Toast.makeText(this, "Reenviando ${messages.size} mensajes", Toast.LENGTH_SHORT).show()
     }
 
     override fun getChatReadMessageIds(): Set<Int> {
@@ -4883,6 +5282,7 @@ class MainActivity : AppCompatActivity(),
         private const val REQUEST_CHAT_NOTIFICATION_PERMISSION = 305
         private const val REQUEST_VOICE_CALL_AUDIO_PERMISSION = 306
         private const val REQUEST_INCOMING_CALL_AUDIO_PERMISSION = 307
+        private const val REQUEST_CHAT_VIDEO_AUDIO_PERMISSION = 308
         private const val TRACKING_ACTIVE_STALE_MS = 30_000L
     }
 }

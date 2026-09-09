@@ -124,6 +124,17 @@ class OperationChatController(
         }
     }
 
+    private fun removeMessageById(id: Int) {
+        mainHandler.post {
+            messages.removeAll { it.id == id }
+            val index = visibleMessages.indexOfFirst { it.id == id }
+            if (index >= 0) {
+                visibleMessages.removeAt(index)
+                chatAdapter?.notifyItemRemoved(index)
+            }
+        }
+    }
+
     fun addMessageFromJson(item: JSONObject) {
         addMessage(parseChatMessage(item))
     }
@@ -157,7 +168,24 @@ class OperationChatController(
             destinoTipo = destinoTipo,
             destinoId = destinoId,
             destinoLabel = destinoLabel,
-            onSuccess = { item -> addMessageFromJson(item) },
+            onSuccess = { item ->
+                // El callback de OkHttp llega en un hilo de red.  Una respuesta
+                // valida pero con algun campo inesperado no debe tumbar la UI.
+                mainHandler.post {
+                    runCatching { parseChatMessage(item) }
+                        .onSuccess(::addMessage)
+                        .onFailure { error ->
+                            Log.e("CHAT_HTTP", "No se pudo interpretar el mensaje enviado", error)
+                            addMessage(
+                                ChatMessage(
+                                    user = "Sistema",
+                                    text = "El mensaje se envio, pero no se pudo mostrar la respuesta.",
+                                    type = MessageType.SYSTEM
+                                )
+                            )
+                        }
+                }
+            },
             onError = { message ->
                 addMessage(ChatMessage(user = "Sistema", text = message, type = MessageType.SYSTEM))
             }
@@ -174,10 +202,12 @@ class OperationChatController(
         destinoId: String?,
         destinoLabel: String?,
         durationMs: Long? = null,
-        caption: String? = null
+        caption: String? = null,
+        onComplete: ((Boolean) -> Unit)? = null
     ) {
         val operationId = host.getChatOperationId()
         if (operationId <= 0) {
+            onComplete?.invoke(false)
             addMessage(
                 ChatMessage(
                     user = "Sistema",
@@ -187,6 +217,25 @@ class OperationChatController(
             )
             return
         }
+
+        val pendingId = -kotlin.math.abs(System.nanoTime().toInt())
+        addMessage(
+            ChatMessage(
+                id = pendingId,
+                user = host.getChatCurrentUser().nombreCompleto,
+                text = caption.orEmpty(),
+                isMine = true,
+                destinatarioRol = destinatarioRol,
+                destinoTipo = destinoTipo,
+                destinoId = destinoId,
+                destinoLabel = destinoLabel,
+                attachmentKind = attachmentKind,
+                attachmentUrl = uri.toString(),
+                attachmentMime = mimeType,
+                attachmentName = fileName,
+                isUploading = true
+            )
+        )
 
         repository.sendAttachment(
             operationId = operationId,
@@ -202,9 +251,33 @@ class OperationChatController(
             destinoLabel = destinoLabel,
             durationMs = durationMs,
             caption = caption,
-            onSuccess = { item -> addMessageFromJson(item) },
+            onSuccess = { item ->
+                // OkHttp ejecuta este callback fuera del hilo de UI. Protegemos
+                // tambien la respuesta de adjuntos (especialmente imagenes),
+                // que puede traer campos distintos a los de un mensaje normal.
+                mainHandler.post {
+                    removeMessageById(pendingId)
+                    runCatching { parseChatMessage(item) }
+                        .onSuccess(::addMessage)
+                        .onFailure { error ->
+                            Log.e("CHAT_HTTP", "No se pudo interpretar el adjunto enviado", error)
+                            addMessage(
+                                ChatMessage(
+                                    user = "Sistema",
+                                    text = "La foto se envio, pero no se pudo mostrar la respuesta.",
+                                    type = MessageType.SYSTEM
+                                )
+                            )
+                        }
+                    onComplete?.invoke(true)
+                }
+            },
             onError = { message ->
-                addMessage(ChatMessage(user = "Sistema", text = message, type = MessageType.SYSTEM))
+                mainHandler.post {
+                    removeMessageById(pendingId)
+                    addMessage(ChatMessage(user = "Sistema", text = message, type = MessageType.SYSTEM))
+                    onComplete?.invoke(false)
+                }
             }
         )
     }
@@ -400,7 +473,10 @@ class OperationChatController(
         val destinoId = msg.destinoId
 
         return when (selection.type.uppercase()) {
-            "GLOBAL" -> destinatario == "GLOBAL" && (destinoTipo.isBlank() || destinoTipo == "GLOBAL")
+            // UBICACION es metadato de una foto o mensaje global, no un canal
+            // de conversación. Debe seguir viéndose en el chat Global.
+            "GLOBAL" -> destinatario == "GLOBAL" &&
+                (destinoTipo.isBlank() || destinoTipo == "GLOBAL" || destinoTipo == "UBICACION")
             "CETS" -> destinatario == "CET" && (destinoTipo.isBlank() || destinoTipo == "CETS")
             "CET_SPECIFIC" -> directMessageMatches(msg, selection, "CET", "CELL", "CUT")
             "CUTS" -> destinoTipo == "CUTS" || (destinatario == "CUT" && destinoTipo.isBlank())

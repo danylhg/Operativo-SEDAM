@@ -71,6 +71,29 @@
             android:padding="8dp"
             android:visibility="gone"/>
 
+        <ImageButton
+            android:id="@+id/chatSelectionCancelBtn"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/bg_video_circle"
+            android:src="@drawable/ic_close_selection"
+            android:tint="#FFFFFF"
+            android:padding="8dp"
+            android:contentDescription="Cancelar selección"
+            android:visibility="gone"/>
+
+        <ImageButton
+            android:id="@+id/chatSelectionForwardBtn"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_video_circle"
+            android:src="@drawable/ic_forward_video"
+            android:tint="#FFFFFF"
+            android:padding="8dp"
+            android:contentDescription="Reenviar mensajes seleccionados"
+            android:visibility="gone"/>
+
     </LinearLayout>
 
     <!-- ── Lista de mensajes ─────────────────────────────────── -->

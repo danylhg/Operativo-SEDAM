@@ -13,6 +13,7 @@ import com.operaciones.operaciones_android.model.PoiItem
 import com.operaciones.operaciones_android.model.User
 import com.operaciones.operaciones_android.model.VehiculoItem
 import com.operaciones.operaciones_android.ui.adapter.ChatAdapter
+import java.io.File
 
 data class ChatChannelSelection(
     val type: String,
@@ -65,6 +66,8 @@ class MainPanelRenderer(
             destinoId: String? = null,
             destinoLabel: String? = null
         )
+        fun forwardChatAttachment(file: File, destinations: List<ChatChannelSelection>, sourceMessage: ChatMessage, attachmentKind: String = "VIDEO")
+        fun forwardChatMessages(messages: List<ChatMessage>, destinations: List<ChatChannelSelection>)
         fun startVoiceCall(selection: ChatChannelSelection)
         fun shouldShowSimulationButton(): Boolean
         fun isSimulationActive(): Boolean

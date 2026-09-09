@@ -1,12 +1,14 @@
 package com.operaciones.operaciones_android.ui.panel
 
 import android.content.Context
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.ViewGroup
+import android.view.Gravity
 import android.view.inputmethod.InputMethodManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -14,9 +16,11 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Toast
 import android.graphics.drawable.GradientDrawable
 import android.widget.ScrollView
 import android.widget.RelativeLayout
@@ -77,7 +81,12 @@ internal class ChatPanelRenderer(
         val headerSubtitleView = view.findViewById<TextView>(R.id.chatHeaderSubtitle)
         val backBtn = view.findViewById<ImageButton>(R.id.chatBackBtn)
         val callBtn = view.findViewById<ImageButton>(R.id.chatCallBtn)
+        val selectionCancelBtn = view.findViewById<ImageButton>(R.id.chatSelectionCancelBtn)
+        val selectionForwardBtn = view.findViewById<ImageButton>(R.id.chatSelectionForwardBtn)
         val headerInfo = view.findViewById<View>(R.id.chatHeaderInfo)
+        val chatHeader = view.findViewById<LinearLayout>(R.id.chatHeader)
+        chatHeader.removeView(selectionCancelBtn)
+        chatHeader.addView(selectionCancelBtn, 0)
 
         if (headerTitle != null) {
             headerTitleView.text = headerTitle
@@ -124,7 +133,28 @@ internal class ChatPanelRenderer(
                 initialSelection?.type == "CET_SPECIFIC" ||
                 initialSelection?.type == "CELL_SPECIFIC"
         callBtn.visibility = if (isPersonalSelection) View.VISIBLE else View.GONE
-        val chatAdapter = ChatAdapter(messages, isPersonalSelection)
+        lateinit var forwardVideo: (java.io.File, ChatMessage, String) -> Unit
+        var selectedMessages: List<ChatMessage> = emptyList()
+        lateinit var chatAdapter: ChatAdapter
+        chatAdapter = ChatAdapter(
+            messages = messages,
+            isPersonal = isPersonalSelection,
+            onForwardVideo = { file, sourceMessage -> forwardVideo(file, sourceMessage, "VIDEO") },
+            onForwardImage = { file, sourceMessage -> forwardVideo(file, sourceMessage, "IMAGE") },
+            onSelectionChanged = { selected ->
+                selectedMessages = selected
+                headerTitleView.text = if (selected.isEmpty()) {
+                    headerTitle ?: "MENSAJES"
+                } else {
+                    "${selected.size} seleccionados"
+                }
+                selectionCancelBtn.visibility = if (selected.isEmpty()) View.GONE else View.VISIBLE
+                selectionForwardBtn.visibility = if (selected.isEmpty()) View.GONE else View.VISIBLE
+                headerInfo.visibility = View.VISIBLE
+                backBtn.visibility = if (selected.isEmpty() && onBack != null) View.VISIBLE else View.GONE
+                callBtn.visibility = if (selected.isEmpty() && isPersonalSelection) View.VISIBLE else View.GONE
+            }
+        )
         chatRecycler.layoutManager = LinearLayoutManager(view.context)
         chatRecycler.adapter = chatAdapter
         if (messages.isNotEmpty()) chatRecycler.scrollToPosition(messages.size - 1)
@@ -143,6 +173,112 @@ internal class ChatPanelRenderer(
                 destinoLabel = target?.label ?: channel.fixedLabel,
                 destinoSendId = target?.sendId ?: channel.fixedId
             )
+        }
+
+        forwardVideo = { file, sourceMessage, kind ->
+            val entries = channelDefs.flatMap { channel ->
+                if (channel.targets.isEmpty()) listOf(channel to 0)
+                else channel.targets.indices.map { index -> channel to index }
+            }
+            val labels = entries.map { (channel, index) ->
+                channel.targets.getOrNull(index)?.label
+                    ?: channel.fixedLabel
+                    ?: channel.label
+            }.toTypedArray()
+            val checked = BooleanArray(labels.size)
+            val dialog = AlertDialog.Builder(view.context)
+                .setTitle(if (kind == "IMAGE") "Reenviar imagen" else "Reenviar video")
+                .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                    checked[which] = isChecked
+                }
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Enviar") { _, _ ->
+                    val selected = entries.mapIndexedNotNull { index, entry ->
+                        if (checked[index]) selectionFor(entry.first, entry.second) else null
+                    }
+                    if (selected.isEmpty()) {
+                        Toast.makeText(view.context, "Selecciona al menos un chat", Toast.LENGTH_SHORT).show()
+                    } else {
+                        host.forwardChatAttachment(file, selected, sourceMessage, kind)
+                    }
+                }
+                .create()
+
+            dialog.setOnShowListener {
+                dialog.window?.setBackgroundDrawable(GradientDrawable().apply {
+                    setColor(Color.rgb(24, 38, 54))
+                    cornerRadius = 28f
+                    setStroke(1, Color.rgb(67, 103, 132))
+                })
+                dialog.window?.setDimAmount(0.62f)
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
+                    setTextColor(Color.rgb(126, 217, 239))
+                    isAllCaps = false
+                }
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+                    setTextColor(Color.rgb(126, 217, 239))
+                    isAllCaps = false
+                }
+                dialog.listView?.apply {
+                    setPadding(18, 4, 18, 4)
+                    divider = null
+                    dividerHeight = 0
+                }
+            }
+            dialog.show()
+        }
+
+        selectionCancelBtn.setOnClickListener { chatAdapter.clearSelection() }
+        selectionForwardBtn.setOnClickListener {
+            if (selectedMessages.isEmpty()) return@setOnClickListener
+            val entries = channelDefs.flatMap { channel ->
+                if (channel.targets.isEmpty()) listOf(channel to 0)
+                else channel.targets.indices.map { index -> channel to index }
+            }
+            val labels = entries.map { (channel, index) ->
+                channel.targets.getOrNull(index)?.label ?: channel.fixedLabel ?: channel.label
+            }.toTypedArray()
+            val checked = BooleanArray(labels.size)
+            val multiDialog = AlertDialog.Builder(view.context)
+                .setTitle("Reenviar ${selectedMessages.size} mensajes")
+                .setMultiChoiceItems(labels, checked) { _, which, value -> checked[which] = value }
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Enviar") { _, _ ->
+                    val destinations = entries.mapIndexedNotNull { index, entry ->
+                        if (checked[index]) selectionFor(entry.first, entry.second) else null
+                    }
+                    if (destinations.isEmpty()) {
+                        Toast.makeText(view.context, "Selecciona al menos un chat", Toast.LENGTH_SHORT).show()
+                    } else {
+                        host.forwardChatMessages(selectedMessages.toList(), destinations)
+                        chatAdapter.clearSelection()
+                    }
+                }
+                .create()
+            multiDialog.setOnShowListener {
+                val density = view.resources.displayMetrics.density
+                multiDialog.window?.setBackgroundDrawable(GradientDrawable().apply {
+                    setColor(Color.rgb(15, 31, 48))
+                    cornerRadius = 20f * density
+                    setStroke((1f * density).toInt(), Color.rgb(63, 94, 119))
+                })
+                multiDialog.window?.setDimAmount(0.68f)
+                multiDialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
+                    setTextColor(Color.rgb(147, 197, 253))
+                    isAllCaps = false
+                }
+                multiDialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+                    setTextColor(Color.rgb(147, 197, 253))
+                    isAllCaps = false
+                }
+                multiDialog.listView?.apply {
+                    setPadding((14 * density).toInt(), (4 * density).toInt(), (14 * density).toInt(), (4 * density).toInt())
+                    divider = null
+                    dividerHeight = 0
+                    setBackgroundColor(Color.TRANSPARENT)
+                }
+            }
+            multiDialog.show()
         }
 
         fun findInitialSelection(defs: List<ChannelDef>, sel: ChatChannelSelection?): Pair<ChannelDef, Int>? {
@@ -814,56 +950,84 @@ internal class ChatPanelRenderer(
 
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0D1B2E"))
-            setPadding(dp(density, 20), dp(density, 16), dp(density, 20), dp(density, 24))
+            background = roundedDrawable(context, "#101A25", 26, "#294158", 1)
+            setPadding(dp(density, 18), dp(density, 18), dp(density, 18), dp(density, 28))
         }
 
         root.addView(TextView(context).apply {
             text = "Adjuntar"
             setTextColor(Color.parseColor("#F1F7FA"))
-            textSize = 16f
+            textSize = 17f
             typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, dp(density, 16))
+            setPadding(dp(density, 4), 0, 0, dp(density, 20))
         })
 
-        val options = listOf(
-            Pair("Cámara", "camera"),
-            Pair("Galería", "gallery"),
-            Pair("Archivo", "file")
+        data class AttachmentOption(
+            val label: String,
+            val source: String,
+            val iconRes: Int,
+            val color: String
         )
 
-        options.forEach { (label, source) ->
-            val iconRes = when (source) {
-                "camera" -> android.R.drawable.ic_menu_camera
-                "gallery" -> android.R.drawable.ic_menu_gallery
-                else -> android.R.drawable.ic_menu_save
-            }
-            val icon = context.getDrawable(iconRes)?.apply {
-                setTint(Color.parseColor("#60A5FA"))
-            }
-            val btn = TextView(context).apply {
-                text = label
-                setTextColor(Color.parseColor("#F1F7FA"))
-                textSize = 15f
-                compoundDrawablePadding = dp(density, 12)
-                setCompoundDrawablesWithIntrinsicBounds(icon, null, null, null)
-                setPadding(dp(density, 12), dp(density, 14), dp(density, 12), dp(density, 14))
+        val options = listOf(
+            AttachmentOption("Galería", "gallery", R.drawable.ic_attach_gallery, "#64B5F6"),
+            AttachmentOption("Cámara", "camera", R.drawable.ic_attach_camera, "#81C784"),
+            AttachmentOption("Ubicación", "location", R.drawable.ic_attach_location, "#EF5350"),
+            AttachmentOption("Archivo", "file", R.drawable.ic_attach_file, "#FFB74D")
+        )
+
+        val grid = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+        }
+        options.forEach { option ->
+            val iconColor = Color.parseColor(option.color)
+            val item = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
                 isClickable = true
                 isFocusable = true
-                val typedArray = context.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground))
-                foreground = typedArray.getDrawable(0)
-                typedArray.recycle()
-                
+                setPadding(dp(density, 3), 0, dp(density, 3), dp(density, 6))
                 setOnClickListener {
                     sheet.dismiss()
-                    request(source)
+                    request(option.source)
                 }
             }
-            root.addView(btn)
+            val iconCircle = FrameLayout(context).apply {
+                background = roundedDrawable(
+                    context,
+                    "#294156",
+                    34,
+                    "#6E899E",
+                    1
+                )
+            }
+            iconCircle.addView(ImageView(context).apply {
+                setImageResource(option.iconRes)
+                imageTintList = android.content.res.ColorStateList.valueOf(iconColor)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(dp(density, 17), dp(density, 17), dp(density, 17), dp(density, 17))
+            }, FrameLayout.LayoutParams(dp(density, 68), dp(density, 68)))
+            item.addView(iconCircle, LinearLayout.LayoutParams(dp(density, 68), dp(density, 68)))
+            item.addView(TextView(context).apply {
+                text = option.label
+                gravity = Gravity.CENTER
+                setTextColor(Color.parseColor("#E8F0F7"))
+                textSize = 13f
+                setPadding(0, dp(density, 10), 0, 0)
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            grid.addView(item, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         }
+        root.addView(grid, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         sheet.setContentView(root)
         sheet.show()
+        sheet.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        sheet.window?.navigationBarColor = Color.parseColor("#07111F")
+        sheet.findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)?.apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
+        }
     }
 
     private fun showGroupMembersDialog(

@@ -19,7 +19,8 @@ data class ChatMessage(
     val attachmentMime: String? = null,
     val attachmentName: String? = null,
     val attachmentSize: Long? = null,
-    val attachmentDurationMs: Long? = null
+    val attachmentDurationMs: Long? = null,
+    val isUploading: Boolean = false
 )
 
 enum class MessageType { NORMAL, SYSTEM, ALERT }

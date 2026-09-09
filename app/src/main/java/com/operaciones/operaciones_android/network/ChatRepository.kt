@@ -185,22 +185,30 @@ class ChatRepository(
             .url(url)
             .post(UriRequestBody(contentResolver, uri, mimeType))
             .addHeader("Authorization", "Bearer $token")
-            .addHeader("X-File-Name", fileName)
-            .addHeader("X-Attachment-Kind", attachmentKind)
+            // El servidor cierra conexiones persistentes durante archivos
+            // grandes. Forzar una conexiÃ³n nueva evita el "connection abort".
+            .header("Connection", "close")
+            .addHeader("X-File-Name", fileName.sanitizeHeaderValue())
+            .addHeader("X-Attachment-Kind", attachmentKind.sanitizeHeaderValue())
             .apply {
                 durationMs?.takeIf { it >= 0 }?.let { addHeader("X-Duration-Ms", it.toString()) }
-                caption?.takeIf { it.isNotBlank() }?.let { addHeader("X-Attachment-Caption", it) }
+                // La leyenda se envía en la query como "contenido". No usarla
+                // como header: HTTP no admite emojis ni saltos de línea.
             }
             .build()
 
+        android.util.Log.d("CHAT_HTTP", "POST adjunto uri=$uri mime=$mimeType nombre=$fileName")
+
         http.newCall(req).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                android.util.Log.e("CHAT_HTTP", "POST adjunto fallo", e)
                 onError("Fallo HTTP real al enviar adjunto: ${e.message}")
             }
 
             override fun onResponse(call: Call, response: Response) {
                 val bodyStr = response.body?.string() ?: ""
                 try {
+                    android.util.Log.d("CHAT_HTTP", "POST adjunto code=${response.code} body=$bodyStr")
                     val json = JSONObject(bodyStr)
                     if (!response.isSuccessful) {
                         onError(json.optString("mensaje", "Error HTTP ${response.code}"))
@@ -231,9 +239,20 @@ class ChatRepository(
         override fun contentType() = mimeType.toMediaType()
 
         override fun contentLength(): Long =
+            // FileProvider puede devolver un AssetFileDescriptor de longitud
+            // desconocida. En ese caso OkHttp usa "chunked", que el endpoint
+            // de adjuntos no termina de consumir. El descriptor de archivo sí
+            // expone el tamaño real y permite enviar Content-Length.
             runCatching {
-                contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
-            }.getOrDefault(-1L)
+                contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                    descriptor.statSize.takeIf { it >= 0L }
+                }
+            }.getOrNull()
+                ?: runCatching {
+                    contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
+                        ?.takeIf { it >= 0L }
+                }.getOrNull()
+                ?: -1L
 
         override fun writeTo(sink: BufferedSink) {
             contentResolver.openInputStream(uri)?.use { input ->
@@ -248,4 +267,9 @@ class ChatRepository(
     }
 
     private fun String.urlEncode(): String = URLEncoder.encode(this, "UTF-8")
+
+    private fun String.sanitizeHeaderValue(): String =
+        filter { it == '\t' || it in ' '..'~' || it in '\u00A0'..'\u00FF' }
+            .replace(Regex("[\\r\\n]+"), " ")
+            .trim()
 }
