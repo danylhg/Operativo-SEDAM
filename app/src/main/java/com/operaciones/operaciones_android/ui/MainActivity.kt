@@ -58,6 +58,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.ReturnCode
 import com.operaciones.operaciones_android.R
 import com.operaciones.operaciones_android.auth.AuthManager
 import com.operaciones.operaciones_android.location.LocationHelper
@@ -141,6 +143,8 @@ class MainActivity : AppCompatActivity(),
 
     private var chatSocketManager: ChatSocketManager? = null
     private var isMgrsActive: Boolean = false
+    private data class GeoMsgState(val lat: Double, val lon: Double, var text: String, val author: String, var isPublic: Boolean = false, val ownerId: Int = -1)
+    private val geoMessagesById = mutableMapOf<Int, GeoMsgState>()
     private var voiceCallManager: VoiceCallManager? = null
     private var voiceCallDialog: AlertDialog? = null
     private var activeCallId: String? = null
@@ -1387,6 +1391,29 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
+    override fun onSocketGeoMsgCreated(idGeoMsg: Int, lat: Double, lon: Double, text: String, author: String, isPublic: Boolean, ownerId: Int) {
+        if (idGeoMsg > 0) {
+            geoMessagesById[idGeoMsg] = GeoMsgState(lat, lon, text, author, isPublic, ownerId)
+        }
+        if (idGeoMsg > 0 && isCesiumReady) {
+            cesiumWebController.addGeoMsgToMap(idGeoMsg, lat, lon, text, author, isPublic, ownerId)
+        }
+    }
+
+    override fun onSocketGeoMsgDeleted(idGeoMsg: Int) {
+        geoMessagesById.remove(idGeoMsg)
+        if (idGeoMsg > 0 && isCesiumReady) {
+            cesiumWebController.removeGeoMsgFromMap(idGeoMsg)
+        }
+    }
+
+    override fun onSocketGeoMsgUpdated(idGeoMsg: Int, lat: Double, lon: Double, text: String, author: String, isPublic: Boolean, ownerId: Int) {
+        if (idGeoMsg > 0 && text.isNotBlank()) {
+            geoMessagesById[idGeoMsg] = GeoMsgState(lat, lon, text, author, isPublic, ownerId)
+            if (isCesiumReady) cesiumWebController.addGeoMsgToMap(idGeoMsg, lat, lon, text, author, isPublic, ownerId)
+        }
+    }
+
     override fun onSocketConnected() {
         setServerConnectionBanner(false)
         syncMapStateFromBackend()
@@ -1953,8 +1980,9 @@ class MainActivity : AppCompatActivity(),
             root.addView(durationLabel, FrameLayout.LayoutParams(-2, dp(28), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(140) })
             durationLabel.elevation = dp(24).toFloat()
             fun updateDurationLabel(currentMs: Long = (preview as VideoView).currentPosition.toLong()) {
-                val duration = videoDurationMs.coerceAtLeast((preview as VideoView).duration.toLong())
-                durationLabel.text = "${formatVideoTime(currentMs)} / ${formatVideoTime(duration)}"
+                val fullDuration = videoDurationMs.coerceAtLeast((preview as VideoView).duration.toLong())
+                val trimmedDuration = (fullDuration * (trimEnd - trimStart) / 1000L).coerceAtLeast(0L)
+                durationLabel.text = "${formatVideoTime(currentMs)} / ${formatVideoTime(trimmedDuration)}"
             }
             val trimFrame = object : View(this) {
                 private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
@@ -2156,7 +2184,7 @@ class MainActivity : AppCompatActivity(),
             root.addView(soundButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { rightMargin = dp(76); topMargin = dp(24) })
             soundButton.elevation = dp(24).toFloat()
             drawingModeControls.addAll(
-                listOf(playButton, timelineStrip, trimFrame, playhead, startBar, endBar, trimTouchLayer, soundButton)
+                listOf(playButton, timelineStrip, durationLabel, trimFrame, playhead, startBar, endBar, trimTouchLayer, soundButton)
             )
         }
         val caption = EditText(this).apply {
@@ -2216,13 +2244,30 @@ class MainActivity : AppCompatActivity(),
         val drawing = object : View(this) {
             val strokes = mutableListOf<Pair<Int, android.graphics.Path>>()
             var drawingActive = false
-            val brush = android.graphics.Paint().apply { style = android.graphics.Paint.Style.STROKE; strokeWidth = dp(5).toFloat(); strokeCap = android.graphics.Paint.Cap.ROUND; strokeJoin = android.graphics.Paint.Join.ROUND }
+            private var lastX = 0f
+            private var lastY = 0f
+            private val minPointDistance = dp(2).toFloat()
+            val brush = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { style = android.graphics.Paint.Style.STROKE; strokeWidth = dp(5).toFloat(); strokeCap = android.graphics.Paint.Cap.ROUND; strokeJoin = android.graphics.Paint.Join.ROUND }
             override fun onDraw(canvas: android.graphics.Canvas) { strokes.forEach { (c, path) -> brush.color = c; canvas.drawPath(path, brush) } }
             override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
                 if (!drawingActive) return false
                 when (event.action) {
-                    android.view.MotionEvent.ACTION_DOWN -> { strokes.add(drawingColor to android.graphics.Path().apply { moveTo(event.x, event.y) }); invalidate(); return true }
-                    android.view.MotionEvent.ACTION_MOVE -> { strokes.lastOrNull()?.second?.lineTo(event.x, event.y); invalidate(); return true }
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        lastX = event.x; lastY = event.y
+                        strokes.add(drawingColor to android.graphics.Path().apply { moveTo(event.x, event.y) })
+                        postInvalidateOnAnimation()
+                        return true
+                    }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val dx = event.x - lastX
+                        val dy = event.y - lastY
+                        if (dx * dx + dy * dy >= minPointDistance * minPointDistance) {
+                            strokes.lastOrNull()?.second?.lineTo(event.x, event.y)
+                            lastX = event.x; lastY = event.y
+                            postInvalidateOnAnimation()
+                        }
+                        return true
+                    }
                 }
                 return true
             }
@@ -2278,9 +2323,10 @@ class MainActivity : AppCompatActivity(),
                 showInternalCropEditor(cropUri, kind, captionText)
             }
         }
-        root.addView(cropButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { topMargin = if (kind == "VIDEO") dp(24) else dp(12); rightMargin = dp(76) })
-        cropButton.elevation = dp(20).toFloat()
-        if (kind == "VIDEO") cropButton.visibility = View.GONE
+        if (kind == "IMAGE") {
+            root.addView(cropButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.RIGHT).apply { topMargin = dp(12); rightMargin = dp(76) })
+            cropButton.elevation = dp(20).toFloat()
+        }
         val send = Button(this).apply {
             contentDescription = "Enviar foto"
             text = "➤"
@@ -2297,14 +2343,27 @@ class MainActivity : AppCompatActivity(),
             setOnClickListener {
                 Toast.makeText(this@MainActivity, "Enviando foto...", Toast.LENGTH_SHORT).show()
                 isEnabled = false
-                var attachmentUri = uri
-                if (kind == "IMAGE" && drawing.strokes.isNotEmpty()) {
-                    composeChatDrawing(uri, drawing.strokes, root.width, root.height)?.let { attachmentUri = it }
-                }
-                if (kind == "VIDEO" && trimStart > 0 || kind == "VIDEO" && trimEnd < 1000) {
-                    val duration = MediaMetadataRetriever().runCatching { setDataSource(this@MainActivity, uri); extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L }.getOrDefault(0L)
-                    trimVideo(uri, duration * trimStart / 1000, duration * trimEnd / 1000)?.let { attachmentUri = Uri.fromFile(it) }
-                }
+                val attachmentUri = runCatching {
+                    var result = uri
+                    if (kind == "IMAGE" && drawing.strokes.isNotEmpty()) {
+                        composeChatDrawing(uri, drawing.strokes, root.width, root.height)?.let { result = it }
+                    }
+                    if (kind == "VIDEO" && drawing.strokes.isNotEmpty()) {
+                        Toast.makeText(this@MainActivity, "Integrando dibujo al video...", Toast.LENGTH_SHORT).show()
+                        result = composeVideoDrawing(uri, drawing.strokes, root.width, root.height)
+                            ?: error("No se pudo integrar el dibujo al video")
+                    }
+                    if (kind == "VIDEO" && (trimStart > 0 || trimEnd < 1000)) {
+                        val duration = MediaMetadataRetriever().runCatching { setDataSource(this@MainActivity, uri); extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L }.getOrDefault(0L)
+                        trimVideo(result, duration * trimStart / 1000, duration * trimEnd / 1000)?.let { result = Uri.fromFile(it) }
+                    }
+                    result
+                }.onFailure { error ->
+                    isEnabled = true
+                    drawingModeControls.forEach { it.visibility = View.VISIBLE }
+                    android.util.Log.e("CHAT_ATTACHMENT", "No se pudo preparar el video para enviarlo", error)
+                    Toast.makeText(this@MainActivity, "No se pudo integrar el dibujo. Intenta enviarlo de nuevo.", Toast.LENGTH_LONG).show()
+                }.getOrNull() ?: return@setOnClickListener
                 runCatching {
                     contentResolver.openInputStream(attachmentUri)?.use { input ->
                         check(input.read() != -1) { "La foto está vacía" }
@@ -2383,6 +2442,74 @@ class MainActivity : AppCompatActivity(),
         FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
     }.onFailure {
         android.util.Log.e("CHAT_ATTACHMENT", "No se pudo integrar el dibujo", it)
+    }.getOrNull()
+
+    private fun composeVideoDrawing(
+        uri: Uri,
+        strokes: List<Pair<Int, android.graphics.Path>>,
+        viewWidth: Int,
+        viewHeight: Int
+    ): Uri? = runCatching {
+        val sourceFile = createChatMediaFile("chat_video_source_", ".mp4")
+        contentResolver.openInputStream(uri)?.use { input ->
+            sourceFile.outputStream().use { output -> input.copyTo(output) }
+        } ?: error("No se pudo leer el video")
+
+        val metadata = MediaMetadataRetriever().apply { setDataSource(this@MainActivity, uri) }
+        val rawWidth = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+        val rawHeight = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+        val rotation = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+        metadata.release()
+        check(rawWidth > 0 && rawHeight > 0) { "El video no tiene dimensiones válidas" }
+
+        val videoWidth = if (rotation == 90 || rotation == 270) rawHeight else rawWidth
+        val videoHeight = if (rotation == 90 || rotation == 270) rawWidth else rawHeight
+        val previewScale = minOf(
+            viewWidth.toFloat() / videoWidth,
+            viewHeight.toFloat() / videoHeight
+        ).coerceAtLeast(0.0001f)
+        val previewLeft = (viewWidth - videoWidth * previewScale) / 2f
+        val previewTop = (viewHeight - videoHeight * previewScale) / 2f
+
+        val overlay = Bitmap.createBitmap(videoWidth, videoHeight, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(overlay)
+        val brush = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(5).toFloat() / previewScale
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+        }
+        val matrix = Matrix().apply {
+            setValues(floatArrayOf(
+                1f / previewScale, 0f, -previewLeft / previewScale,
+                0f, 1f / previewScale, -previewTop / previewScale,
+                0f, 0f, 1f
+            ))
+        }
+        strokes.forEach { (strokeColor, path) ->
+            brush.color = strokeColor
+            val videoPath = android.graphics.Path(path)
+            videoPath.transform(matrix)
+            canvas.drawPath(videoPath, brush)
+        }
+
+        val overlayFile = createChatMediaFile("chat_video_drawing_", ".png")
+        overlayFile.outputStream().use { overlay.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        overlay.recycle()
+        val outputFile = createChatMediaFile("chat_video_edited_", ".mp4")
+        fun ffmpegFile(file: File) = file.absolutePath.replace("\\", "/").replace("'", "\\'")
+        val command = "-y -i '${ffmpegFile(sourceFile)}' -loop 1 -i '${ffmpegFile(overlayFile)}' " +
+            "-filter_complex '[0:v][1:v]overlay=0:0:format=auto[v]' -map '[v]' -map 0:a? " +
+            "-c:v mpeg4 -q:v 3 -c:a copy -shortest -movflags +faststart '${ffmpegFile(outputFile)}'"
+        val session = FFmpegKit.execute(command)
+        sourceFile.delete()
+        overlayFile.delete()
+        check(ReturnCode.isSuccess(session.returnCode) && outputFile.length() > 0L) {
+            "No se pudo integrar el dibujo al video: ${session.allLogsAsString}"
+        }
+        Uri.fromFile(outputFile)
+    }.onFailure {
+        android.util.Log.e("CHAT_ATTACHMENT", "No se pudo integrar el dibujo al video", it)
     }.getOrNull()
 
     private fun showInternalCropEditor(uri: Uri, kind: String, captionText: String = "") {
@@ -2471,6 +2598,13 @@ class MainActivity : AppCompatActivity(),
         val extractor = MediaExtractor()
         extractor.setDataSource(input.fileDescriptor)
         val muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        val rotation = MediaMetadataRetriever().runCatching {
+            setDataSource(this@MainActivity, uri)
+            extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+        }.getOrDefault(0)
+        if (rotation == 90 || rotation == 180 || rotation == 270) {
+            muxer.setOrientationHint(rotation)
+        }
         val map = mutableMapOf<Int, Int>()
         for (i in 0 until extractor.trackCount) {
             val format = extractor.getTrackFormat(i)
@@ -2767,17 +2901,16 @@ class MainActivity : AppCompatActivity(),
                             // produce MP4/H.264 compatible y conserva un
                             // tamaÃ±o razonable para el chat.
                             val profileQuality = listOf(
-                                CamcorderProfile.QUALITY_2160P,
-                                CamcorderProfile.QUALITY_1080P,
-                                CamcorderProfile.QUALITY_720P,
                                 CamcorderProfile.QUALITY_480P,
+                                CamcorderProfile.QUALITY_720P,
+                                CamcorderProfile.QUALITY_1080P,
                                 CamcorderProfile.QUALITY_HIGH,
                                 CamcorderProfile.QUALITY_LOW
-                            ).first { quality ->
+                            ).firstOrNull { quality ->
                                 runCatching {
                                     CamcorderProfile.hasProfile(cameraFacing, quality)
                                 }.getOrDefault(false)
-                            }
+                            } ?: CamcorderProfile.QUALITY_LOW
                             setProfile(CamcorderProfile.get(cameraFacing, profileQuality))
                             setOutputFile(videoFile!!.absolutePath)
                             setPreviewDisplay(preview.holder.surface)
@@ -2794,11 +2927,12 @@ class MainActivity : AppCompatActivity(),
                         modes.visibility = View.GONE
                         takeParams.bottomMargin = (70 * density).toInt()
                         take.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.RED); setStroke(5, Color.WHITE) }
-                    } catch (_: Exception) {
+                    } catch (error: Exception) {
+                        android.util.Log.e("CHAT_VIDEO", "No se pudo iniciar MediaRecorder", error)
                         runCatching { recorder?.release() }
                         recorder = null
                         flashButton.visibility = View.VISIBLE
-                        runCatching { activeCamera.lock(); activeCamera.startPreview() }
+                        runCatching { activeCamera.lock(); activeCamera.reconnect(); activeCamera.startPreview() }
                         Toast.makeText(this, "No se pudo iniciar el video", Toast.LENGTH_SHORT).show()
                     }
                 } else {
@@ -3268,17 +3402,14 @@ class MainActivity : AppCompatActivity(),
         }
 
         val destination = pendingChatAttachmentDestination
-        val currentLocation = if (
-            (kind == "IMAGE" || (destination?.destinoTipo.isNullOrBlank() && destination?.destinoId.isNullOrBlank())) &&
-            lastKnownLat != null && lastKnownLon != null
-        ) lastKnownLat!! to lastKnownLon!! else null
+        val currentLocation = if (lastKnownLat != null && lastKnownLon != null) {
+            lastKnownLat!! to lastKnownLon!!
+        } else {
+            null
+        }
         val locationType = preservedLocation?.first?.takeIf { !it.isNullOrBlank() }
         val locationId = preservedLocation?.second?.takeIf { !it.isNullOrBlank() }
-        val imageLocationId = if (kind == "IMAGE") {
-            locationId ?: currentLocation?.let { "${it.first},${it.second}" }
-        } else {
-            locationId
-        }
+        val imageLocationId = locationId ?: currentLocation?.let { "${it.first},${it.second}" }
         val locationCaption = imageLocationId?.split(",")?.let { parts ->
             val lat = parts.getOrNull(0)?.trim()?.toDoubleOrNull()
             val lon = parts.getOrNull(1)?.trim()?.toDoubleOrNull()
@@ -3292,7 +3423,7 @@ class MainActivity : AppCompatActivity(),
             if (locationId.isNullOrBlank()) original
             else "$original\n$locationId\nVer ubicación"
         }
-        val preservedCaption = if (kind == "IMAGE" && !locationCaption.isNullOrBlank()) {
+        val preservedCaption = if (!locationCaption.isNullOrBlank()) {
             if (baseCaption.isNullOrBlank()) locationCaption
             else if (baseCaption.contains("Ver ubicación", ignoreCase = true)) baseCaption
             else "$baseCaption\n$locationCaption"
@@ -3400,6 +3531,7 @@ class MainActivity : AppCompatActivity(),
         if (!file.exists() || file.length() == 0L || destinations.isEmpty()) return
         val uri = Uri.fromFile(file)
         val sourceLocationId = sourceMessage.destinoId?.takeIf { it.contains(",") }
+            ?: sourceMessage.destinoLabel?.removePrefix("UBICACION:")?.takeIf { it.contains(",") }
             ?: Regex(
                 "LAT\\s*:\\s*(-?\\d+(?:[.,]\\d+)?)\\s*,?\\s*LON\\s*:\\s*(-?\\d+(?:[.,]\\d+)?)",
                 RegexOption.IGNORE_CASE
@@ -3983,6 +4115,9 @@ class MainActivity : AppCompatActivity(),
         isCesiumReady = true
         cesiumWebController.applyOperationView()
         mapDataController.applyOperationView()
+        geoMessagesById.forEach { (id, geoMsg) ->
+            cesiumWebController.addGeoMsgToMap(id, geoMsg.lat, geoMsg.lon, geoMsg.text, geoMsg.author, geoMsg.isPublic, geoMsg.ownerId)
+        }
     }
 
     fun getCurrentUserRoleForBridge(): String = currentUser.rol.name
@@ -4202,10 +4337,12 @@ class MainActivity : AppCompatActivity(),
             }
             dialog.dismiss()
 
-            val userName = currentUser.nombreCompleto.ifBlank { currentUser.username }.ifBlank { "Yo" }
+            val userName = getMapDataCurrentUserLabel().ifBlank { "Yo" }
             val idPoi = (System.currentTimeMillis() and 0x7FFFFFFF).toInt()
 
-            cesiumWebController.addGeoMsgToMap(idPoi, lat, lon, text, userName)
+            geoMessagesById[idPoi] = GeoMsgState(lat, lon, text, userName, false, currentUser.id)
+            cesiumWebController.addGeoMsgToMap(idPoi, lat, lon, text, userName, false, currentUser.id)
+            chatSocketManager?.emitGeoMsgCreated(idPoi, lat, lon, text, userName, false)
 
             val chatText = "[GEO-MSG] ($formattedLat, $formattedLon) $text"
             sendChatMessage(chatText)
@@ -4214,6 +4351,49 @@ class MainActivity : AppCompatActivity(),
         }
 
         dialog.show()
+    }
+
+    fun deleteGeoMsgFromBridge(idGeoMsg: Int) {
+        if (idGeoMsg <= 0) return
+        geoMessagesById.remove(idGeoMsg)
+        cesiumWebController.removeGeoMsgFromMap(idGeoMsg)
+        chatSocketManager?.emitGeoMsgDeleted(idGeoMsg)
+    }
+
+    fun editGeoMsgFromBridge(idGeoMsg: Int) {
+        val current = geoMessagesById[idGeoMsg] ?: return
+        val view = layoutInflater.inflate(R.layout.dialog_geo_msg, null, false)
+        val title = view.findViewById<TextView>(R.id.tvGeoMsgTitle)
+        val coords = view.findViewById<TextView>(R.id.tvGeoMsgCoords)
+        val input = view.findViewById<EditText>(R.id.etGeoMsgInput)
+        val cancel = view.findViewById<TextView>(R.id.btnCancelGeoMsg)
+        val save = view.findViewById<TextView>(R.id.btnSendGeoMsg)
+        title.text = "EDITAR GEO-MSG"
+        coords.text = "Ubicación: ${String.format(Locale.US, "%.5f", current.lat)}, ${String.format(Locale.US, "%.5f", current.lon)}"
+        input.setText(current.text)
+        input.setSelection(input.length())
+        save.text = "GUARDAR"
+        val dialog = AlertDialog.Builder(this).setView(view).create()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        cancel.setOnClickListener { dialog.dismiss() }
+        save.setOnClickListener {
+            val text = input.text.toString().trim()
+            if (text.isBlank()) { Toast.makeText(this, "Escribe un mensaje", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            current.text = text
+            cesiumWebController.addGeoMsgToMap(idGeoMsg, current.lat, current.lon, text, current.author, current.isPublic, current.ownerId)
+            cesiumWebController.updateGeoMsgPopup(idGeoMsg, text)
+            chatSocketManager?.emitGeoMsgUpdated(idGeoMsg, current.lat, current.lon, text, current.author, current.isPublic)
+            dialog.dismiss()
+        }
+        dialog.show()
+    }
+
+    fun setGeoMsgVisibilityFromBridge(idGeoMsg: Int, isPublic: Boolean) {
+        val current = geoMessagesById[idGeoMsg] ?: return
+        current.isPublic = isPublic
+        cesiumWebController.addGeoMsgToMap(idGeoMsg, current.lat, current.lon, current.text, current.author, isPublic, current.ownerId)
+        chatSocketManager?.emitGeoMsgVisibilityChanged(idGeoMsg, isPublic)
+        Toast.makeText(this, if (isPublic) "GEO-MSG público" else "GEO-MSG privado", Toast.LENGTH_SHORT).show()
     }
 
     fun showSectorsDialog() {

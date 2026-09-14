@@ -34,6 +34,21 @@ class MainJsBridge(
     }
 
     @JavascriptInterface
+    fun onGeoMsgDeleteRequested(idGeoMsg: Int) {
+        activity.runOnUiThread { activity.deleteGeoMsgFromBridge(idGeoMsg) }
+    }
+
+    @JavascriptInterface
+    fun onGeoMsgEditRequested(idGeoMsg: Int) {
+        activity.runOnUiThread { activity.editGeoMsgFromBridge(idGeoMsg) }
+    }
+
+    @JavascriptInterface
+    fun onGeoMsgVisibilityToggled(idGeoMsg: Int, isPublic: Boolean) {
+        activity.runOnUiThread { activity.setGeoMsgVisibilityFromBridge(idGeoMsg, isPublic) }
+    }
+
+    @JavascriptInterface
     fun onMapObjectSelected(payloadJson: String) {
         activity.runOnUiThread {
             activity.onMapObjectSelectedFromBridge(payloadJson)

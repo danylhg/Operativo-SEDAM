@@ -302,7 +302,6 @@ class MapObjectsController(
     }
 
     fun setupObjectToolsMenu() {
-        val btnObjectTools = activity.findViewById<View>(R.id.btnObjectTools)
         val objectToolsMenu = activity.findViewById<View>(R.id.objectToolsMenu)
         objectToolSelectionView = activity.findViewById(R.id.objectToolSelection)
         drawingMiniToolbar = activity.findViewById(R.id.drawingMiniToolbar)
@@ -312,21 +311,6 @@ class MapObjectsController(
 
         fun setMenuVisible(visible: Boolean) {
             objectToolsMenu.visibility = if (visible) View.VISIBLE else View.GONE
-            btnObjectTools.contentDescription = if (visible) {
-                "Cerrar herramientas de mapa"
-            } else {
-                "Abrir herramientas de mapa"
-            }
-        }
-
-        btnObjectTools.setOnClickListener {
-            if (drawingMiniToolbar?.visibility == View.VISIBLE || drawingMode != null) {
-                stopFreeDrawingMode()
-                updateObjectToolSelection(null)
-                setMenuVisible(true)
-                return@setOnClickListener
-            }
-            setMenuVisible(objectToolsMenu.visibility != View.VISIBLE)
         }
 
         fun bindItem(id: Int, action: () -> Unit) {

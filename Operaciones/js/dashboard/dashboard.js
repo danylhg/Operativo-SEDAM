@@ -559,7 +559,7 @@ async function initDashboard() {
         const centerLng = lngs.reduce((a, b) => a + b, 0) / lngs.length;
 
         dashboardState.viewer.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(centerLng, centerLat, 4500)
+          destination: Cesium.Cartesian3.fromDegrees(centerLng, centerLat, 12000)
         });
         return;
       }

@@ -115,6 +115,19 @@
     .targetPopupClose:active {
       color: #F3C84B;
     }
+    #geoMsgPopup { width: 238px; border-color: rgba(45, 212, 191, .78); background: rgba(4, 28, 43, .98); box-shadow: 0 8px 24px rgba(0,0,0,.42), inset 0 0 0 1px rgba(45,212,191,.12); }
+    #geoMsgPopup::after { background: #05202f; border-color: rgba(45, 212, 191, .58); }
+    .geoMsgAuthor { color: #b8fff3; font-size: 13px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .01em; }
+    .geoMsgText { margin-top: 9px; padding: 8px 9px; border-left: 2px solid #2dd4bf; border-radius: 4px; background: rgba(15,118,110,.16); color: #ffffff; font-size: 14px; font-weight: 700; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .geoMsgCoords { margin-top: 10px; color: #b3c7d9; font: 10px ui-monospace, monospace; letter-spacing: .02em; }
+    #geoMsgPopup .targetPopupActions { justify-content: flex-end; gap: 8px; margin-top: 11px; }
+    #geoMsgPopup .targetPopupVisibility { position: static; top: auto; right: auto; margin: 0 auto 0 0; gap: 5px; font-size: 9px; }
+    #geoMsgPopup .targetPopupAction,
+    #geoMsgPopup .geoMsgDelete { flex: 0 0 36px; width: 36px; height: 32px; min-height: 32px; margin: 0; padding: 0; border-radius: 7px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+    #geoMsgPopup .targetPopupAction { border:1px solid rgba(56,189,248,.55); background:rgba(14,116,144,.42); color:#dff8ff; }
+    #geoMsgPopup .targetPopupAction:active { background:rgba(8,145,178,.72); }
+    .geoMsgDelete { border: 1px solid rgba(248,113,113,.7); background: rgba(127,29,29,.38); color: #fecaca; }
+    .geoMsgDelete:active { background: rgba(185,28,28,.65); }
 
     .mapLayerControl {
       position: absolute;
@@ -235,6 +248,15 @@
   </div>
 
   <!-- Modal EXCLUSIVO e INDEPENDIENTE para Rutas de Navegación -->
+  <div id="geoMsgPopup" class="targetPopup" role="dialog" aria-label="Mensaje Geo-anclado">
+    <div id="geoMsgPopupAuthor" class="geoMsgAuthor"></div>
+    <div id="geoMsgPopupText" class="geoMsgText"></div>
+    <div id="geoMsgPopupCoords" class="geoMsgCoords"></div>
+    <div class="targetPopupActions"><div id="geoMsgPopupVisibilityRow" class="targetPopupVisibility"><span id="geoMsgPopupVisibilityLabel">Privado</span><input id="geoMsgPopupVisibility" class="targetPopupSwitch" type="checkbox" aria-label="Cambiar visibilidad del GEO-MSG"></div><button id="geoMsgPopupEdit" class="targetPopupAction" type="button" aria-label="Editar mensaje Geo-anclado" title="Editar mensaje Geo-anclado"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg></button><button id="geoMsgPopupDelete" class="geoMsgDelete" type="button" aria-label="Eliminar mensaje Geo-anclado" title="Eliminar mensaje Geo-anclado">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    </button></div>
+  </div>
+
   <div id="routePopup" class="targetPopup" role="dialog" aria-label="Información de la ruta" style="display:none;">
     <button id="routePopupClose" class="targetPopupClose" type="button" aria-label="Cerrar">✕</button>
     <div id="routePopupTitle" class="targetPopupName" style="padding-right:20px;">Ruta de navegación</div>
@@ -296,9 +318,11 @@
     let selectedTrackingPersonalId = null;
     let followedTrackingPersonalId = null;
     let followMyLocation = false;
+    // Mantener una distancia mínima evita que los proveedores de teselas
+    // respondan con "Map data not yet available" al centrar la ubicación.
     const MIN_CAMERA_ZOOM_DISTANCE = 800;
-    const FOLLOW_LOCATION_ZOOM = 1200;
-    const FOLLOW_TRACKING_ZOOM = 1200;
+    const FOLLOW_LOCATION_ZOOM = 1800;
+    const FOLLOW_TRACKING_ZOOM = 1800;
     const TRACKING_PERSONAL_COLOR = Cesium.Color.fromCssColorString("#00BFFF");
     const TRACKING_PERSONAL_SELECTED_COLOR = Cesium.Color.fromCssColorString("#2563EB");
     const TRACKING_VEHICULO_COLOR = Cesium.Color.fromCssColorString("#FFD700");
@@ -344,15 +368,36 @@
       }),
       satellite: () => new Cesium.UrlTemplateImageryProvider({
         url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        maximumLevel: 18,
+        // Solicita el nivel disponible de fotografía aérea antes de ampliar una tesela.
+        // Por encima de este nivel Esri puede devolver mosaicos vacíos.
+        // Cesium ampliará la última tesela válida y el mapa seguirá visible.
+        maximumLevel: 19,
         credit: "Esri World Imagery"
       }),
       reference: () => new Cesium.UrlTemplateImageryProvider({
         url: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-        maximumLevel: 18,
+        maximumLevel: 19,
         credit: "Esri Reference"
       })
     };
+
+    // Si el servidor de imágenes falla, conserva un mapa visible usando calles.
+    // Esto evita dejar el globo vacío con el mensaje "Map data not available".
+    function addImageryWithFallback(primaryLayer, fallbackKey) {
+      const provider = primaryLayer && primaryLayer.imageryProvider;
+      if (!provider || !provider.errorEvent) return;
+      let failures = 0;
+      let switched = false;
+      provider.errorEvent.addEventListener(function () {
+        if (switched || ++failures < 3 || !viewer) return;
+        switched = true;
+        if (viewer.imageryLayers.contains(primaryLayer)) {
+          viewer.imageryLayers.remove(primaryLayer, true);
+          viewer.imageryLayers.addImageryProvider(BASE_LAYER_PROVIDERS[fallbackKey]());
+          viewer.scene.requestRender();
+        }
+      });
+    }
 
     function updateLayerButtons(key) {
       document.querySelectorAll("[data-map-layer]").forEach((button) => {
@@ -373,23 +418,14 @@
 
       if (layerKey === "hybrid") {
         const satelliteLayer = viewer.imageryLayers.addImageryProvider(BASE_LAYER_PROVIDERS.satellite());
-        satelliteLayer.brightness = 0.78;
-        satelliteLayer.contrast = 1.35;
-        satelliteLayer.saturation = 1.15;
-        satelliteLayer.gamma = 0.9;
-
+        addImageryWithFallback(satelliteLayer, "osm");
         const referenceOverlay = viewer.imageryLayers.addImageryProvider(BASE_LAYER_PROVIDERS.reference());
         referenceOverlay.alpha = 0.78;
         return;
       }
 
       const layer = viewer.imageryLayers.addImageryProvider(BASE_LAYER_PROVIDERS[layerKey]());
-      if (layerKey === "satellite") {
-        layer.brightness = 0.78;
-        layer.contrast = 1.35;
-        layer.saturation = 1.15;
-        layer.gamma = 0.9;
-      }
+      if (layerKey === "satellite") addImageryWithFallback(layer, "osm");
     }
 
     function initLayerControl() {
@@ -497,7 +533,7 @@
 
         const lat = Number(state.lat);
         const lon = Number(state.lon);
-        const height = Number(state.height);
+        const height = Math.max(Number(state.height), MIN_CAMERA_ZOOM_DISTANCE);
         if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(height)) return false;
 
         viewer.camera.setView({
@@ -602,7 +638,11 @@
     function flyToLocation(lat, lon, zoomMeters, duration) {
       if (!viewer) return;
       viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(lon, lat, zoomMeters || FOLLOW_LOCATION_ZOOM),
+          destination: Cesium.Cartesian3.fromDegrees(
+            lon,
+            lat,
+            Math.max(Number(zoomMeters) || FOLLOW_LOCATION_ZOOM, FOLLOW_LOCATION_ZOOM)
+          ),
         duration: duration === undefined ? 0.55 : duration
       });
     }
@@ -683,10 +723,18 @@
     }
 
     let activePopupEntity = null;
+    let activeGeoMsgPopupEntity = null;
 
     function hideTargetPopup() {
       activePopupEntity = null;
       const popup = document.getElementById('targetPopup');
+      if (popup) popup.style.display = 'none';
+      hideGeoMsgPopup();
+    }
+
+    function hideGeoMsgPopup() {
+      activeGeoMsgPopupEntity = null;
+      const popup = document.getElementById('geoMsgPopup');
       if (popup) popup.style.display = 'none';
     }
 
@@ -1069,9 +1117,71 @@
       popup.style.top = Math.round(top) + 'px';
     }
 
+    function updateGeoMsgPopupPosition(screenPosition) {
+      const popup = document.getElementById('geoMsgPopup');
+      if (!popup || popup.style.display === 'none' || !activeGeoMsgPopupEntity || !viewer) return;
+
+      let pos = screenPosition;
+      if (!pos && activeGeoMsgPopupEntity.position) {
+        const cartesian = activeGeoMsgPopupEntity.position.getValue
+          ? activeGeoMsgPopupEntity.position.getValue(viewer.clock.currentTime)
+          : activeGeoMsgPopupEntity.position;
+        if (cartesian) pos = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, cartesian);
+      }
+      if (!pos) return;
+
+      const viewportWidth = viewer.canvas.clientWidth || window.innerWidth;
+      const viewportHeight = viewer.canvas.clientHeight || window.innerHeight;
+      const width = popup.offsetWidth || 224;
+      const height = popup.offsetHeight || 120;
+      const posX = pos.x != null ? pos.x : pos.left || (viewportWidth / 2);
+      const posY = pos.y != null ? pos.y : pos.top || (viewportHeight / 2);
+      let left = posX - width / 2;
+      let top = posY - height - 18;
+      if (top < 16) top = posY + 20;
+      popup.style.left = Math.round(Math.max(8, Math.min(viewportWidth - width - 8, left))) + 'px';
+      popup.style.top = Math.round(Math.max(16, Math.min(viewportHeight - height - 75, top))) + 'px';
+    }
+
+    function showGeoMsgPopup(entity, screenPosition, author, text, coords) {
+      const popup = document.getElementById('geoMsgPopup');
+      if (!popup) return;
+      hideTargetPopup();
+      hideRoutePopup();
+      const displayAuthor = formatAbbreviatedPersonLabel(author) || String(author || 'Usuario');
+      document.getElementById('geoMsgPopupAuthor').textContent = displayAuthor;
+      document.getElementById('geoMsgPopupText').textContent = String(text || '');
+      const parts = String(coords || '').split(',').map(function (value) { return value.trim(); });
+      document.getElementById('geoMsgPopupCoords').textContent = parts.length === 2
+        ? 'LAT: ' + parts[0] + '   LON: ' + parts[1]
+        : '';
+      popup.dataset.poiId = String(getEntityProperty(entity, 'poiId') || String(entity.id || '').replace('geomsg_', ''));
+      const isPublic = String(getEntityProperty(entity, 'geoMsgVisibility') || 'PRIVADO').toUpperCase() === 'PUBLICO';
+      const switchEl = document.getElementById('geoMsgPopupVisibility'); if (switchEl) switchEl.checked = isPublic;
+      const labelEl = document.getElementById('geoMsgPopupVisibilityLabel'); if (labelEl) labelEl.textContent = isPublic ? 'Público' : 'Privado';
+      const isOwner = Number(getEntityProperty(entity, 'geoMsgOwnerId')) === Number(window.Android && Android.getCurrentUserId ? Android.getCurrentUserId() : -1);
+      const visibilityRow = document.getElementById('geoMsgPopupVisibilityRow');
+      if (visibilityRow) visibilityRow.style.display = isOwner ? 'flex' : 'none';
+      popup.style.display = 'block';
+      activeGeoMsgPopupEntity = entity;
+      updateGeoMsgPopupPosition(screenPosition);
+    }
+
+    window.updateGeoMsgPopup = function (id, text) {
+      const popup = document.getElementById('geoMsgPopup');
+      if (!popup || String(popup.dataset.poiId || '') !== String(id)) return;
+      const textEl = document.getElementById('geoMsgPopupText');
+      if (textEl) textEl.textContent = String(text || '');
+      if (activeGeoMsgPopupEntity && activeGeoMsgPopupEntity.properties) {
+        activeGeoMsgPopupEntity.properties.geoMsgText = String(text || '');
+        activeGeoMsgPopupEntity.properties.poiName = String(text || '');
+      }
+    };
+
     function showTargetPopup(entity, screenPosition) {
       if (!entity) { hideTargetPopup(); return; }
       hideRoutePopup();
+      hideGeoMsgPopup();
       const popup = document.getElementById('targetPopup');
       if (!popup) return;
 
@@ -1115,29 +1225,16 @@
       const creatorRank = String(getEntityProperty(entity, 'poiCreatorRank') || getEntityProperty(entity, 'creador_puesto') || '').trim();
       const currentCreator = getCurrentRouteCreatorLabel();
       const normalizeCreator = function (value) { return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim(); };
-      const isOwner = !!creator && !!currentCreator && (normalizeCreator(creator) === normalizeCreator(currentCreator) || normalizeCreator(creator).includes(normalizeCreator(currentCreator)) || normalizeCreator(currentCreator).includes(normalizeCreator(creator)));
+      const ownerFromPayload = getEntityProperty(entity, 'poiIsMine') === true ||
+        String(getEntityProperty(entity, 'poiIsMine')).toLowerCase() === 'true';
+      const isOwner = ownerFromPayload || (!!creator && !!currentCreator &&
+        (normalizeCreator(creator) === normalizeCreator(currentCreator) || normalizeCreator(creator).includes(normalizeCreator(currentCreator)) || normalizeCreator(currentCreator).includes(normalizeCreator(creator))));
       const normTipo = tipo.toUpperCase();
 
       if (normTipo === 'GEO-MSG' || getEntityProperty(entity, 'tacticalType') === 'geomsg' || (entity.id && String(entity.id).startsWith('geomsg_'))) {
         const author = getEntityProperty(entity, 'poiAuthor') || getEntityProperty(entity, 'poiCreator') || 'Yo';
         const msgText = getEntityProperty(entity, 'geoMsgText') || getEntityProperty(entity, 'poiName') || (entity.properties && entity.properties.geoMsgText) || '';
-        const nameEl = document.getElementById('targetPopupName');
-        if (nameEl) nameEl.textContent = author + ' · GEO-MSG';
-        const typeEl = document.getElementById('targetPopupType');
-        if (typeEl) {
-          typeEl.textContent = msgText;
-          typeEl.style.fontSize = '14px';
-          typeEl.style.color = '#F8FAFC';
-          typeEl.style.whiteSpace = 'pre-wrap';
-        }
-        const metricsEl = document.querySelector('.targetPopupMetrics');
-        if (metricsEl) metricsEl.style.display = 'none';
-        const coordsEl = document.getElementById('targetPopupCoords');
-        if (coordsEl) coordsEl.textContent = coords;
-        popup.dataset.coords = coords;
-        popup.style.display = 'block';
-        activePopupEntity = entity;
-        updatePopupPosition(screenPosition);
+        showGeoMsgPopup(entity, screenPosition, author, msgText, coords);
         return;
       }
 
@@ -1192,6 +1289,10 @@
       popup.dataset.poiSidc = sidc;
       const visibilitySwitch = document.getElementById('targetPopupVisibility');
       if (visibilitySwitch && visibilitySwitch.parentElement) {
+        const isPublic = String(getEntityProperty(entity, 'poiVisibility') || 'PRIVADO').toUpperCase() === 'PUBLICO';
+        visibilitySwitch.checked = isPublic;
+        const visibilityLabel = document.getElementById('targetPopupVisibilityLabel');
+        if (visibilityLabel) visibilityLabel.textContent = isPublic ? 'Público' : 'Privado';
         visibilitySwitch.parentElement.style.display = isOwner ? 'flex' : 'none';
       }
       popup.style.display = 'block';
@@ -1224,6 +1325,21 @@
       if (activePopupEntity && window.Android && typeof Android.onMapObjectDeleteRequested === 'function') Android.onMapObjectDeleteRequested(JSON.stringify({ kind: 'poi', id: Number(getEntityProperty(activePopupEntity, 'poiId') || String(activePopupEntity.id || '').replace('poi_', '')) }));
       hideTargetPopup();
     });
+    const geoMsgPopupDelete = document.getElementById('geoMsgPopupDelete');
+    const geoMsgPopupEdit = document.getElementById('geoMsgPopupEdit');
+    if (geoMsgPopupEdit) geoMsgPopupEdit.addEventListener('click', function () { if (activeGeoMsgPopupEntity && window.Android && typeof Android.onGeoMsgEditRequested === 'function') Android.onGeoMsgEditRequested(Number(document.getElementById('geoMsgPopup').dataset.poiId)); });
+    const geoMsgPopupVisibility = document.getElementById('geoMsgPopupVisibility');
+    if (geoMsgPopupVisibility) geoMsgPopupVisibility.addEventListener('change', function () { const id = Number(document.getElementById('geoMsgPopup').dataset.poiId); const label = document.getElementById('geoMsgPopupVisibilityLabel'); if (label) label.textContent = this.checked ? 'Público' : 'Privado'; if (window.Android && typeof Android.onGeoMsgVisibilityToggled === 'function') Android.onGeoMsgVisibilityToggled(id, this.checked); });
+    if (geoMsgPopupDelete) geoMsgPopupDelete.addEventListener('click', function (event) {
+      event.stopPropagation();
+      if (activeGeoMsgPopupEntity && window.Android && typeof Android.onGeoMsgDeleteRequested === 'function') {
+        const id = Number(getEntityProperty(activeGeoMsgPopupEntity, 'poiId') || String(activeGeoMsgPopupEntity.id || '').replace('geomsg_', ''));
+        Android.onGeoMsgDeleteRequested(id);
+      }
+      hideGeoMsgPopup();
+    });
+    const geoMsgPopup = document.getElementById('geoMsgPopup');
+    if (geoMsgPopup) geoMsgPopup.addEventListener('click', function (event) { event.stopPropagation(); });
     if (popupCloseBtn) {
       popupCloseBtn.addEventListener('click', function (event) {
         event.stopPropagation();
@@ -1507,10 +1623,10 @@
     try {
       viewer = new Cesium.Viewer('cesiumContainer', {
         contextOptions: {
-          requestWebgl1: true,
           webgl: {
             alpha: false,
-            antialias: true,
+            // La imagen satelital ya contiene mucho detalle; MSAA solo consume GPU.
+            antialias: false,
             depth: true,
             stencil: false,
             preserveDrawingBuffer: false,
@@ -1520,7 +1636,8 @@
         useBrowserRecommendedResolution: false,
         msaaSamples: 1,
         requestRenderMode: true,
-        maximumRenderTimeChange: 0.1,
+        // No renderizar cuadros de forma continua mientras el mapa está quieto.
+        maximumRenderTimeChange: Infinity,
         baseLayer: new Cesium.ImageryLayer(
           new Cesium.UrlTemplateImageryProvider({
             url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
@@ -1561,24 +1678,28 @@
       viewer.scene.skyAtmosphere.show = false;
       viewer.scene.sun.show = false;
       viewer.scene.moon.show = false;
-      const dpr = window.devicePixelRatio || 1.0;
-      // Equilibrio entre nitidez y rendimiento en dispositivos móviles.
-      viewer.resolutionScale = Math.min(dpr, 1.5);
+      // El WebView ya dibuja a la resolución física del teléfono. La fotografía
+      // se mantiene definida con el filtro de textura, sin agrandar el framebuffer.
+      viewer.resolutionScale = 1.0;
       viewer.scene.highDynamicRange = false;
       viewer.scene.fxaa = false;
       if (viewer.scene.globe) {
         viewer.scene.globe.showGroundAtmosphere = false;
         viewer.scene.globe.enableLighting = false;
-        viewer.scene.globe.maximumScreenSpaceError = 1.75;
-        viewer.scene.globe.tileCacheSize = 180;
+        // Mantiene mosaicos detallados incluso durante el desplazamiento.
+        viewer.scene.globe.maximumScreenSpaceError = 0.75;
+        // Conserva y precarga mosaicos cercanos para evitar imágenes borrosas al mover.
+        viewer.scene.globe.tileCacheSize = 256;
         viewer.scene.globe.preloadAncestors = true;
-        viewer.scene.globe.preloadSiblings = false;
+        viewer.scene.globe.preloadSiblings = true;
       }
       configureGoogleLikeCamera(viewer);
       initLayerControl();
-      let savedBaseLayer = "hybrid";
+      // En móvil la capa satelital sola evita descargar y componer dos mapas a la vez.
+      let savedBaseLayer = "satellite";
       try {
-        savedBaseLayer = localStorage.getItem("sedam_android_map_layer") || "hybrid";
+        savedBaseLayer = localStorage.getItem("sedam_android_map_layer") || "satellite";
+        if (savedBaseLayer === "hybrid") savedBaseLayer = "satellite";
       } catch (_) {}
       setBaseLayer(savedBaseLayer);
       if (viewer.scene && viewer.scene.postRender) {
@@ -1586,10 +1707,10 @@
           if (activePopupEntity) {
             updatePopupPosition(null);
           }
+          if (activeGeoMsgPopupEntity) {
+            updateGeoMsgPopupPosition(null);
+          }
         });
-      }
-      if (viewer.camera && viewer.camera.changed) {
-        viewer.camera.changed.addEventListener(scheduleCameraStateSave);
       }
       if (viewer.camera && viewer.camera.moveEnd) {
         viewer.camera.moveEnd.addEventListener(saveCameraStateNow);
@@ -1899,7 +2020,11 @@
         }
 
         viewer.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(lon, lat, zoomMeters || 15000),
+          destination: Cesium.Cartesian3.fromDegrees(
+            lon,
+            lat,
+            Math.max(Number(zoomMeters) || 15000, FOLLOW_LOCATION_ZOOM)
+          ),
           duration: 2.5
         });
       } catch (e) {
@@ -3330,7 +3455,7 @@
       return nameStr;
     }
 
-    window.addPoiToMap = function (id, lat, lon, nombre, tipoPoi, color, iconoSrc, sidc, creatorLabel) {
+    window.addPoiToMap = function (id, lat, lon, nombre, tipoPoi, color, iconoSrc, sidc, creatorLabel, isMine, visibility) {
       try {
         if (!viewer) return;
 
@@ -3417,6 +3542,8 @@
             poiSidc: normalizedSidc || '',
             poiIconoSrc: normalizedIconoSrc || '',
             poiCreator: creatorLabel || '',
+            poiIsMine: isMine === true || String(isMine).toLowerCase() === 'true',
+            poiVisibility: String(visibility || 'PRIVADO').toUpperCase(),
             tacticalType: 'poi'
           }
         });
@@ -3463,7 +3590,9 @@
             poi.color || '#FFD700',
             poi.icono_src || null,
             poi.sidc || null,
-            poi.creador_label || poi.creador || ''
+            poi.creador_label || poi.creatorLabel || poi.creador_nombre || poi.creador || '',
+            poi.isMine === true,
+            poi.visibilidad || 'PRIVADO'
           );
         });
       } catch (e) {
@@ -5253,7 +5382,7 @@
       isGeoMsgMode = true;
     };
 
-    window.addGeoMsgToMap = function (id, lat, lon, text, author) {
+    window.addGeoMsgToMap = function (id, lat, lon, text, author, isPublic, ownerId) {
       try {
         if (!viewer) return;
         const entityId = 'geomsg_' + id;
@@ -5283,12 +5412,28 @@
             poiAuthor: author || 'Yo',
             geoMsgText: text,
             tacticalType: 'geomsg'
+            ,geoMsgVisibility: isPublic ? 'PUBLICO' : 'PRIVADO'
+            ,geoMsgOwnerId: Number(ownerId || -1)
           }
         });
 
         poiEntities.set(entityId, entity);
       } catch (e) {
         console.error("Error addGeoMsgToMap: " + e.message);
+      }
+    };
+
+    window.removeGeoMsgFromMap = function (id) {
+      try {
+        const entityId = 'geomsg_' + id;
+        const entity = poiEntities.get(entityId);
+        if (entity) {
+          viewer.entities.remove(entity);
+          poiEntities.delete(entityId);
+        }
+        if (activeGeoMsgPopupEntity && String(activeGeoMsgPopupEntity.id) === entityId) hideGeoMsgPopup();
+      } catch (e) {
+        console.error('Error removeGeoMsgFromMap: ' + e.message);
       }
     };
 

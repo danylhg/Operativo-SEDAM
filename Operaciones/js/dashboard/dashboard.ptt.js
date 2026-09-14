@@ -144,7 +144,7 @@ function focusActivePttAlert() {
   const coords = alertCoords(activeAlert);
   if (!viewer || !coords) return;
   viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat, 800),
+    destination: Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat, 1800),
     duration: 0.6
   });
 }

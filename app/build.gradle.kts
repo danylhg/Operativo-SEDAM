@@ -52,6 +52,10 @@ dependencies {
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
     implementation("io.github.webrtc-sdk:android:144.7559.01")
     implementation("com.github.pedroSG94.RootEncoder:library:2.7.2")
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7")
+    // FFmpegKit usa esta clase en tiempo de ejecución; la publicación
+    // mantenida no la está incorporando transitivamente en este proyecto.
+    implementation("com.arthenica:smart-exception-java:0.2.1")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

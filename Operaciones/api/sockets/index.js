@@ -257,6 +257,9 @@ export function initSocket(server) {
     },
   });
 
+  const mgrsStateByOperation = new Map();
+  const geoMessagesByOperation = new Map();
+
   io.on("connection", (socket) => {
     console.log("🟢 Cliente conectado:", socket.id);
 
@@ -286,7 +289,103 @@ export function initSocket(server) {
         socket.join(`op_${idOperacion}_personal_${idPersonal}`);
       }
 
+      if (mgrsStateByOperation.has(idOperacion)) {
+        const active = mgrsStateByOperation.get(idOperacion);
+        socket.emit("mgrs_grid_toggled", { id_operacion: idOperacion, active, enabled: active });
+      }
+      const geoMessages = geoMessagesByOperation.get(idOperacion);
+      if (geoMessages) {
+        geoMessages.forEach((geoMsg) => {
+          if (geoMsg.visibilidad === "PUBLICO" || geoMsg.id_personal_autor === socket.userData.id_personal) socket.emit("geo_msg_created", geoMsg);
+        });
+      }
+
       console.log(`Socket ${socket.id} unido a operación ${idOperacion} [${rol || "sin rol"}]`);
+    });
+
+    // La MGRS es una capa comun: propagar el cambio a todos los miembros de
+    // la misma operacion, sin aceptar un id de operacion enviado por el cliente.
+    socket.on("mgrs_grid_toggled", (data = {}, ack) => {
+      const opId = socket.operationId;
+      if (!opId) {
+        if (typeof ack === "function") ack({ ok: false, mensaje: "Socket sin operacion" });
+        return;
+      }
+
+      const active = data.active === true || data.enabled === true;
+      const payload = { id_operacion: opId, active, enabled: active };
+      mgrsStateByOperation.set(opId, active);
+      socket.to(`op_${opId}`).emit("mgrs_grid_toggled", payload);
+      if (typeof ack === "function") ack({ ok: true, ...payload });
+    });
+
+    socket.on("geo_msg_created", (data = {}, ack) => {
+      const opId = socket.operationId;
+      const idGeoMsg = Number(data.id_geo_msg ?? data.id);
+      const lat = optionalNumber(data.lat ?? data.latitud);
+      const lon = optionalNumber(data.lon ?? data.lng ?? data.longitud);
+      const text = String(data.text || "").trim().slice(0, 2000);
+      const author = String(data.author || "Usuario").trim().slice(0, 160);
+      const ownerId = Number(socket.userData?.id_personal);
+
+      if (!opId || !Number.isInteger(idGeoMsg) || idGeoMsg <= 0 || !validCoords(lat, lon) || !text) {
+        if (typeof ack === "function") ack({ ok: false, mensaje: "Mensaje Geo-anclado invalido" });
+        return;
+      }
+
+      const payload = { id_operacion: opId, id_geo_msg: idGeoMsg, lat, lon, text, author, id_personal_autor: Number.isInteger(ownerId) && ownerId > 0 ? ownerId : null, visibilidad: String(data.visibilidad || "PRIVADO").toUpperCase() === "PUBLICO" ? "PUBLICO" : "PRIVADO" };
+      let geoMessages = geoMessagesByOperation.get(opId);
+      if (!geoMessages) {
+        geoMessages = new Map();
+        geoMessagesByOperation.set(opId, geoMessages);
+      }
+      geoMessages.set(idGeoMsg, payload);
+      if (payload.visibilidad === "PUBLICO") socket.to(`op_${opId}`).emit("geo_msg_created", payload);
+      if (typeof ack === "function") ack({ ok: true, ...payload });
+    });
+
+    socket.on("geo_msg_deleted", (data = {}, ack) => {
+      const opId = socket.operationId;
+      const idGeoMsg = Number(data.id_geo_msg ?? data.id);
+      if (!opId || !Number.isInteger(idGeoMsg) || idGeoMsg <= 0) {
+        if (typeof ack === "function") ack({ ok: false, mensaje: "Mensaje Geo-anclado invalido" });
+        return;
+      }
+
+      geoMessagesByOperation.get(opId)?.delete(idGeoMsg);
+      const payload = { id_operacion: opId, id_geo_msg: idGeoMsg };
+      socket.to(`op_${opId}`).emit("geo_msg_deleted", payload);
+      if (typeof ack === "function") ack({ ok: true, ...payload });
+    });
+
+    socket.on("geo_msg_updated", (data = {}, ack) => {
+      const opId = socket.operationId;
+      const idGeoMsg = Number(data.id_geo_msg ?? data.id);
+      const current = geoMessagesByOperation.get(opId)?.get(idGeoMsg);
+      const text = String(data.text || "").trim().slice(0, 2000);
+      if (!opId || !current || !text) { if (typeof ack === "function") ack({ ok: false, mensaje: "Mensaje Geo-anclado invalido" }); return; }
+      // Editar solo cambia el texto; la visibilidad la controla exclusivamente el autor.
+      const payload = { ...current, text, visibilidad: current.visibilidad || "PRIVADO" };
+      geoMessagesByOperation.get(opId).set(idGeoMsg, payload);
+      if (payload.visibilidad === "PUBLICO") {
+        socket.to(`op_${opId}`).emit("geo_msg_updated", payload);
+      } else if (current.id_personal_autor) {
+        socket.to(`op_${opId}_personal_${current.id_personal_autor}`).emit("geo_msg_updated", payload);
+      }
+      if (typeof ack === "function") ack({ ok: true, ...payload });
+    });
+
+    socket.on("geo_msg_visibility_changed", (data = {}, ack) => {
+      const opId = socket.operationId;
+      const idGeoMsg = Number(data.id_geo_msg ?? data.id);
+      const current = geoMessagesByOperation.get(opId)?.get(idGeoMsg);
+      const ownerId = Number(socket.userData?.id_personal);
+      if (!opId || !current || !Number.isInteger(ownerId) || ownerId <= 0 || current.id_personal_autor !== ownerId) { if (typeof ack === "function") ack({ ok: false, mensaje: "Solo el autor puede cambiar la visibilidad" }); return; }
+      const payload = { ...current, visibilidad: String(data.visibilidad || "PRIVADO").toUpperCase() === "PUBLICO" ? "PUBLICO" : "PRIVADO" };
+      geoMessagesByOperation.get(opId).set(idGeoMsg, payload);
+      if (payload.visibilidad === "PUBLICO") socket.to(`op_${opId}`).emit("geo_msg_updated", payload);
+      else socket.to(`op_${opId}`).emit("geo_msg_deleted", { id_operacion: opId, id_geo_msg: idGeoMsg });
+      if (typeof ack === "function") ack({ ok: true, ...payload });
     });
 
     socket.on("ptt_alert_toggle", (data = {}, ack) => {

@@ -59,5 +59,5 @@ export const dashboardState = {
   trackingClusters: new Map(),    // "V:id" → Set(["P:id1", "P:id2"])
   followedTrackingKey: null,
   followedPersonalId: null,
-  followedPersonalZoom: 800
+  followedPersonalZoom: 1800
 };

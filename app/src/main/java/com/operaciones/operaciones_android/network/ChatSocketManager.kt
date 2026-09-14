@@ -209,6 +209,22 @@ class ChatSocketManager(
             onMgrsToggledFromSocket?.invoke(active)
         }
 
+        socket?.on("geo_msg_created") { args ->
+            val data = args.firstOrNull() as? JSONObject ?: return@on
+            onGeoMsgCreatedFromSocket?.invoke(data)
+        }
+
+        socket?.on("geo_msg_deleted") { args ->
+            val data = args.firstOrNull() as? JSONObject ?: return@on
+            val id = data.optInt("id_geo_msg", data.optInt("id", -1))
+            if (id > 0) onGeoMsgDeletedFromSocket?.invoke(id)
+        }
+
+        socket?.on("geo_msg_updated") { args ->
+            val data = args.firstOrNull() as? JSONObject ?: return@on
+            onGeoMsgUpdatedFromSocket?.invoke(data)
+        }
+
         socket?.on("ptt_alert_update") { args ->
             val data = args.firstOrNull() as? JSONObject ?: JSONObject()
             onPttAlertUpdate?.invoke(data)
@@ -363,6 +379,9 @@ class ChatSocketManager(
     }
 
     var onMgrsToggledFromSocket: ((Boolean) -> Unit)? = null
+    var onGeoMsgCreatedFromSocket: ((JSONObject) -> Unit)? = null
+    var onGeoMsgDeletedFromSocket: ((Int) -> Unit)? = null
+    var onGeoMsgUpdatedFromSocket: ((JSONObject) -> Unit)? = null
 
     fun emitMgrsToggled(active: Boolean) {
         if (socket?.connected() != true) return
@@ -372,6 +391,43 @@ class ChatSocketManager(
             put("enabled", active)
         }
         socket?.emit("mgrs_grid_toggled", payload)
+    }
+
+    fun emitGeoMsgCreated(idGeoMsg: Int, lat: Double, lon: Double, text: String, author: String, isPublic: Boolean = false) {
+        if (socket?.connected() != true || idGeoMsg <= 0) return
+        val payload = JSONObject().apply {
+            put("id_operacion", operationId)
+            put("id_geo_msg", idGeoMsg)
+            put("lat", lat)
+            put("lon", lon)
+            put("text", text)
+            put("author", author)
+            put("visibilidad", if (isPublic) "PUBLICO" else "PRIVADO")
+        }
+        socket?.emit("geo_msg_created", payload)
+    }
+
+    fun emitGeoMsgDeleted(idGeoMsg: Int) {
+        if (socket?.connected() != true || idGeoMsg <= 0) return
+        socket?.emit("geo_msg_deleted", JSONObject().apply {
+            put("id_operacion", operationId)
+            put("id_geo_msg", idGeoMsg)
+        })
+    }
+
+    fun emitGeoMsgUpdated(idGeoMsg: Int, lat: Double, lon: Double, text: String, author: String, isPublic: Boolean) {
+        if (socket?.connected() != true || idGeoMsg <= 0) return
+        socket?.emit("geo_msg_updated", JSONObject().apply {
+            put("id_operacion", operationId); put("id_geo_msg", idGeoMsg); put("lat", lat); put("lon", lon)
+            put("text", text); put("author", author); put("visibilidad", if (isPublic) "PUBLICO" else "PRIVADO")
+        })
+    }
+
+    fun emitGeoMsgVisibilityChanged(idGeoMsg: Int, isPublic: Boolean) {
+        if (socket?.connected() != true || idGeoMsg <= 0) return
+        socket?.emit("geo_msg_visibility_changed", JSONObject().apply {
+            put("id_operacion", operationId); put("id_geo_msg", idGeoMsg); put("visibilidad", if (isPublic) "PUBLICO" else "PRIVADO")
+        })
     }
 
     fun emitGridUpdated(rows: Int, cols: Int, size: String, names: List<String>) {

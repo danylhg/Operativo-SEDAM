@@ -74,6 +74,13 @@ class LoginActivity : AppCompatActivity() {
         tvError       = findViewById(R.id.tvError)
         progress      = findViewById(R.id.loginProgress)
 
+        // Al volver a abrir la aplicación reutilizamos la sesión guardada si
+        // su JWT todavía está dentro de las cuatro horas de vigencia.
+        AuthManager.getCurrentUser(this)?.let { user ->
+            fetchOperacionYNavegar(user)
+            return
+        }
+
         inputPassword.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) { attemptLogin(); true } else false
         }

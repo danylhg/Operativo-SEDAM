@@ -23,7 +23,8 @@ class CesiumWebController(
 
     @SuppressLint("SetJavaScriptEnabled")
     fun setup() {
-        WebView.setWebContentsDebuggingEnabled(true)
+        // Evita el trabajo de inspección remota del WebView mientras Cesium renderiza.
+        WebView.setWebContentsDebuggingEnabled(false)
         webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
         webView.setBackgroundColor(Color.parseColor("#dbe7f1"))
         webView.setOnTouchListener { view, event ->
@@ -924,9 +925,18 @@ class CesiumWebController(
         evaluate("(function(){ if(typeof startGeoMsgMode==='function') startGeoMsgMode(); })();")
     }
 
-    fun addGeoMsgToMap(idPoi: Int, lat: Double, lon: Double, text: String, author: String) {
+    fun addGeoMsgToMap(idPoi: Int, lat: Double, lon: Double, text: String, author: String, isPublic: Boolean = false, ownerId: Int = -1) {
         val safeText = org.json.JSONObject.quote(text)
         val safeAuthor = org.json.JSONObject.quote(author)
-        evaluate("(function(){ if(typeof addGeoMsgToMap==='function') addGeoMsgToMap($idPoi, $lat, $lon, $safeText, $safeAuthor); })();")
+        evaluate("(function(){ if(typeof addGeoMsgToMap==='function') addGeoMsgToMap($idPoi, $lat, $lon, $safeText, $safeAuthor, ${isPublic}, $ownerId); })();")
+    }
+
+    fun removeGeoMsgFromMap(idPoi: Int) {
+        evaluate("(function(){ if(typeof removeGeoMsgFromMap==='function') removeGeoMsgFromMap($idPoi); })();")
+    }
+
+    fun updateGeoMsgPopup(idGeoMsg: Int, text: String) {
+        val safeText = org.json.JSONObject.quote(text)
+        evaluate("(function(){ if(typeof updateGeoMsgPopup==='function') updateGeoMsgPopup($idGeoMsg, $safeText); })();")
     }
 }

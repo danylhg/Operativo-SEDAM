@@ -1186,7 +1186,9 @@ export function centerMapOnOperationZone(zona) {
 
   const lat = Number(zona.centroide_lat);
   const lng = Number(zona.centroide_lon);
-  const zoom = Number(zona.zoom_inicial || 1000) || 1000;
+  // No permitir que un zoom guardado antiguo (normalmente 1000 m) deje la
+  // cámara por debajo de la cobertura disponible de las capas del mapa.
+  const zoom = Math.max(Number(zona.zoom_inicial || 1800) || 1800, 1800);
 
   if (Number.isFinite(lat) && Number.isFinite(lng)) {
     viewer.camera.flyTo({

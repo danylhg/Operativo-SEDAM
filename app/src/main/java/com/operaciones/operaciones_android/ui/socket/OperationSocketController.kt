@@ -92,6 +92,9 @@ class OperationSocketController(
         fun onSocketGridUpdated(grid: JSONObject)
         fun onSocketGridDeleted()
         fun onSocketMgrsToggled(active: Boolean)
+        fun onSocketGeoMsgCreated(idGeoMsg: Int, lat: Double, lon: Double, text: String, author: String, isPublic: Boolean, ownerId: Int)
+        fun onSocketGeoMsgUpdated(idGeoMsg: Int, lat: Double, lon: Double, text: String, author: String, isPublic: Boolean, ownerId: Int)
+        fun onSocketGeoMsgDeleted(idGeoMsg: Int)
         fun onSocketConnected()
         fun onSocketDisconnected()
         fun onSocketVoiceCallEvent(event: String, data: JSONObject)
@@ -323,6 +326,37 @@ class OperationSocketController(
 
         manager.onMgrsToggledFromSocket = { active ->
             host.runSocketOnUi { host.onSocketMgrsToggled(active) }
+        }
+        manager.onGeoMsgCreatedFromSocket = { data ->
+            host.runSocketOnUi {
+                val id = data.optInt("id_geo_msg", data.optInt("id", -1))
+                val lat = data.optDouble("lat", Double.NaN)
+                val lon = data.optDouble("lon", Double.NaN)
+                if (id > 0 && lat.isFinite() && lon.isFinite()) {
+                    host.onSocketGeoMsgCreated(
+                        idGeoMsg = id,
+                        lat = lat,
+                        lon = lon,
+                        text = data.optString("text", ""),
+                        author = data.optString("author", "Usuario"),
+                        isPublic = data.optString("visibilidad", "PRIVADO").equals("PUBLICO", true),
+                        ownerId = data.optInt("id_personal_autor", -1)
+                    )
+                }
+            }
+        }
+        manager.onGeoMsgDeletedFromSocket = { id ->
+            host.runSocketOnUi { host.onSocketGeoMsgDeleted(id) }
+        }
+        manager.onGeoMsgUpdatedFromSocket = { data ->
+            host.runSocketOnUi {
+                val id = data.optInt("id_geo_msg", data.optInt("id", -1))
+                val lat = data.optDouble("lat", Double.NaN)
+                val lon = data.optDouble("lon", Double.NaN)
+                if (id > 0 && lat.isFinite() && lon.isFinite()) {
+                    host.onSocketGeoMsgUpdated(id, lat, lon, data.optString("text", ""), data.optString("author", "Usuario"), data.optString("visibilidad", "PRIVADO").equals("PUBLICO", true), data.optInt("id_personal_autor", -1))
+                }
+            }
         }
 
         return manager

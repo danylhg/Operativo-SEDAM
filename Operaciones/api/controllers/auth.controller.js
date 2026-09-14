@@ -564,7 +564,9 @@ export async function login(req, res) {
     const token = jwt.sign(
       buildTokenPayload(row, tabla, deviceValidation),
       JWT_SECRET,
-      { expiresIn: "8h" }
+      // La sesión móvil es válida durante cuatro horas. El teléfono puede
+      // cerrarse y abrirse durante ese lapso sin pedir credenciales de nuevo.
+      { expiresIn: "4h" }
     );
 
     // Devuelve un perfil normalizado para tratar ambos origenes igual.
@@ -632,7 +634,7 @@ export async function issueWearSession(req, res) {
     const token = jwt.sign(
       buildTokenPayload(row, "personal", deviceValidation),
       JWT_SECRET,
-      { expiresIn: "8h" }
+      { expiresIn: "4h" }
     );
 
     const operacion = await fetchAssignedOperationForPersonal(row.id);

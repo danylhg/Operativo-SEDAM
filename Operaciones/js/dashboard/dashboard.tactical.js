@@ -192,7 +192,7 @@ function focusViewerOnOperationZone(zona) {
 
   const lat = Number(zona.centroide_lat);
   const lng = Number(zona.centroide_lon);
-  const zoom = Number(zona.zoom_inicial || 1000) || 1000;
+  const zoom = Math.max(Number(zona.zoom_inicial || 1800) || 1800, 1800);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
   viewer.camera.flyTo({
@@ -2906,7 +2906,57 @@ export async function loadOperationZoneFromBackend() {
   }
 }
 
+function renderGeoMsgEntity(geoMsg) {
+  const viewer = dashboardState.viewer;
+  const id = Number(geoMsg?.id_geo_msg ?? geoMsg?.id);
+  const lat = Number(geoMsg?.lat ?? geoMsg?.latitud);
+  const lng = Number(geoMsg?.lon ?? geoMsg?.lng ?? geoMsg?.longitud);
+  if (!viewer || !Number.isInteger(id) || id <= 0 || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+  const entityId = `geomsg_${id}`;
+  const existing = viewer.entities.getById(entityId);
+  if (existing) viewer.entities.remove(existing);
+
+  const author = String(geoMsg.author || "Usuario").trim() || "Usuario";
+  const text = String(geoMsg.text || "").trim();
+  const entity = viewer.entities.add({
+    id: entityId,
+    name: author,
+    position: Cesium.Cartesian3.fromDegrees(lng, lat),
+    point: {
+      pixelSize: 11,
+      color: Cesium.Color.fromCssColorString("#2dd4bf"),
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 2,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+    },
+    label: {
+      text: text || "GEO-MSG",
+      font: "12px sans-serif",
+      pixelOffset: new Cesium.Cartesian2(0, -20),
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 3,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+    },
+    properties: { tacticalType: "geomsg", id_geo_msg: id, author, text }
+  });
+  addTacticalEntity(entity);
+}
+
+function removeGeoMsgEntity(idGeoMsg) {
+  const viewer = dashboardState.viewer;
+  if (!viewer || !idGeoMsg) return;
+  const entity = viewer.entities.getById(`geomsg_${idGeoMsg}`);
+  if (entity) viewer.entities.remove(entity);
+  dashboardState.tacticalEntities = dashboardState.tacticalEntities.filter(ent => String(ent.id || "") !== `geomsg_${idGeoMsg}`);
+}
+
 export function initPoiSocket(socket) {
+  socket.on("geo_msg_created", (geoMsg) => renderGeoMsgEntity(geoMsg));
+  socket.on("geo_msg_deleted", ({ id_geo_msg, id }) => removeGeoMsgEntity(id_geo_msg || id));
+
   socket.on("poi_creado", ({ poi }) => {
     if (!poi?.id_poi) return;
     // Saltar si soy yo quien lo creó (ya lo dibujé localmente)

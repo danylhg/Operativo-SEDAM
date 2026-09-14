@@ -3,7 +3,9 @@ export function configureGoogleLikeCamera(viewer, options = {}) {
   if (!controller) return;
 
   const {
-    minimumZoomDistance = 500,
+    // A alturas demasiado bajas los proveedores de teselas pueden quedarse sin
+    // cobertura y Cesium termina mostrando "Map data not yet available".
+    minimumZoomDistance = 800,
     maximumZoomDistance = 5000000,
     inertiaSpin = 0.35,
     inertiaTranslate = 0.35,

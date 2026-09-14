@@ -1007,7 +1007,7 @@ router.post(
       const storedName = `${Date.now()}_${randomUUID()}_${originalName}`;
       const storagePath = resolve(dir, storedName);
       await writeFile(storagePath, buffer);
-      const attachmentUrl = `/api/storage/chat/op_${id_operacion}/${storedName}`;
+      const attachmentUrl = `/storage/chat/op_${id_operacion}/${storedName}`;
 
       await client.query("BEGIN");
 
