@@ -296,6 +296,8 @@ class OperationMapParser {
                     tipoPoi = if (c.has("tipo_poi")) c.optString("tipo_poi", "") else c.optString("subtipo", ""),
                     lat = c.optDouble("latitud"),
                     lon = c.optDouble("longitud"),
+                    velocidadKmh = c.optDouble("velocidad_kmh").takeUnless { c.isNull("velocidad_kmh") || it.isNaN() },
+                    rumboGrados = nullableHeadingDegrees(c),
                     color = c.optString("color", "#FFD700").ifBlank { "#FFD700" },
                     iconoSrc = iconoSrc,
                     sidc = sidc,

@@ -48,7 +48,9 @@ async function ensurePoiVisibilitySchema() {
   await pool.query(
     `ALTER TABLE puntos_interes
        ADD COLUMN IF NOT EXISTS visibilidad VARCHAR(10) NOT NULL DEFAULT 'PRIVADO',
-       ADD COLUMN IF NOT EXISTS editor_nombre VARCHAR(255)`
+       ADD COLUMN IF NOT EXISTS editor_nombre VARCHAR(255),
+       ADD COLUMN IF NOT EXISTS velocidad_kmh NUMERIC(8,2),
+       ADD COLUMN IF NOT EXISTS rumbo_grados NUMERIC(5,2)`
   );
 }
 
@@ -113,7 +115,7 @@ router.get("/ops/:id/pois", requireAuth, async (req, res) => {
     await ensurePoiVisibilitySchema();
     const owner = poiOwner(req);
     const { rows } = await pool.query(
-      `SELECT v.*, poi.visibilidad AS visibilidad, p.puesto AS creador_puesto,
+      `SELECT v.*, poi.visibilidad AS visibilidad, poi.velocidad_kmh, poi.rumbo_grados, p.puesto AS creador_puesto,
               COALESCE(poi.editor_nombre, '') AS editor_nombre,
               COALESCE(poi.editor_nombre, '') AS "editorLabel"
          FROM v_poi_detalle v
@@ -178,7 +180,9 @@ router.post("/ops/:id/pois", requireAuth, async (req, res) => {
     sidc,
     tipo_creador,
     id_usuario,
-    id_personal
+    id_personal,
+    velocidad_kmh,
+    rumbo_grados
   } = req.body ?? {};
 
   // Valida nombre
@@ -207,8 +211,8 @@ router.post("/ops/:id/pois", requireAuth, async (req, res) => {
   try {
     // Inserta el POI en la tabla puntos_interes
     const { rows } = await pool.query(
-      `INSERT INTO puntos_interes (tipo_creador, id_usuario, id_personal, nombre, tipo_poi, latitud, longitud, descripcion, color, icono_src, sidc, id_operacion, visibilidad)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PRIVADO') RETURNING *`,
+      `INSERT INTO puntos_interes (tipo_creador, id_usuario, id_personal, nombre, tipo_poi, latitud, longitud, descripcion, color, icono_src, sidc, id_operacion, visibilidad, velocidad_kmh, rumbo_grados)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PRIVADO',$13,$14) RETURNING *`,
       [
         tipo,
         id_usuario ? Number(id_usuario) : null,
@@ -221,7 +225,9 @@ router.post("/ops/:id/pois", requireAuth, async (req, res) => {
         color?.toString().trim() || '#FFD700',
         icono_src?.toString().trim() || null,
         sidc?.toString().trim() || null,
-        id_operacion
+        id_operacion,
+        velocidad_kmh == null ? null : Number(velocidad_kmh),
+        rumbo_grados == null ? null : Number(rumbo_grados)
       ]
     );
 
@@ -265,7 +271,7 @@ router.patch("/ops/:id/pois/:id_poi/publicar", requireAuth, async (req, res) => 
     );
     if (!rows[0]) return res.status(404).json({ ok: false, mensaje: "POI no encontrado o no te pertenece" });
     const { rows: publishedRows } = await pool.query(
-       `SELECT v.*, poi.visibilidad AS visibilidad, p.puesto AS creador_puesto,
+      `SELECT v.*, poi.visibilidad AS visibilidad, poi.velocidad_kmh, poi.rumbo_grados, p.puesto AS creador_puesto,
                COALESCE(NULLIF(v.personal_nombre, ''), NULLIF(v.usuario_nombre, ''), v.tipo_creador::text) AS creador_nombre
          FROM v_poi_detalle v
          JOIN puntos_interes poi ON poi.id_poi = v.id_poi
@@ -314,7 +320,7 @@ router.put("/ops/:id/pois/:id_poi", requireAuth, async (req, res) => {
     return res.status(400).json({ ok: false, mensaje: "id invalido" });
   }
 
-  const { latitud, longitud, nombre, tipo_poi, color, icono_src, sidc, editor_nombre, editorLabel, modificado_por } = req.body ?? {};
+  const { latitud, longitud, nombre, tipo_poi, color, icono_src, sidc, editor_nombre, editorLabel, modificado_por, velocidad_kmh, rumbo_grados } = req.body ?? {};
   if (Object.keys(req.body ?? {}).length === 0) {
     return res.status(400).json({ ok: false, mensaje: "Cuerpo vacio" });
   }
@@ -332,6 +338,8 @@ router.put("/ops/:id/pois/:id_poi", requireAuth, async (req, res) => {
     if (color !== undefined) { setClauses.push(`color = $${paramIndex++}`); values.push(String(color)); }
     if (icono_src !== undefined) { setClauses.push(`icono_src = $${paramIndex++}`); values.push(icono_src); }
     if (sidc !== undefined) { setClauses.push(`sidc = $${paramIndex++}`); values.push(sidc); }
+    if (velocidad_kmh !== undefined) { setClauses.push(`velocidad_kmh = $${paramIndex++}`); values.push(velocidad_kmh == null ? null : Number(velocidad_kmh)); }
+    if (rumbo_grados !== undefined) { setClauses.push(`rumbo_grados = $${paramIndex++}`); values.push(rumbo_grados == null ? null : Number(rumbo_grados)); }
 
     const resolvedEditor = (editor_nombre || editorLabel || modificado_por || req.user?.nombre || req.user?.username || '').toString().trim();
     if (resolvedEditor) {

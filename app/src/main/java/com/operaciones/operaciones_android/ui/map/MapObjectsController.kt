@@ -421,9 +421,11 @@ class MapObjectsController(
         nombre: String,
         tipoPoi: String,
         color: String,
-        iconoSrc: String?
+        iconoSrc: String?,
+        rumboGrados: Double?,
+        velocidadKmh: Double?
     ) {
-        savePoiInternal(lat, lon, nombre, tipoPoi, color, iconoSrc, null)
+        savePoiInternal(lat, lon, nombre, tipoPoi, color, iconoSrc, null, rumboGrados, velocidadKmh)
     }
 
     private fun savePoiInternal(
@@ -433,7 +435,9 @@ class MapObjectsController(
         tipoPoi: String,
         color: String,
         iconoSrc: String?,
-        localTempId: Int?
+        localTempId: Int?,
+        rumboGrados: Double? = null,
+        velocidadKmh: Double? = null
     ) {
         val operationId = host.getMapOperationId()
         if (operationId <= 0) return
@@ -451,6 +455,8 @@ class MapObjectsController(
             .put("color", color)
             .put("icono_src", iconoSrc ?: JSONObject.NULL)
             .put("sidc", iconoSrc?.takeIf { it.startsWith("S") || it.startsWith("G") } ?: JSONObject.NULL)
+            .put("rumbo_grados", rumboGrados ?: JSONObject.NULL)
+            .put("velocidad_kmh", velocidadKmh ?: JSONObject.NULL)
             .put("tipo_creador", tipoCreador)
             .put(idKey, currentUser.id)
 
@@ -791,7 +797,9 @@ class MapObjectsController(
         nombre: String,
         tipoPoi: String,
         color: String,
-        iconoSrc: String?
+        iconoSrc: String?,
+        rumboGrados: Double?,
+        velocidadKmh: Double?
     ) {
         val operationId = host.getMapOperationId()
         if (operationId <= 0) return
@@ -816,6 +824,8 @@ class MapObjectsController(
             .put("editor_nombre", editorName)
             .put("editorLabel", editorName)
             .put("modificado_por", editorName)
+            .put("rumbo_grados", rumboGrados ?: JSONObject.NULL)
+            .put("velocidad_kmh", velocidadKmh ?: JSONObject.NULL)
 
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/ops/$operationId/pois/$poiId")

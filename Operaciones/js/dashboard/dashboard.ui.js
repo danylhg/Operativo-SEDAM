@@ -415,7 +415,7 @@ export function updateFollowedTrackingLocation(key, lat, lon, duration = 0.28) {
     destination: Cesium.Cartesian3.fromDegrees(
       coords.lon,
       coords.lat,
-      Math.max(dashboardState.followedPersonalZoom || 1800, 1800)
+      Math.max(dashboardState.followedPersonalZoom || 1200, 1200)
     ),
     orientation: {
       heading: viewer.camera.heading,

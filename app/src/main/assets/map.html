@@ -320,9 +320,11 @@
     let followMyLocation = false;
     // Mantener una distancia mínima evita que los proveedores de teselas
     // respondan con "Map data not yet available" al centrar la ubicación.
-    const MIN_CAMERA_ZOOM_DISTANCE = 800;
-    const FOLLOW_LOCATION_ZOOM = 1800;
-    const FOLLOW_TRACKING_ZOOM = 1800;
+    // Distancia mínima segura para evitar que algunos dispositivos entren
+    // en el nivel de renderizado que puede cubrir el mapa con la cuadrícula.
+    const MIN_CAMERA_ZOOM_DISTANCE = 1200;
+    const FOLLOW_LOCATION_ZOOM = 1200;
+    const FOLLOW_TRACKING_ZOOM = 1200;
     const TRACKING_PERSONAL_COLOR = Cesium.Color.fromCssColorString("#00BFFF");
     const TRACKING_PERSONAL_SELECTED_COLOR = Cesium.Color.fromCssColorString("#2563EB");
     const TRACKING_VEHICULO_COLOR = Cesium.Color.fromCssColorString("#FFD700");
@@ -1468,6 +1470,17 @@
 
       try {
         const pickedItems = viewer.scene.drillPick ? viewer.scene.drillPick(position, 10) : [];
+
+        // Personal y recursos rastreados tienen prioridad absoluta. Una
+        // persona puede coincidir con el extremo de una ruta; el toque debe
+        // abrir su ficha y no el popup de navegacion.
+        for (const picked of pickedItems) {
+          const ent = picked && picked.id;
+          if (ent && !isIgnoredSelectionEntity(ent)) {
+            const trackingKind = String(getEntityProperty(ent, "trackingKind") || "");
+            if (isTrackingKind(trackingKind)) return ent;
+          }
+        }
         
         // 1. POIs / Blancos / Waypoints tienen máxima prioridad
         for (const picked of pickedItems) {
@@ -1528,6 +1541,18 @@
       if (!entity) return null;
       const entityId = String(entity.id || "");
       const label = getEntityText(entity);
+
+      // Si la entidad trae propiedades de ruta y de tracking, el tracking
+      // gana: tocar una persona nunca debe abrir el popup de navegacion.
+      const trackingKindAtPoint = String(getEntityProperty(entity, "trackingKind") || "");
+      if (isTrackingKind(trackingKindAtPoint)) {
+        const trackingIdAtPoint = Number(getEntityProperty(entity, "trackingId"));
+        if (Number.isFinite(trackingIdAtPoint) && trackingIdAtPoint > 0) {
+          const prefix = trackingKindAtPoint === "vehiculo" ? "V-" : trackingKindAtPoint === "equipo" ? "E-" : trackingKindAtPoint === "dispositivo" ? "D-" : "P-";
+          const fullLabel = String(getEntityProperty(entity, "trackingFullLabel") || "").trim();
+          return { kind: trackingKindAtPoint, id: trackingIdAtPoint, label: fullLabel || label || (prefix + trackingIdAtPoint) };
+        }
+      }
 
       if (entityId.indexOf("geomsg_") === 0 || getEntityProperty(entity, "poiTipo") === "GEO-MSG" || getEntityProperty(entity, "tacticalType") === "geomsg") {
         return { kind: "geomsg", id: entityId, label: (getEntityProperty(entity, "poiAuthor") || "Yo") + " · GEO-MSG" };
@@ -1800,7 +1825,10 @@
               );
               const pickedEntity = getSelectableEntityAt(movement.position);
               if (pickedEntity) {
-                if (selectedObject.kind === "route") {
+                if (isTrackingPersonOrDevice) {
+                  hideTargetPopup();
+                  hideRoutePopup();
+                } else if (selectedObject.kind === "route") {
                   hideTargetPopup();
                   showRoutePopup(pickedEntity, movement.position);
                 } else if (selectedObject.kind === "poi" || selectedObject.kind === "geomsg") {
@@ -3415,6 +3443,27 @@
     // Puntos de InterÃ©s (POI)
     // =========================
     const poiEntities = new Map(); // id_poi â†’ entity
+    const poiMotionStates = new Map();
+    function updateMovingPois() {
+      const now = Date.now();
+      poiMotionStates.forEach(function (motion, entityId) {
+        const entity = poiEntities.get(entityId);
+        if (!entity || !viewer) return;
+        const elapsedSeconds = Math.max(0, (now - motion.startedAt) / 1000);
+        const distanceM = motion.speedKmh / 3.6 * elapsedSeconds;
+        const headingRad = Cesium.Math.toRadians(motion.headingDeg);
+        const northM = Math.cos(headingRad) * distanceM;
+        const eastM = Math.sin(headingRad) * distanceM;
+        const lat = motion.lat + northM / 111320;
+        const lon = motion.lon + eastM / (111320 * Math.max(0.1, Math.cos(Cesium.Math.toRadians(motion.lat))));
+        entity.position = Cesium.Cartesian3.fromDegrees(lon, lat);
+        if (entity.properties) {
+          entity.properties.poiLat = lat;
+          entity.properties.poiLon = lon;
+        }
+      });
+    }
+    window.setInterval(updateMovingPois, 1000);
     const structureEntities = new Map();
     const areaEntities = new Map();
     const operationGridEntities = [];
@@ -3455,7 +3504,7 @@
       return nameStr;
     }
 
-    window.addPoiToMap = function (id, lat, lon, nombre, tipoPoi, color, iconoSrc, sidc, creatorLabel, isMine, visibility) {
+    window.addPoiToMap = function (id, lat, lon, nombre, tipoPoi, color, iconoSrc, sidc, creatorLabel, isMine, visibility, velocidadKmh, rumboGrados) {
       try {
         if (!viewer) return;
 
@@ -3466,6 +3515,8 @@
         const cleanLabel = (tipoPoi || '').toUpperCase() === 'MIL' ? rawLabel.replace(/\s\d{17}$/, '').trim() : rawLabel;
         const displayLabelText = getCleanDisplayLabel(cleanLabel, defaultPoiNames, '');
         const entityId = 'poi_' + id;
+        const speedKmh = Number(velocidadKmh) || 0;
+        const headingDeg = ((Number(rumboGrados) || 0) % 360 + 360) % 360;
         const normalizedIconoSrc = (typeof iconoSrc === 'string') ? iconoSrc.trim() : iconoSrc;
         const normalizedSidc = (typeof sidc === 'string') ? sidc.trim() : sidc;
         const milImage = getMilSymbolImage(normalizedSidc || (normalizedIconoSrc && (normalizedIconoSrc.startsWith('S') || normalizedIconoSrc.startsWith('G')) ? normalizedIconoSrc : null));
@@ -3544,6 +3595,10 @@
             poiCreator: creatorLabel || '',
             poiIsMine: isMine === true || String(isMine).toLowerCase() === 'true',
             poiVisibility: String(visibility || 'PRIVADO').toUpperCase(),
+            velocidad: speedKmh,
+            velocidad_kmh: speedKmh,
+            rumbo: headingDeg,
+            rumbo_grados: headingDeg,
             tacticalType: 'poi'
           }
         });
@@ -3556,6 +3611,9 @@
         }));
 
         poiEntities.set(entityId, entity);
+        if (speedKmh > 0) {
+          poiMotionStates.set(entityId, { lat: Number(lat), lon: Number(lon), speedKmh, headingDeg, startedAt: Date.now() });
+        }
       } catch (e) {
         console.error('[POI][WEB] Error addPoiToMap: ' + e.message);
       }
@@ -3577,6 +3635,7 @@
               const entity = poiEntities.get(entityId);
               if (entity) viewer.entities.remove(entity);
               poiEntities.delete(entityId);
+              poiMotionStates.delete(entityId);
             }
           });
         }
@@ -3592,7 +3651,9 @@
             poi.sidc || null,
             poi.creador_label || poi.creatorLabel || poi.creador_nombre || poi.creador || '',
             poi.isMine === true,
-            poi.visibilidad || 'PRIVADO'
+            poi.visibilidad || 'PRIVADO',
+            poi.velocidad_kmh,
+            poi.rumbo_grados
           );
         });
       } catch (e) {
@@ -3979,7 +4040,11 @@
                   lonRight, latTop,
                   lonLeft, latTop
                 ]),
-                material: color.withAlpha(0.06),
+                // La cuadrícula no debe cubrir ni opacar el mapa base.
+                // Algunos dispositivos renderizan el alpha de los polígonos
+                // como una capa sólida; dejamos las celdas transparentes y
+                // conservamos sus líneas y etiquetas.
+                material: color.withAlpha(0.0),
                 height: 0,
                 perPositionHeight: false
               }

@@ -229,6 +229,8 @@ class OperationMapDataController(
             tipoPoi = tipo,
             lat = lat,
             lon = lon,
+            velocidadKmh = null,
+            rumboGrados = null,
             color = color,
             iconoSrc = resolvedIcon,
             sidc = sidc,
@@ -808,6 +810,8 @@ class OperationMapDataController(
             .put("tipo_poi", poi.tipoPoi)
             .put("latitud", poi.lat)
             .put("longitud", poi.lon)
+            .put("velocidad_kmh", poi.velocidadKmh ?: JSONObject.NULL)
+            .put("rumbo_grados", poi.rumboGrados ?: JSONObject.NULL)
             .put("color", poi.color)
             .put("creatorLabel", poi.creatorLabel)
             .put("creador_label", poi.creatorLabel)

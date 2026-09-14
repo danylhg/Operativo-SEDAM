@@ -4936,6 +4936,10 @@ class MainActivity : AppCompatActivity(),
         viewportWidth: Double?,
         viewportHeight: Double?
     ) {
+        showMapPersonalInfoReference(idPersonal, label, screenX, screenY, viewportWidth, viewportHeight)
+        return
+        /* Legacy popup retained below for easy rollback. */
+        @Suppress("UNREACHABLE_CODE")
         android.util.Log.d("POPUP_DEBUG", "showMapPersonalInfo: id=$idPersonal, label=$label, screenX=$screenX, screenY=$screenY")
         val currentLat = livePersonalLocations[idPersonal]?.first
         val currentLon = livePersonalLocations[idPersonal]?.second
@@ -5161,6 +5165,252 @@ class MainActivity : AppCompatActivity(),
                 selectedPersonalInfoId = null
             }
             showAtLocation(webView, android.view.Gravity.NO_GRAVITY, popupX(screenX, viewportWidth, popupWidth), popupY(screenY, viewportHeight))
+        }
+    }
+
+    private fun showMapPersonalInfoReference(
+        idPersonal: Int,
+        label: String?,
+        screenX: Double?,
+        screenY: Double?,
+        viewportWidth: Double?,
+        viewportHeight: Double?
+    ) {
+        val currentLat = livePersonalLocations[idPersonal]?.first
+        val currentLon = livePersonalLocations[idPersonal]?.second
+        val person = personalList.firstOrNull { it.idPersonal == idPersonal } ?: PersonalItem(
+            idPersonal, label ?: "P-$idPersonal", "", "", "Personal", "",
+            lat = currentLat, lon = currentLon
+        )
+        val name = personDisplayName(person).ifBlank { label ?: "Personal $idPersonal" }
+        val isSelf = isCurrentPersonal(idPersonal)
+        selectedPersonalInfoId = idPersonal
+        lastPersonalCoordinates = screenX to screenY
+        lastPersonalViewport = viewportWidth to viewportHeight
+        personalInfoPopup?.dismiss()
+
+        fun panelBackground(fill: Int, stroke: Int, radius: Float = 8f) = GradientDrawable().apply {
+            setColor(fill)
+            setStroke(dp(1), stroke)
+            cornerRadius = radius * resources.displayMetrics.density
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(8), dp(10), dp(9))
+            background = panelBackground(Color.rgb(29, 55, 67), Color.rgb(82, 123, 168), 10f)
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(TextView(this).apply {
+            text = if (isSelf) "$name (YO)" else name
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            maxLines = 1
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        header.addView(TextView(this).apply {
+            text = "×"
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            textSize = 20f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(dp(24), dp(28))
+            setOnClickListener { personalInfoPopup?.dismiss() }
+        })
+        var dragStartRawX = 0f
+        var dragStartRawY = 0f
+        var dragStartPopupX = 0
+        var dragStartPopupY = 0
+        var currentPopupX = 0
+        var currentPopupY = 0
+        header.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    dragStartRawX = event.rawX
+                    dragStartRawY = event.rawY
+                    dragStartPopupX = currentPopupX
+                    dragStartPopupY = currentPopupY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val popup = personalInfoPopup
+                    if (popup?.isShowing == true) {
+                        val nextX = dragStartPopupX + (event.rawX - dragStartRawX).toInt()
+                        val nextY = dragStartPopupY + (event.rawY - dragStartRawY).toInt()
+                        popup.update(nextX, nextY, -1, -1)
+                        currentPopupX = nextX
+                        currentPopupY = nextY
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> true
+                else -> false
+            }
+        }
+        content.addView(header)
+        content.addView(TextView(this).apply {
+            text = if (livePersonalLocations.containsKey(idPersonal)) "EN LÍNEA" else "SIN CONEXIÓN"
+            setTextColor(if (livePersonalLocations.containsKey(idPersonal)) Color.rgb(126, 220, 239) else Color.rgb(255, 190, 110))
+            textSize = 9f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(1)
+            }
+        })
+        content.addView(View(this).apply {
+            setBackgroundColor(Color.rgb(75, 111, 123))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                topMargin = dp(5); bottomMargin = dp(6)
+            }
+        })
+
+        fun addRow(title: String, value: String) {
+            content.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(TextView(this@MainActivity).apply {
+                    text = title; setTextColor(Color.WHITE); textSize = 11f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                })
+                addView(TextView(this@MainActivity).apply {
+                    text = value; setTextColor(Color.WHITE); textSize = 11f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        marginStart = dp(8)
+                    }
+                })
+            })
+        }
+        val lat = currentLat ?: person.lat
+        val lon = currentLon ?: person.lon
+        val latText = lat?.let { String.format(java.util.Locale.US, "%.6f", it) } ?: "-"
+        val lonText = lon?.let { String.format(java.util.Locale.US, "%.6f", it) } ?: "-"
+        content.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(TextView(this@MainActivity).apply {
+                text = "Lat: $latText"; setTextColor(Color.WHITE); textSize = 11f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "Lng: $lonText"; setTextColor(Color.WHITE); textSize = 11f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = dp(14)
+                }
+            })
+            addView(ImageButton(this@MainActivity).apply {
+                setImageResource(R.drawable.ic_copy_coordinates)
+                scaleType = ImageView.ScaleType.CENTER
+                background = null
+                contentDescription = "Copiar coordenadas"
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+                layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                    marginStart = dp(5)
+                }
+                setOnClickListener {
+                    val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Coordenadas", "$latText, $lonText"))
+                    Toast.makeText(this@MainActivity, "Coordenadas copiadas", Toast.LENGTH_SHORT).show()
+                }
+            })
+        })
+        addRow("Vel:", String.format(java.util.Locale.US, "%.2f km/h", person.velocidadKmh ?: 0.0))
+        content.addView(View(this).apply {
+            setBackgroundColor(Color.rgb(75, 111, 123))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                topMargin = dp(7); bottomMargin = dp(7)
+            }
+        })
+        content.addView(TextView(this).apply {
+            text = "Dispositivos:"; setTextColor(Color.WHITE); textSize = 11f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        val devices = dispositivosList.filter { it.idPersonal == idPersonal }
+        if (devices.isEmpty()) {
+            content.addView(TextView(this).apply { text = "Sin dispositivos asignados"; setTextColor(Color.WHITE); textSize = 10f })
+        } else devices.forEach { device ->
+            val deviceName = listOf(device.tipo, device.marca, device.modelo).filter { it.isNotBlank() }.joinToString(" ")
+            content.addView(TextView(this).apply {
+                text = deviceName.ifBlank { "Dispositivo" }; setTextColor(Color.WHITE); textSize = 10f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            if (device.numeroTelefono.isNotBlank()) content.addView(TextView(this).apply {
+                text = "TELÉFONO ${device.numeroTelefono}"; setTextColor(Color.WHITE); textSize = 10f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+        }
+        val signalDevice = devices.firstOrNull { liveDispositivoLocations.containsKey(it.idDispositivo) || isFreshTrackingTimestamp(it.ultimaActualizacion) }
+        val online = signalDevice != null
+        val status = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(9), dp(6), dp(9), dp(6))
+            background = panelBackground(Color.rgb(31, 66, 82), Color.rgb(77, 127, 153))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+        }
+        status.addView(TextView(this).apply {
+            text = "Estado  ${if (online) "EN LÍNEA" else "SIN CONEXIÓN"}"
+            setTextColor(if (online) Color.rgb(126, 220, 239) else Color.rgb(255, 190, 110)); textSize = 10f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        status.addView(TextView(this).apply {
+            text = "Actualizado ${if (online) formatTimestampTime(signalDevice?.ultimaActualizacion ?: "") else "-"}"
+            setTextColor(Color.WHITE); textSize = 9f; setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        status.visibility = View.GONE
+        content.addView(status)
+        val signal = FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(3, 17, 27))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150)).apply {
+                topMargin = dp(7)
+            }
+        }
+        signal.addView(TextView(this).apply {
+            text = if (online) "SEÑAL RECIBIDA" else "ESPERANDO SEÑAL"; gravity = Gravity.CENTER
+            setTextColor(Color.WHITE); textSize = 9f; setTypeface(typeface, android.graphics.Typeface.BOLD)
+            background = panelBackground(Color.rgb(8, 29, 42), Color.rgb(77, 127, 153), 7f)
+            layoutParams = FrameLayout.LayoutParams(dp(104), dp(48), Gravity.CENTER)
+        })
+        content.addView(signal)
+        if (!isSelf) {
+            val actionRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(9) }
+            }
+            actionRow.addView(TextView(this).apply {
+                text = "Enviar mensaje"; gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 12f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                background = panelBackground(Color.rgb(25, 78, 101), Color.rgb(51, 153, 190), 7f)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+                setOnClickListener { personalInfoPopup?.dismiss(); selectedPersonalInfoId = null; openChatForPersonal(idPersonal) }
+            })
+            actionRow.addView(TextView(this).apply {
+                text = "Hacer ruta"; gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 12f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                background = panelBackground(Color.rgb(14, 116, 144), Color.rgb(56, 189, 248), 7f)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { marginStart = dp(7) }
+                setOnClickListener {
+                    personalInfoPopup?.dismiss()
+                    selectedPersonalInfoId = null
+                    createRouteFromMyLocation(lat, lon, name)
+                }
+            })
+            content.addView(actionRow)
+        }
+        val popupWidth = dp(290)
+        val initialPopupX = popupX(screenX, viewportWidth, popupWidth)
+        val initialPopupY = popupY(screenY, viewportHeight)
+        dragStartPopupX = initialPopupX
+        dragStartPopupY = initialPopupY
+        currentPopupX = initialPopupX
+        currentPopupY = initialPopupY
+        personalInfoPopup = PopupWindow(content, popupWidth, ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            isOutsideTouchable = true
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            elevation = dp(10).toFloat()
+            setOnDismissListener { selectedPersonalInfoId = null }
+            showAtLocation(webView, Gravity.NO_GRAVITY, initialPopupX, initialPopupY)
         }
     }
 

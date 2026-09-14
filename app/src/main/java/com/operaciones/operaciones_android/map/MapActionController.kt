@@ -139,14 +139,18 @@ class MapActionController(
             nombre: String,
             tipoPoi: String,
             color: String,
-            iconoSrc: String? = null
+            iconoSrc: String? = null,
+            rumboGrados: Double? = null,
+            velocidadKmh: Double? = null
         )
         fun updatePoi(
             poiId: Int,
             nombre: String,
             tipoPoi: String,
             color: String,
-            iconoSrc: String? = null
+            iconoSrc: String? = null,
+            rumboGrados: Double? = null,
+            velocidadKmh: Double? = null
         )
         fun clearRouteOnBackend()
     }
@@ -395,10 +399,11 @@ class MapActionController(
         root.addView(optionRow)
         optionViews[if (isTarget) 1 else 0].performClick()
 
+        val metricInputs = mutableListOf<EditText>()
         if (isTarget) {
             val metrics = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             listOf("Rumbo (°)", "Vel. (km/h)").forEachIndexed { index, hintValue ->
-                metrics.addView(EditText(context).apply {
+                val metricInput = EditText(context).apply {
                     hint = hintValue
                     inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
                     setHintTextColor(Color.parseColor("#849AB4"))
@@ -406,7 +411,9 @@ class MapActionController(
                     textSize = 12f
                     setPadding(dp(10), 0, dp(10), 0)
                     background = bg("#182C43", "#3C5874")
-                }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { topMargin = dp(12); if (index > 0) marginStart = dp(6) })
+                }
+                metricInputs += metricInput
+                metrics.addView(metricInput, LinearLayout.LayoutParams(0, dp(42), 1f).apply { topMargin = dp(12); if (index > 0) marginStart = dp(6) })
             }
             root.addView(metrics)
         }
@@ -443,7 +450,9 @@ class MapActionController(
             if (pointName.isBlank()) { name.error = "Escribe un nombre"; return@setOnClickListener }
             val color = when (identity) { "Amigo" -> "#39A8FF"; "Hostil" -> "#FF4D5E"; "Neutral" -> "#54D18B"; else -> "#E4B943" }
             val sidc = currentSidc()
-            host.savePoi(lat, lon, pointName, if (isTarget) "MIL" else "PDI", color, sidc)
+            val heading = metricInputs.getOrNull(0)?.text?.toString()?.toDoubleOrNull()?.coerceIn(0.0, 360.0)
+            val speed = metricInputs.getOrNull(1)?.text?.toString()?.toDoubleOrNull()?.coerceAtLeast(0.0)
+            host.savePoi(lat, lon, pointName, if (isTarget) "MIL" else "PDI", color, sidc, heading, speed)
             dialog.dismiss()
         }
         dialog.setOnShowListener {
@@ -622,10 +631,11 @@ class MapActionController(
         optionViews.firstOrNull { it.text.toString().equals(selectedOption, ignoreCase = true) }?.performClick()
             ?: optionViews[if (isTarget) 1 else 0].performClick()
 
+        val metricInputs = mutableListOf<EditText>()
         if (isTarget) {
             val metrics = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             listOf("Rumbo (°)", "Vel. (km/h)").forEachIndexed { index, hintValue ->
-                metrics.addView(EditText(context).apply {
+                val metricInput = EditText(context).apply {
                     hint = hintValue
                     inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
                     setHintTextColor(Color.parseColor("#849AB4"))
@@ -633,7 +643,9 @@ class MapActionController(
                     textSize = 12f
                     setPadding(dp(10), 0, dp(10), 0)
                     background = bg("#182C43", "#3C5874")
-                }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { topMargin = dp(12); if (index > 0) marginStart = dp(6) })
+                }
+                metricInputs += metricInput
+                metrics.addView(metricInput, LinearLayout.LayoutParams(0, dp(42), 1f).apply { topMargin = dp(12); if (index > 0) marginStart = dp(6) })
             }
             root.addView(metrics)
         }
@@ -668,7 +680,9 @@ class MapActionController(
             if (pointName.isBlank()) { name.error = "Escribe un nombre"; return@setOnClickListener }
             val color = when (identity) { "Amigo" -> "#39A8FF"; "Hostil" -> "#FF4D5E"; "Neutral" -> "#54D18B"; else -> "#E4B943" }
             val sidc = currentSidc()
-            host.updatePoi(poiId, pointName, if (isTarget) "MIL" else "PDI", color, sidc)
+            val heading = metricInputs.getOrNull(0)?.text?.toString()?.toDoubleOrNull()?.coerceIn(0.0, 360.0)
+            val speed = metricInputs.getOrNull(1)?.text?.toString()?.toDoubleOrNull()?.coerceAtLeast(0.0)
+            host.updatePoi(poiId, pointName, if (isTarget) "MIL" else "PDI", color, sidc, heading, speed)
             dialog.dismiss()
         }
         dialog.setOnShowListener {

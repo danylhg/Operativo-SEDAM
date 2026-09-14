@@ -168,7 +168,7 @@ export function focusEmergencyForChatMessage(msg) {
   }
 
   viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat, 1800),
+    destination: Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat, 1200),
     orientation: {
       heading: viewer.camera.heading,
       pitch: viewer.camera.pitch,
