@@ -1287,14 +1287,18 @@ class MainActivity : AppCompatActivity(),
         creatorPersonalId: Int?,
         creatorLabel: String,
         creatorRank: String,
-        editorLabel: String
+        editorLabel: String,
+        velocidadKmh: Double?,
+        rumboGrados: Double?
     ) {
         mapDataController.onPoiCreated(
             idPoi, lat, lon, nombre, tipo, color, iconoSrc, sidc,
             visibility, creatorType, creatorUserId, creatorPersonalId,
             editorLabel = editorLabel,
             creatorLabel = creatorLabel,
-            creatorRank = creatorRank
+            creatorRank = creatorRank,
+            velocidadKmh = velocidadKmh,
+            rumboGrados = rumboGrados
         )
     }
 

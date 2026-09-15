@@ -607,7 +607,7 @@ class CesiumWebController(
         }
     }
 
-    fun addPoiToMap(idPoi: Int, lat: Double, lon: Double, nombre: String, tipoPoi: String, color: String, iconoSrc: String? = null, sidc: String? = null, creatorLabel: String = "", editorLabel: String = "") {
+    fun addPoiToMap(idPoi: Int, lat: Double, lon: Double, nombre: String, tipoPoi: String, color: String, iconoSrc: String? = null, sidc: String? = null, creatorLabel: String = "", editorLabel: String = "", isMine: Boolean = false, visibility: String = "PRIVADO", velocidadKmh: Double? = null, rumboGrados: Double? = null) {
         val safeNombre = jsString(nombre)
         val safeTipo = jsString(tipoPoi)
         val safeColor = jsString(color)
@@ -624,7 +624,7 @@ class CesiumWebController(
                 """
                 (function() {
                     if (typeof addPoiToMap === 'function') {
-                        addPoiToMap($idPoi, $lat, $lon, '$safeNombre', '$safeTipo', '$safeColor', $iconArg, $sidcArg, '$safeCreator', '$safeEditor');
+                        addPoiToMap($idPoi, $lat, $lon, '$safeNombre', '$safeTipo', '$safeColor', $iconArg, $sidcArg, '$safeCreator', $isMine, '$visibility', ${velocidadKmh ?: "null"}, ${rumboGrados ?: "null"});
                         return 'OK';
                     }
                     return 'ERROR:addPoiToMap no existe';

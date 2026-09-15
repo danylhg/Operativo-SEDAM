@@ -510,6 +510,61 @@ function getMilBillboardSize() {
   return 42;
 }
 
+function normalizeNumericInput(value, fallback = null) {
+  if (value === undefined || value === null || String(value).trim() === "") return fallback;
+  const number = Number(String(value).replace(",", "."));
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function normalizeHeading(value) {
+  const heading = normalizeNumericInput(value);
+  if (heading === null) return null;
+  return ((heading % 360) + 360) % 360;
+}
+
+function destinationFromHeading(lat, lng, headingDegrees, distanceMeters) {
+  const earthRadius = 6378137;
+  const angularDistance = distanceMeters / earthRadius;
+  const bearing = Cesium.Math.toRadians(headingDegrees);
+  const lat1 = Cesium.Math.toRadians(lat);
+  const lng1 = Cesium.Math.toRadians(lng);
+  const sinLat1 = Math.sin(lat1);
+  const cosLat1 = Math.cos(lat1);
+  const sinDistance = Math.sin(angularDistance);
+  const cosDistance = Math.cos(angularDistance);
+  const lat2 = Math.asin(sinLat1 * cosDistance + cosLat1 * sinDistance * Math.cos(bearing));
+  const lng2 = lng1 + Math.atan2(
+    Math.sin(bearing) * sinDistance * cosLat1,
+    cosDistance - sinLat1 * Math.sin(lat2)
+  );
+  return {
+    lat: Cesium.Math.toDegrees(lat2),
+    lng: Cesium.Math.toDegrees(((lng2 + Math.PI * 3) % (Math.PI * 2)) - Math.PI)
+  };
+}
+
+function createMovingPosition(lat, lng, speedKmh, headingDegrees) {
+  const speed = normalizeNumericInput(speedKmh, 0);
+  const heading = normalizeHeading(headingDegrees);
+  const viewer = dashboardState.viewer;
+  if (!viewer || speed <= 0 || heading === null) return Cesium.Cartesian3.fromDegrees(lng, lat);
+
+  const startTime = Cesium.JulianDate.clone(viewer.clock.currentTime);
+  return new Cesium.CallbackProperty((time) => {
+    const elapsedSeconds = Math.max(0, Cesium.JulianDate.secondsDifference(time, startTime));
+    const distanceMeters = speed * 1000 / 3600 * elapsedSeconds;
+    const destination = destinationFromHeading(lat, lng, heading, distanceMeters);
+    return Cesium.Cartesian3.fromDegrees(destination.lng, destination.lat);
+  }, false);
+}
+
+function getMilMovementData() {
+  return {
+    velocidad_kmh: Math.max(0, normalizeNumericInput(dom.milSpeed?.value, 0)),
+    rumbo_grados: normalizeHeading(dom.milHeading?.value) ?? 0
+  };
+}
+
 const MIL_SYMBOL_CATALOG = [
   { dimension: "G", group: "Tierra - Unidades", code: "U-----", label: "Unidad genérica" },
   { dimension: "G", group: "Tierra - Unidades", code: "UCI---", label: "Infantería" },
@@ -690,6 +745,8 @@ function buildPoiEntity(poi, tacticalType = "poi") {
   const cesiumColor = Cesium.Color.fromCssColorString(hexColor);
   const label = getPoiDisplayLabel(poi);
   const entityId = poi.id_poi ? `poi_${poi.id_poi}` : undefined;
+  const speedKmh = normalizeNumericInput(poi.velocidad_kmh ?? poi.velocidad ?? poi.speed, 0);
+  const headingDegrees = normalizeHeading(poi.rumbo_grados ?? poi.rumbo ?? poi.headingDegrees ?? poi.heading);
 
   if (entityId && viewer.entities.getById(entityId)) {
     return null;
@@ -732,12 +789,14 @@ function buildPoiEntity(poi, tacticalType = "poi") {
       draggable: true,
       id_poi: poi.id_poi ?? null,
       sidc: sidc,
+      velocidad_kmh: speedKmh,
+      rumbo_grados: headingDegrees,
       ...creatorProperties(poi)
     }
   });
 }
 
-async function savePoiToBackend(lat, lng, nombre, tipoPoi, colorName, iconoSrc = null, sidc = null) {
+async function savePoiToBackend(lat, lng, nombre, tipoPoi, colorName, iconoSrc = null, sidc = null, movement = {}) {
   try {
     const API_BASE = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
     const token = localStorage.getItem("token");
@@ -757,6 +816,8 @@ async function savePoiToBackend(lat, lng, nombre, tipoPoi, colorName, iconoSrc =
       color: COLOR_HEX_MAP[colorName] || '#FFD700',
       icono_src: iconoSrc,
       sidc: sidc,
+      velocidad_kmh: movement.velocidad_kmh ?? null,
+      rumbo_grados: movement.rumbo_grados ?? null,
       tipo_creador: tabla === "personal" ? "PERSONAL" : "USUARIO",
       [idKey]: idVal
     };
@@ -1802,7 +1863,8 @@ export async function createPoi(lat, lng, iconPath = null) {
 
 export async function createMilSymbol(lat, lng, nombre, iconPath, scale = 0.08, sidc = null) {
   const uniqueName = buildMilUniqueName(nombre);
-  let savedPoi = await savePoiToBackend(lat, lng, uniqueName, "MIL", "red", iconPath, sidc);
+  const movement = getMilMovementData();
+  let savedPoi = await savePoiToBackend(lat, lng, uniqueName, "MIL", "red", iconPath, sidc, movement);
   if (!savedPoi) {
     savedPoi = {
       id_poi: `local_${Date.now()}`,
@@ -1812,7 +1874,8 @@ export async function createMilSymbol(lat, lng, nombre, iconPath, scale = 0.08, 
       longitud: lng,
       color: "#FF4500",
       icono_src: iconPath,
-      sidc: sidc
+      sidc: sidc,
+      ...movement
     };
   }
 
@@ -2275,7 +2338,11 @@ function applyPoiUpdateToEntity(entity, poi) {
   const lng = Number(poi.longitud ?? poi.lon ?? poi.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-  entity.position = Cesium.Cartesian3.fromDegrees(lng, lat);
+  const speedKmh = normalizeNumericInput(poi.velocidad_kmh ?? poi.velocidad ?? poi.speed,
+    entity.properties?.velocidad_kmh?.getValue?.() ?? entity.properties?.velocidad_kmh ?? 0);
+  const headingDegrees = normalizeHeading(poi.rumbo_grados ?? poi.rumbo ?? poi.headingDegrees ?? poi.heading)
+    ?? normalizeHeading(entity.properties?.rumbo_grados?.getValue?.() ?? entity.properties?.rumbo_grados);
+  entity.position = createMovingPosition(lat, lng, speedKmh, headingDegrees);
 }
 
 function applyStructureUpdateToEntity(entity, estructura) {

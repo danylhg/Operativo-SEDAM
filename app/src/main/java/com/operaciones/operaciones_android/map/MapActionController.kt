@@ -464,7 +464,7 @@ class MapActionController(
         preview.postDelayed({ updatePreview() }, 250)
     }
 
-    fun showEditPointForm(poiId: Int, isTarget: Boolean, lat: Double, lon: Double, currentName: String, currentIdentity: String, currentOption: String) {
+    fun showEditPointForm(poiId: Int, isTarget: Boolean, lat: Double, lon: Double, currentName: String, currentIdentity: String, currentOption: String, currentHeading: Double? = null, currentSpeed: Double? = null) {
         val context = host.getContext()
         val density = context.resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
@@ -645,6 +645,12 @@ class MapActionController(
                     background = bg("#182C43", "#3C5874")
                 }
                 metricInputs += metricInput
+                if (isTarget) {
+                    val currentValue = if (index == 0) currentHeading else currentSpeed
+                    if (currentValue != null && currentValue.isFinite()) {
+                        metricInput.setText(String.format(Locale.US, "%.2f", currentValue))
+                    }
+                }
                 metrics.addView(metricInput, LinearLayout.LayoutParams(0, dp(42), 1f).apply { topMargin = dp(12); if (index > 0) marginStart = dp(6) })
             }
             root.addView(metrics)

@@ -752,6 +752,8 @@ class MapObjectsController(
             val lat = payload.optDouble("lat")
             val lon = payload.optDouble("lon")
             val name = payload.optString("name")
+            val heading = payload.optDouble("rumbo").takeUnless { it.isNaN() }
+            val speed = payload.optDouble("velocidad").takeUnless { it.isNaN() }
             val rawIdentity = payload.optString("identity").trim()
             val rawOption = payload.optString("option").trim()
             val sidc = payload.optString("sidc", "").trim().uppercase()
@@ -788,7 +790,7 @@ class MapObjectsController(
                 }
             }
 
-            mapActionController.showEditPointForm(poiId, isTarget, lat, lon, name, identity, option)
+            mapActionController.showEditPointForm(poiId, isTarget, lat, lon, name, identity, option, heading, speed)
         }
     }
 
@@ -844,10 +846,33 @@ class MapObjectsController(
             override fun onResponse(call: Call, response: Response) {
                 val success = response.isSuccessful
                 val bodyStr = response.body?.string().orEmpty()
+                val updatedPoi = runCatching {
+                    JSONObject(bodyStr).optJSONObject("poi")
+                }.getOrNull()
                 response.close()
                 activity.runOnUiThread {
                     if (success) {
                         Toast.makeText(activity, "Punto actualizado", Toast.LENGTH_SHORT).show()
+                        if (updatedPoi != null) {
+                            val updatedSpeed = updatedPoi.optDouble("velocidad_kmh")
+                                .takeUnless { updatedPoi.isNull("velocidad_kmh") || it.isNaN() }
+                            val updatedHeading = updatedPoi.optDouble("rumbo_grados")
+                                .takeUnless { updatedPoi.isNull("rumbo_grados") || it.isNaN() }
+                            cesiumWebController.addPoiToMap(
+                                idPoi = updatedPoi.optInt("id_poi", poiId),
+                                lat = updatedPoi.optDouble("latitud", 0.0),
+                                lon = updatedPoi.optDouble("longitud", 0.0),
+                                nombre = updatedPoi.optString("nombre", nombre),
+                                tipoPoi = updatedPoi.optString("tipo_poi", tipoPoi),
+                                color = updatedPoi.optString("color", color),
+                                iconoSrc = updatedPoi.optString("icono_src").takeIf { it.isNotBlank() },
+                                sidc = updatedPoi.optString("sidc").takeIf { it.isNotBlank() },
+                                creatorLabel = "",
+                                visibility = updatedPoi.optString("visibilidad", "PRIVADO"),
+                                velocidadKmh = updatedSpeed,
+                                rumboGrados = updatedHeading
+                            )
+                        }
                         cesiumWebController.evaluate("if(typeof hideTargetPopup==='function') hideTargetPopup();")
                         host.syncMapData(true)
                     } else {
@@ -1064,6 +1089,8 @@ class MapObjectsController(
         } else {
             iconoSrc?.takeIf { it.startsWith("S") || it.startsWith("G") }
         }
+        val poiSpeed = poi.optDouble("velocidad_kmh").takeUnless { poi.isNull("velocidad_kmh") || it.isNaN() }
+        val poiHeading = poi.optDouble("rumbo_grados").takeUnless { poi.isNull("rumbo_grados") || it.isNaN() }
 
         val creatorRank = abbreviateRank(currentUser.jerarquia)
         val rawCreatorName = currentUser.nombreCompleto.ifBlank { currentUser.username }.trim()
@@ -1086,7 +1113,10 @@ class MapObjectsController(
                     iconoSrc = poiIconoSrc,
                     sidc = poiSidc,
                     creatorLabel = creatorName,
-                    editorLabel = ""
+                    editorLabel = "",
+                    visibility = poi.optString("visibilidad", "PRIVADO"),
+                    velocidadKmh = poiSpeed,
+                    rumboGrados = poiHeading
                 )
             }
 

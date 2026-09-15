@@ -62,7 +62,10 @@ class OperationMapDataController(
         val iconoSrc: String? = null,
         val sidc: String? = null,
         val creatorLabel: String = "",
-        val editorLabel: String = ""
+        val editorLabel: String = "",
+        val visibility: String = "PRIVADO",
+        val velocidadKmh: Double? = null,
+        val rumboGrados: Double? = null
     )
 
     private data class PendingCoverageCircleAddition(
@@ -217,7 +220,9 @@ class OperationMapDataController(
         creatorPersonalId: Int? = null,
         editorLabel: String = "",
         creatorLabel: String = "",
-        creatorRank: String = ""
+        creatorRank: String = "",
+        velocidadKmh: Double? = null,
+        rumboGrados: Double? = null
     ) {
         if (idPoi <= 0) return
 
@@ -229,8 +234,8 @@ class OperationMapDataController(
             tipoPoi = tipo,
             lat = lat,
             lon = lon,
-            velocidadKmh = null,
-            rumboGrados = null,
+            velocidadKmh = velocidadKmh,
+            rumboGrados = rumboGrados,
             color = color,
             iconoSrc = resolvedIcon,
             sidc = sidc,
@@ -247,7 +252,7 @@ class OperationMapDataController(
         if (host.isMapDataCesiumReady()) {
             cesiumWebController.loadPois("[${poiJson(newItem)}]", replace = false)
         } else {
-            pendingPoiAdditions.add(PendingPoiAddition(idPoi, lat, lon, nombre, tipo, color, resolvedIcon, sidc, resolvedCreatorLabel, editorLabel))
+            pendingPoiAdditions.add(PendingPoiAddition(idPoi, lat, lon, nombre, tipo, color, resolvedIcon, sidc, resolvedCreatorLabel, editorLabel, visibility, velocidadKmh, rumboGrados))
         }
     }
 
@@ -562,7 +567,11 @@ class OperationMapDataController(
                 poi.iconoSrc,
                 poi.sidc,
                 poi.creatorLabel,
-                poi.editorLabel
+                poi.editorLabel,
+                false,
+                poi.visibility,
+                poi.velocidadKmh,
+                poi.rumboGrados
             )
         }
         pendingPoiAdditions.clear()

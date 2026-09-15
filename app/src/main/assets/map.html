@@ -362,11 +362,11 @@
 
     const BASE_LAYER_PROVIDERS = {
       osm: () => new Cesium.UrlTemplateImageryProvider({
-        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+        url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         // Niveles superiores pueden devolver mosaicos grises de Esri en
         // algunas zonas. Cesium ampliará el nivel 17 y mantendrá el mapa visible.
-        maximumLevel: 18,
-        credit: "Esri World Street Map"
+        maximumLevel: 19,
+        credit: "© OpenStreetMap contributors"
       }),
       satellite: () => new Cesium.UrlTemplateImageryProvider({
         url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -1220,6 +1220,13 @@
       if (!Number.isFinite(rumbo)) rumbo = 0;
       let vel = Number(getEntityProperty(entity, 'velocidad') ?? getEntityProperty(entity, 'speed') ?? getEntityProperty(entity, 'velocidad_kmh') ?? 0);
       if (!Number.isFinite(vel)) vel = 0;
+      // El movimiento mantiene la fuente activa en poiMotionStates. Usarla
+      // aquí evita que la tarjeta muestre ceros aunque la entidad ya se mueva.
+      const activeMotion = poiMotionStates && poiMotionStates.get(String(entity.id));
+      if (activeMotion) {
+        rumbo = Number(activeMotion.headingDeg);
+        vel = Number(activeMotion.speedKmh);
+      }
 
       const platform = targetPlatformFromSidc(sidc);
       const tipo = String(getEntityProperty(entity, 'poiTipo') || getEntityProperty(entity, 'trackingKind') || '').trim();
@@ -1316,10 +1323,19 @@
     const targetPopupEdit = document.getElementById('targetPopupEdit');
     if (targetPopupEdit) targetPopupEdit.addEventListener('click', function () {
       const popup = document.getElementById('targetPopup');
+      const editEntity = activePopupEntity;
+      const editMotion = editEntity && poiMotionStates && poiMotionStates.get(String(editEntity.id));
+      const editNumber = function (value) {
+        const number = Number(value);
+        // Cero es el valor interno por defecto, no un dato capturado por el usuario.
+        return Number.isFinite(number) && number !== 0 ? number : null;
+      };
       if (window.Android && typeof Android.onPoiEditRequested === 'function') Android.onPoiEditRequested(JSON.stringify({
         id: Number(popup.dataset.poiId || 0), isTarget: popup.dataset.poiIsTarget === 'true',
         lat: Number(popup.dataset.poiLat), lon: Number(popup.dataset.poiLon),
-        name: popup.dataset.poiName || '', sidc: popup.dataset.poiSidc || ''
+        name: popup.dataset.poiName || '', sidc: popup.dataset.poiSidc || '',
+        rumbo: editMotion ? editNumber(editMotion.headingDeg) : editNumber(getEntityProperty(editEntity, 'rumbo_grados')),
+        velocidad: editMotion ? editNumber(editMotion.speedKmh) : editNumber(getEntityProperty(editEntity, 'velocidad_kmh'))
       }));
     });
     const targetPopupDelete = document.getElementById('targetPopupDelete');
@@ -1721,10 +1737,11 @@
       configureGoogleLikeCamera(viewer);
       initLayerControl();
       // En móvil la capa satelital sola evita descargar y componer dos mapas a la vez.
-      let savedBaseLayer = "satellite";
+      let savedBaseLayer = "osm";
       try {
-        savedBaseLayer = localStorage.getItem("sedam_android_map_layer") || "satellite";
-        if (savedBaseLayer === "hybrid") savedBaseLayer = "satellite";
+        savedBaseLayer = localStorage.getItem("sedam_android_map_layer") || "osm";
+        // Algunos WebView muestran teselas satelitales grises sin reportar error.
+        if (savedBaseLayer === "satellite" || savedBaseLayer === "hybrid") savedBaseLayer = "osm";
       } catch (_) {}
       setBaseLayer(savedBaseLayer);
       if (viewer.scene && viewer.scene.postRender) {
@@ -2650,12 +2667,13 @@
       ));
     }
 
-    function headingEndPosition(lat, lon, headingDegrees, meters) {
-      const origin = Cesium.Cartesian3.fromDegrees(lon, lat);
+    function headingEndPosition(lat, lon, headingDegrees, meters, startMeters, heightMeters) {
+      const origin = Cesium.Cartesian3.fromDegrees(lon, lat, Number(heightMeters) || 0);
       const radians = Cesium.Math.toRadians(headingDegrees);
+      const startDistance = Number.isFinite(startMeters) ? startMeters : TRACKING_HEADING_START_M;
       const localStart = new Cesium.Cartesian3(
-        Math.sin(radians) * TRACKING_HEADING_START_M,
-        Math.cos(radians) * TRACKING_HEADING_START_M,
+        Math.sin(radians) * startDistance,
+        Math.cos(radians) * startDistance,
         0
       );
       const localEnd = new Cesium.Cartesian3(
@@ -2667,6 +2685,33 @@
       const start = Cesium.Matrix4.multiplyByPoint(enu, localStart, new Cesium.Cartesian3());
       const end = Cesium.Matrix4.multiplyByPoint(enu, localEnd, new Cesium.Cartesian3());
       return { start, end };
+    }
+
+    function poiArrowPositions(lat, lon, headingDegrees) {
+      const origin = Cesium.Cartesian3.fromDegrees(lon, lat, 3);
+      const radians = Cesium.Math.toRadians(headingDegrees);
+      const enu = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
+      const toWorld = (east, north) => Cesium.Matrix4.multiplyByPoint(
+        enu,
+        new Cesium.Cartesian3(east, north, 0),
+        new Cesium.Cartesian3()
+      );
+      // Sale por debajo del símbolo, hace un quiebre y termina apuntando al rumbo.
+      const elbow = toWorld(0, -13);
+      const tipEast = Math.sin(radians) * POI_HEADING_LENGTH_M;
+      const tipNorth = Math.cos(radians) * POI_HEADING_LENGTH_M;
+      const headLength = 8;
+      const headWidth = 4;
+      const tip = toWorld(tipEast, tipNorth);
+      const headLeft = toWorld(
+        tipEast - Math.sin(radians) * headLength - Math.cos(radians) * headWidth,
+        tipNorth - Math.cos(radians) * headLength + Math.sin(radians) * headWidth
+      );
+      const headRight = toWorld(
+        tipEast - Math.sin(radians) * headLength + Math.cos(radians) * headWidth,
+        tipNorth - Math.cos(radians) * headLength - Math.sin(radians) * headWidth
+      );
+      return [toWorld(0, -5), elbow, tip, headLeft, tip, headRight];
     }
 
     function upsertTrackingHeadingLine(trackingKey, lat, lon, color, meta) {
@@ -3443,6 +3488,46 @@
     // Puntos de InterÃ©s (POI)
     // =========================
     const poiEntities = new Map(); // id_poi â†’ entity
+    const poiHeadingEntities = new Map();
+    const POI_HEADING_LENGTH_M = 42;
+    const POI_DIRECTION_ARROW_IMAGE = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="58" viewBox="0 0 80 58"><path d="M40 1V35L70 18 M70 18L58 10 M70 18L58 26" fill="none" stroke="black" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+    function poiArrowRotation(headingDeg) {
+      // La flecha del SVG base apunta 60 grados al este del norte.
+      return Cesium.Math.toRadians(headingDeg - 60);
+    }
+    function updatePoiHeadingArrow(entityId, lat, lon, headingDeg, color) {
+      if (!viewer || !Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(headingDeg)) return;
+      // Comienza en el centro del símbolo y queda ligeramente elevada para no ocultarse con el terreno.
+      const fallbackPosition = Cesium.Cartesian3.fromDegrees(lon, lat);
+      const attachedPosition = new Cesium.CallbackProperty(function () {
+        const target = poiEntities.get(entityId);
+        if (!target || !target.position) return fallbackPosition;
+        return target.position.getValue
+          ? target.position.getValue(viewer.clock.currentTime)
+          : target.position;
+      }, false);
+      const current = poiHeadingEntities.get(entityId);
+      if (current) {
+        current.billboard.rotation = poiArrowRotation(headingDeg);
+        return;
+      }
+      const arrow = viewer.entities.add({
+        id: entityId + '_heading',
+        position: attachedPosition,
+        billboard: {
+          image: POI_DIRECTION_ARROW_IMAGE,
+          rotation: poiArrowRotation(headingDeg),
+          horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+          verticalOrigin: Cesium.VerticalOrigin.CENTER,
+          pixelOffset: new Cesium.Cartesian2(0, 20),
+          width: 38,
+          height: 28,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY
+        },
+        properties: { tacticalType: 'poi-heading', poiId: entityId }
+      });
+      poiHeadingEntities.set(entityId, arrow);
+    }
     const poiMotionStates = new Map();
     function updateMovingPois() {
       const now = Date.now();
@@ -3457,6 +3542,7 @@
         const lat = motion.lat + northM / 111320;
         const lon = motion.lon + eastM / (111320 * Math.max(0.1, Math.cos(Cesium.Math.toRadians(motion.lat))));
         entity.position = Cesium.Cartesian3.fromDegrees(lon, lat);
+        updatePoiHeadingArrow(entityId, lat, lon, motion.headingDeg, motion.color);
         if (entity.properties) {
           entity.properties.poiLat = lat;
           entity.properties.poiLon = lon;
@@ -3515,8 +3601,11 @@
         const cleanLabel = (tipoPoi || '').toUpperCase() === 'MIL' ? rawLabel.replace(/\s\d{17}$/, '').trim() : rawLabel;
         const displayLabelText = getCleanDisplayLabel(cleanLabel, defaultPoiNames, '');
         const entityId = 'poi_' + id;
-        const speedKmh = Number(velocidadKmh) || 0;
-        const headingDeg = ((Number(rumboGrados) || 0) % 360 + 360) % 360;
+        const parsedSpeed = Number(velocidadKmh);
+        const parsedHeading = Number(rumboGrados);
+        const speedKmh = Number.isFinite(parsedSpeed) ? Math.max(0, parsedSpeed) : 0;
+        const hasHeading = Number.isFinite(parsedHeading);
+        const headingDeg = hasHeading ? ((parsedHeading % 360) + 360) % 360 : 0;
         const normalizedIconoSrc = (typeof iconoSrc === 'string') ? iconoSrc.trim() : iconoSrc;
         const normalizedSidc = (typeof sidc === 'string') ? sidc.trim() : sidc;
         const milImage = getMilSymbolImage(normalizedSidc || (normalizedIconoSrc && (normalizedIconoSrc.startsWith('S') || normalizedIconoSrc.startsWith('G')) ? normalizedIconoSrc : null));
@@ -3547,6 +3636,10 @@
           viewer.entities.remove(poiEntities.get(entityId));
           poiEntities.delete(entityId);
         }
+        if (poiHeadingEntities.has(entityId)) {
+          viewer.entities.remove(poiHeadingEntities.get(entityId));
+          poiHeadingEntities.delete(entityId);
+        }
 
         const entity = viewer.entities.add({
           id: entityId,
@@ -3570,12 +3663,14 @@
           } : undefined,
           label: displayLabelText ? {
             text: displayLabelText,
+            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            verticalOrigin: Cesium.VerticalOrigin.CENTER,
             font: '14px sans-serif',
             fillColor: Cesium.Color.WHITE,
             outlineColor: Cesium.Color.BLACK,
             outlineWidth: 3,
             style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: useBillboard ? new Cesium.Cartesian2(0, 15) : new Cesium.Cartesian2(0, -20),
+            pixelOffset: useBillboard ? new Cesium.Cartesian2(0, -48) : new Cesium.Cartesian2(0, -20),
             showBackground: !useBillboard,
             backgroundColor: !useBillboard ? cesiumColor.withAlpha(0.7) : undefined,
             backgroundPadding: !useBillboard ? new Cesium.Cartesian2(6, 4) : undefined,
@@ -3611,8 +3706,11 @@
         }));
 
         poiEntities.set(entityId, entity);
+        // La flecha pertenece visualmente al blanco y siempre se crea,
+        // aunque el tipo de icono no venga informado.
+        updatePoiHeadingArrow(entityId, Number(lat), Number(lon), headingDeg, cesiumColor);
         if (speedKmh > 0) {
-          poiMotionStates.set(entityId, { lat: Number(lat), lon: Number(lon), speedKmh, headingDeg, startedAt: Date.now() });
+          poiMotionStates.set(entityId, { lat: Number(lat), lon: Number(lon), speedKmh, headingDeg, color: cesiumColor, startedAt: Date.now() });
         }
       } catch (e) {
         console.error('[POI][WEB] Error addPoiToMap: ' + e.message);
@@ -3669,6 +3767,12 @@
           viewer.entities.remove(entity);
           poiEntities.delete(entityId);
         }
+        const headingArrow = poiHeadingEntities.get(entityId);
+        if (headingArrow) {
+          viewer.entities.remove(headingArrow);
+          poiHeadingEntities.delete(entityId);
+        }
+        poiMotionStates.delete(entityId);
       } catch (e) {
         console.error('Error removePoiFromMap: ' + e.message);
       }

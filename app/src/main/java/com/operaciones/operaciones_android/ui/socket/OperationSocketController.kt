@@ -57,7 +57,9 @@ class OperationSocketController(
             creatorPersonalId: Int?,
             creatorLabel: String,
             creatorRank: String,
-            editorLabel: String = ""
+            editorLabel: String = "",
+            velocidadKmh: Double? = null,
+            rumboGrados: Double? = null
         )
         fun onSocketPoiDeleted(idPoi: Int)
         fun onSocketAreaPolygonCreated(
@@ -237,7 +239,9 @@ class OperationSocketController(
                         creatorPersonalId = poi.optInt("id_personal", -1).takeIf { it > 0 },
                         creatorLabel = poi.optString("creador_nombre", poi.optString("creador_label", "")),
                         creatorRank = poi.optString("creador_puesto", ""),
-                        editorLabel = editor
+                        editorLabel = editor,
+                        velocidadKmh = poi.optDouble("velocidad_kmh").takeUnless { poi.isNull("velocidad_kmh") || it.isNaN() },
+                        rumboGrados = nullableHeadingDegrees(poi)
                     )
                 }
             },

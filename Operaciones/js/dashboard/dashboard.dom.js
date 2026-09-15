@@ -20,6 +20,8 @@ export const dom = {
   milIdentity: document.getElementById("milIdentity"),
   milDimension: document.getElementById("milDimension"),
   milIcon: document.getElementById("milIcon"),
+  milSpeed: document.getElementById("milSpeed"),
+  milHeading: document.getElementById("milHeading"),
   milPreviewContainer: document.getElementById("milPreviewContainer"),
   buildingPreviewDrag: document.getElementById("buildingPreviewDrag"),
   iconPallet: document.getElementById("iconPallet"),
