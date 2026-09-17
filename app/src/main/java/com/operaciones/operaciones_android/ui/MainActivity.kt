@@ -4162,6 +4162,16 @@ class MainActivity : AppCompatActivity(),
         val btnMapToolsDrawer = findViewById<View>(R.id.btnMapToolsDrawer)
         val mapToolsDrawer = findViewById<View>(R.id.mapToolsDrawer)
         val btnCloseMapToolsDrawer = findViewById<View>(R.id.btnCloseMapToolsDrawer)
+        val baseLayerButtons = listOf(R.id.btnLayerMap, R.id.btnLayerSatellite)
+        val activeToolButtons = listOf(
+            R.id.btnMeasureDistance, R.id.btnMeasureArea, R.id.btnLayerGeoMsg,
+            R.id.btnDrawLine, R.id.btnDrawZone, R.id.btnDrawRectangle, R.id.btnDrawRadius
+        )
+        fun selectDrawerButton(buttonIds: List<Int>, selectedId: Int?) {
+            buttonIds.forEach { buttonId ->
+                findViewById<View>(buttonId)?.isSelected = buttonId == selectedId
+            }
+        }
         findViewById<TextView>(R.id.tvMapDrawerUser)?.text =
             currentUser.nombreCompleto.trim()
                 .ifBlank { currentUser.username.trim() }
@@ -4177,21 +4187,25 @@ class MainActivity : AppCompatActivity(),
         }
 
         findViewById<View>(R.id.btnLayerMap)?.setOnClickListener {
+            selectDrawerButton(baseLayerButtons, R.id.btnLayerMap)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.setMobileBaseLayer("map")
         }
 
         findViewById<View>(R.id.btnLayerSatellite)?.setOnClickListener {
+            selectDrawerButton(baseLayerButtons, R.id.btnLayerSatellite)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.setMobileBaseLayer("satellite")
         }
 
         findViewById<View>(R.id.btnMeasureDistance)?.setOnClickListener {
+            selectDrawerButton(activeToolButtons, R.id.btnMeasureDistance)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.startMobileMapTool("distance")
         }
 
         findViewById<View>(R.id.btnMeasureArea)?.setOnClickListener {
+            selectDrawerButton(activeToolButtons, R.id.btnMeasureArea)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.startMobileMapTool("area")
         }
@@ -4204,11 +4218,13 @@ class MainActivity : AppCompatActivity(),
         findViewById<View>(R.id.btnLayerMgrs)?.setOnClickListener {
             mapToolsDrawer?.visibility = View.GONE
             isMgrsActive = !isMgrsActive
+            findViewById<View>(R.id.btnLayerMgrs)?.isSelected = isMgrsActive
             cesiumWebController.evaluate("(function(){ if(typeof toggleMgrsGrid==='function') toggleMgrsGrid($isMgrsActive); })();")
             chatSocketManager?.emitMgrsToggled(isMgrsActive)
         }
 
         findViewById<View>(R.id.btnLayerGeoMsg)?.setOnClickListener {
+            selectDrawerButton(activeToolButtons, R.id.btnLayerGeoMsg)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.startGeoMsgMode()
             Toast.makeText(this, "Toca el mapa en la ubicación del Mensaje Geo-anclado", Toast.LENGTH_LONG).show()
@@ -4220,26 +4236,31 @@ class MainActivity : AppCompatActivity(),
         }
 
         findViewById<View>(R.id.btnDrawLine)?.setOnClickListener {
+            selectDrawerButton(activeToolButtons, R.id.btnDrawLine)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.startMobileMapTool("line")
         }
 
         findViewById<View>(R.id.btnDrawZone)?.setOnClickListener {
+            selectDrawerButton(activeToolButtons, R.id.btnDrawZone)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.startMobileMapTool("zone")
         }
 
         findViewById<View>(R.id.btnDrawRectangle)?.setOnClickListener {
+            selectDrawerButton(activeToolButtons, R.id.btnDrawRectangle)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.startMobileMapTool("rectangle")
         }
 
         findViewById<View>(R.id.btnDrawRadius)?.setOnClickListener {
+            selectDrawerButton(activeToolButtons, R.id.btnDrawRadius)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.startMobileMapTool("radius")
         }
 
         findViewById<View>(R.id.btnClearMapTools)?.setOnClickListener {
+            selectDrawerButton(activeToolButtons, null)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.clearMobileMapTools()
         }

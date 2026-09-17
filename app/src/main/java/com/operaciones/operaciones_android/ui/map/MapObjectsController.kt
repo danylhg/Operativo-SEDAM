@@ -81,6 +81,12 @@ class MapObjectsController(
         val viewportHeight: Double? = null
     )
 
+    private data class PoiEditContext(
+        val creatorLabel: String,
+        val isMine: Boolean,
+        val visibility: String
+    )
+
     private data class CoverageCircleDraft(
         val name: String,
         val radiusMeters: Double,
@@ -123,6 +129,7 @@ class MapObjectsController(
     private var deleteButton: Button? = null
     private var lastRouteId: Int = -1
     private var pendingMilitarySymbol: MapActionController.MilitarySymbolChoice? = null
+    private val poiEditContexts = mutableMapOf<Int, PoiEditContext>()
     private var pendingPoi: Pair<String, String>? = null // (nombre, colorHex)
     private var pendingCoverageCircle: CoverageCircleDraft? = null
     private var pendingStructure: StructureDraft? = null
@@ -747,6 +754,11 @@ class MapObjectsController(
         val payload = runCatching { JSONObject(payloadJson) }.getOrNull() ?: return
         val poiId = payload.optInt("id", -1)
         if (poiId <= 0) return
+        poiEditContexts[poiId] = PoiEditContext(
+            creatorLabel = payload.optString("creatorLabel", "").trim(),
+            isMine = payload.optBoolean("isMine", false),
+            visibility = payload.optString("visibility", "PRIVADO").ifBlank { "PRIVADO" }
+        )
         activity.runOnUiThread {
             val isTarget = payload.optBoolean("isTarget")
             val lat = payload.optDouble("lat")
@@ -854,10 +866,17 @@ class MapObjectsController(
                     if (success) {
                         Toast.makeText(activity, "Punto actualizado", Toast.LENGTH_SHORT).show()
                         if (updatedPoi != null) {
+                            val editContext = poiEditContexts.remove(poiId)
                             val updatedSpeed = updatedPoi.optDouble("velocidad_kmh")
                                 .takeUnless { updatedPoi.isNull("velocidad_kmh") || it.isNaN() }
                             val updatedHeading = updatedPoi.optDouble("rumbo_grados")
                                 .takeUnless { updatedPoi.isNull("rumbo_grados") || it.isNaN() }
+                            val updatedCreator = updatedPoi.optString("creador_label")
+                                .ifBlank { updatedPoi.optString("creatorLabel") }
+                                .ifBlank { updatedPoi.optString("creador_nombre") }
+                                .ifBlank { editContext?.creatorLabel.orEmpty() }
+                            val updatedVisibility = updatedPoi.optString("visibilidad")
+                                .ifBlank { editContext?.visibility ?: "PRIVADO" }
                             cesiumWebController.addPoiToMap(
                                 idPoi = updatedPoi.optInt("id_poi", poiId),
                                 lat = updatedPoi.optDouble("latitud", 0.0),
@@ -867,8 +886,9 @@ class MapObjectsController(
                                 color = updatedPoi.optString("color", color),
                                 iconoSrc = updatedPoi.optString("icono_src").takeIf { it.isNotBlank() },
                                 sidc = updatedPoi.optString("sidc").takeIf { it.isNotBlank() },
-                                creatorLabel = "",
-                                visibility = updatedPoi.optString("visibilidad", "PRIVADO"),
+                                creatorLabel = updatedCreator,
+                                isMine = editContext?.isMine == true,
+                                visibility = updatedVisibility,
                                 velocidadKmh = updatedSpeed,
                                 rumboGrados = updatedHeading
                             )
