@@ -14,3 +14,16 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# IDE, Kotlin and Gradle local state
+.vscode/
+**/.gradle/
+**/.idea/
+**/.kotlin/
+**/build/
+**/local.properties
+
+# Temporary files and generated application data
+.codex-tmp/
+transcript_dump.txt
+Operaciones/api/storage/chat/
