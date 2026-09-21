@@ -911,6 +911,27 @@ class CesiumWebController(
         evaluate("(function(){ if(typeof setMobileBaseLayer==='function') setMobileBaseLayer('$safeLayer'); })();")
     }
 
+    fun downloadVisibleMapArea() {
+        evaluate("(function(){ if(typeof downloadVisibleMapArea==='function') downloadVisibleMapArea(); })();")
+    }
+
+    fun refreshMapStorageUsage() {
+        evaluate("(function(){ if(typeof updateOfflineStorageStatus==='function') updateOfflineStorageStatus(); })();")
+    }
+
+    fun setOfflineMode(offline: Boolean) {
+        webView.settings.cacheMode = if (offline) {
+            WebSettings.LOAD_CACHE_ONLY
+        } else {
+            WebSettings.LOAD_DEFAULT
+        }
+    }
+
+    fun clearOfflineMapCache() {
+        webView.clearCache(true)
+        evaluate("(async function(){ try { localStorage.removeItem('sedam_map_downloaded_bytes'); if ('caches' in window) await caches.delete('sedam-map-tiles-v1'); } catch (_) {} if(typeof updateOfflineStorageStatus==='function') updateOfflineStorageStatus(); })();")
+    }
+
     fun startMobileMapTool(mode: String) {
         val allowed = setOf("distance", "area", "line", "zone", "rectangle", "radius")
         if (mode !in allowed) return
@@ -919,6 +940,10 @@ class CesiumWebController(
 
     fun clearMobileMapTools() {
         evaluate("(function(){ if(typeof clearMobileMapTools==='function') clearMobileMapTools(); })();")
+    }
+
+    fun deleteSelectedMobileTool() {
+        evaluate("(function(){ if(typeof deleteSelectedMobileTool==='function') deleteSelectedMobileTool(); })();")
     }
 
     fun startGeoMsgMode() {

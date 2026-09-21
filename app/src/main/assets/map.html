@@ -58,7 +58,10 @@
       border-bottom: 1px solid rgba(56, 189, 248, .42);
       transform: translateX(-50%) rotate(45deg);
     }
-    .targetPopupName { font-size: 13px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Reserva el espacio del control de visibilidad para que ningún texto lo invada. */
+    .targetPopupName,
+    .targetPopupType { width: calc(100% - 92px); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .targetPopupName { font-size: 13px; font-weight: 800; }
     .targetPopupType { margin-top: 2px; color: #9bb0c7; font-size: 10px; }
     .targetPopupRule { height: 1px; margin: 9px 0 8px; background: rgba(129, 157, 187, .18); }
     .targetPopupMetrics { display:none; color: #bff3ff; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
@@ -1784,7 +1787,27 @@
       const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
       handler.setInputAction((movement) => {
         try {
+          if (!movement || !movement.position) return;
+          // Cada nuevo toque empieza limpiando la selección. El LEFT_CLICK
+          // volverá a mostrarla únicamente si el toque fue sobre la medición.
+          window.selectMobileToolGroup(null);
+        } catch (e) {
+          console.error("Error limpiando selección de medición: " + e.message);
+        }
+      }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+      handler.setInputAction((movement) => {
+        try {
           if (!viewer || !movement || !movement.position) return;
+
+          // Las mediciones locales se pueden seleccionar y borrar sin afectar
+          // los objetos operativos ni enviarlas al backend.
+          const mobileToolGroup = getMobileToolGroupAtPosition(movement.position);
+          if (mobileToolGroup) {
+            window.selectMobileToolGroup(mobileToolGroup);
+            return;
+          }
+          window.selectMobileToolGroup(null);
 
           const cartesian = viewer.camera.pickEllipsoid(
             movement.position,
@@ -5000,6 +5023,74 @@
     let mobileToolHandler = null;
     let mobileToolPoints = [];
     const mobileToolEntities = [];
+    let mobileToolGroupSequence = 0;
+    let activeMobileToolGroup = null;
+    let selectedMobileToolGroup = null;
+
+    function mobileToolGroupForEntity(entity) {
+      return entity && entity.mobileToolGroup ? entity.mobileToolGroup : null;
+    }
+
+    function getMobileToolGroupAtPosition(position) {
+      if (!viewer || !position) return null;
+      const picked = viewer.scene.pick(position);
+      const pickedEntity = picked && picked.id;
+      const pickedGroup = mobileToolGroupForEntity(pickedEntity);
+      if (pickedGroup) return pickedGroup;
+
+      // Fallback para líneas: algunas versiones de Cesium no devuelven la
+      // entidad de un polyline al tocarla directamente.
+      let closestGroup = null;
+      let closestLineDistance = 14;
+      mobileToolEntities.forEach(function (entity) {
+        const group = mobileToolGroupForEntity(entity);
+        if (!group) return;
+        if (!entity.polyline || !entity.polyline.positions) return;
+        const positions = entity.polyline.positions.getValue
+          ? entity.polyline.positions.getValue(viewer.clock.currentTime)
+          : entity.polyline.positions;
+        if (!positions || positions.length < 2) return;
+        for (let index = 1; index < positions.length; index += 1) {
+          const start = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, positions[index - 1]);
+          const end = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, positions[index]);
+          if (!start || !end) continue;
+          const dx = end.x - start.x;
+          const dy = end.y - start.y;
+          const lengthSquared = dx * dx + dy * dy;
+          if (lengthSquared <= 0) continue;
+          const factor = Math.max(0, Math.min(1, ((position.x - start.x) * dx + (position.y - start.y) * dy) / lengthSquared));
+          const distance = Math.hypot(position.x - (start.x + factor * dx), position.y - (start.y + factor * dy));
+          if (distance < closestLineDistance) {
+            closestLineDistance = distance;
+            closestGroup = group;
+          }
+        }
+      });
+      return closestGroup;
+    }
+
+    window.selectMobileToolGroup = function (groupId) {
+      selectedMobileToolGroup = groupId || null;
+      if (typeof Android !== 'undefined') {
+        if (selectedMobileToolGroup && typeof Android.onMobileToolSelected === 'function') {
+          Android.onMobileToolSelected();
+        } else if (!selectedMobileToolGroup && typeof Android.onMobileToolSelectionCleared === 'function') {
+          Android.onMobileToolSelectionCleared();
+        }
+      }
+    };
+
+    window.deleteSelectedMobileTool = function () {
+      if (!selectedMobileToolGroup) return;
+      for (let i = mobileToolEntities.length - 1; i >= 0; i -= 1) {
+        const entity = mobileToolEntities[i];
+        if (entity && entity.mobileToolGroup === selectedMobileToolGroup) {
+          viewer.entities.remove(entity);
+          mobileToolEntities.splice(i, 1);
+        }
+      }
+      window.selectMobileToolGroup(null);
+    };
 
     function mobilePick(position) {
       if (!viewer || !position) return null;
@@ -5049,6 +5140,7 @@
     function addMobileEntity(options) {
       try {
         const entity = viewer.entities.add(options);
+        entity.mobileToolGroup = activeMobileToolGroup;
         mobileToolEntities.push(entity);
         return entity;
       } catch (e) {
@@ -5059,6 +5151,9 @@
 
     function finishMobileTool(mode) {
       try {
+        if (!activeMobileToolGroup) {
+          activeMobileToolGroup = 'mobile-tool-' + (++mobileToolGroupSequence);
+        }
         const cyan = Cesium.Color.fromCssColorString('#26D9E8');
         const fill = cyan.withAlpha(0.22);
         if ((mode === 'distance' || mode === 'line') && mobileToolPoints.length >= 2) {
@@ -5171,6 +5266,8 @@
 
     window.startMobileMapTool = function (mode) {
       mobileToolPoints = [];
+      activeMobileToolGroup = 'mobile-tool-' + (++mobileToolGroupSequence);
+      window.selectMobileToolGroup(null);
       if (mobileToolHandler) {
         mobileToolHandler.destroy();
         mobileToolHandler = null;
@@ -5192,6 +5289,10 @@
           const endPoint = mobilePick(position);
           if (!endPoint) return;
           currentRadius = Math.max(1, mobileDistance(centerPoint, endPoint));
+        }
+
+        function movementPosition(movement) {
+          return movement && (movement.endPosition || movement.position);
         }
 
         // 1. Al presionar (LEFT_DOWN): fijar centro e iniciar arrastre del radio
@@ -5241,14 +5342,14 @@
         // 2. Al arrastrar (MOUSE_MOVE): redimensionar el círculo dinámicamente
         mobileToolHandler.setInputAction(function (movement) {
           if (!isDraggingRadius || !centerPoint) return;
-          updateRadiusFromPosition(movement.endPosition);
+          updateRadiusFromPosition(movementPosition(movement));
         }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
         // 3. Al soltar (LEFT_UP): congelar el círculo en el radio final
         mobileToolHandler.setInputAction(function (movement) {
           if (!isDraggingRadius || !centerPoint) return;
-          if (movement && movement.position) {
-            updateRadiusFromPosition(movement.position);
+          if (movementPosition(movement)) {
+            updateRadiusFromPosition(movementPosition(movement));
           }
           isDraggingRadius = false;
           controller.enableInputs = true; // Reactivar controles del mapa
@@ -5671,13 +5772,149 @@
         viewer.scene.screenSpaceCameraController.enableInputs = true;
       }
       if (mobileToolHandler) { mobileToolHandler.destroy(); mobileToolHandler = null; }
+      if (typeof _destroyDrawHandler === 'function') _destroyDrawHandler();
+      if (_previewEnt) { viewer.entities.remove(_previewEnt); _previewEnt = null; }
+      _drawMode = null;
+      _isDrawing = false;
+      _drawCoords = [];
       mobileToolPoints = [];
+      activeMobileToolGroup = null;
+      window.selectMobileToolGroup(null);
       while (mobileToolEntities.length) viewer.entities.remove(mobileToolEntities.pop());
-      if (typeof toggleMgrsGrid === 'function') toggleMgrsGrid(false);
-      if (typeof clearOperationGrid === 'function') clearOperationGrid();
+      drawingEntities.forEach(function (entity, localId) {
+        if (entity) viewer.entities.remove(entity);
+        if (typeof Android !== 'undefined' && typeof Android.onDrawingDeleted === 'function') {
+          Android.onDrawingDeleted(localId);
+        }
+      });
+      drawingEntities.clear();
     };
 
     window.setMobileBaseLayer = function (layer) { setBaseLayer(layer === 'map' ? 'osm' : 'satellite'); };
+
+    function notifyMapDownload(message) {
+      try {
+        if (window.Android && typeof Android.onMapDownloadStatus === 'function') {
+          Android.onMapDownloadStatus(String(message));
+        }
+      } catch (_) {}
+    }
+
+    function notifyMapDownloadProgress(completed, total) {
+      try {
+        if (window.Android && typeof Android.onMapDownloadProgress === 'function') {
+          Android.onMapDownloadProgress(Number(completed) || 0, Number(total) || 0);
+        }
+      } catch (_) {}
+    }
+
+    window.updateOfflineStorageStatus = async function () {
+      try {
+        let usedBytes = 0;
+        const estimatedDownloadedBytes = Number(localStorage.getItem('sedam_map_downloaded_bytes') || 0);
+        if ('caches' in window) {
+          const cache = await caches.open('sedam-map-tiles-v1');
+          const requests = await cache.keys();
+          for (const request of requests) {
+            const response = await cache.match(request);
+            if (!response) continue;
+            const length = response.headers.get('content-length');
+            // Las teselas externas suelen ser respuestas opacas y no exponen
+            // su tamaño; se usa una estimación conservadora para el indicador.
+            usedBytes += length
+              ? Number(length)
+              : response.type === 'opaque'
+                ? 50 * 1024
+                : (await response.clone().blob()).size;
+          }
+        }
+        usedBytes = Math.max(usedBytes, estimatedDownloadedBytes);
+        const storageLimitBytes = 500 * 1024 * 1024;
+        const percent = usedBytes > 0
+          ? Math.max(1, Math.min(100, Math.round((usedBytes / storageLimitBytes) * 100)))
+          : 0;
+        if (window.Android && typeof Android.onMapStorageUsage === 'function') {
+          Android.onMapStorageUsage(percent, usedBytes);
+        }
+      } catch (e) {
+        console.error('Error calculando almacenamiento offline: ' + e.message);
+      }
+    };
+
+    window.downloadVisibleMapArea = async function () {
+      try {
+        if (!viewer || !viewer.camera) return;
+        const rectangle = viewer.camera.computeViewRectangle();
+        if (!rectangle) {
+          notifyMapDownload('No se pudo calcular el área visible');
+          return;
+        }
+
+        const zoom = Math.max(8, Math.min(16, Math.round(14 - Math.log2(Math.max(1, viewer.camera.positionCartographic.height / 1000)))));
+        const west = Cesium.Math.toDegrees(rectangle.west);
+        const east = Cesium.Math.toDegrees(rectangle.east);
+        const south = Cesium.Math.toDegrees(rectangle.south);
+        const north = Cesium.Math.toDegrees(rectangle.north);
+        const lonToX = lon => Math.floor((lon + 180) / 360 * Math.pow(2, zoom));
+        const latToY = lat => Math.floor((1 - Math.asinh(Math.tan(Cesium.Math.toRadians(lat))) / Math.PI) / 2 * Math.pow(2, zoom));
+        const tileCount = Math.pow(2, zoom);
+        const minX = Math.max(0, Math.min(tileCount - 1, lonToX(west)));
+        const maxX = Math.max(0, Math.min(tileCount - 1, lonToX(east)));
+        const minY = Math.max(0, Math.min(tileCount - 1, latToY(north)));
+        const maxY = Math.max(0, Math.min(tileCount - 1, latToY(south)));
+        const urls = [];
+        const layer = localStorage.getItem('sedam_android_map_layer') || 'osm';
+        const templates = layer === 'osm'
+          ? ['https://tile.openstreetmap.org/{z}/{x}/{y}.png']
+          : layer === 'satellite'
+            ? ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}']
+            : [
+                'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
+              ];
+
+        for (let x = minX; x <= maxX; x += 1) {
+          for (let y = minY; y <= maxY; y += 1) {
+            templates.forEach(template => urls.push(template.replace('{z}', zoom).replace('{x}', x).replace('{y}', y)));
+          }
+        }
+        if (urls.length > 180) {
+          notifyMapDownload('Acércate más al mapa para descargar un área más pequeña');
+          return;
+        }
+
+        const cache = 'caches' in window ? await caches.open('sedam-map-tiles-v1') : null;
+        let nextIndex = 0;
+        let completed = 0;
+        notifyMapDownloadProgress(0, urls.length);
+        const workers = Array.from({ length: 6 }, async function () {
+          while (true) {
+            const index = nextIndex++;
+            if (index >= urls.length) break;
+            const url = urls[index];
+            try {
+              const response = await fetch(url, { cache: 'reload', mode: 'no-cors' });
+              if (response.ok || response.type === 'opaque') {
+                const previousBytes = Number(localStorage.getItem('sedam_map_downloaded_bytes') || 0);
+                localStorage.setItem('sedam_map_downloaded_bytes', String(previousBytes + (50 * 1024)));
+                if (cache) {
+                  try { await cache.put(url, response.clone()); } catch (_) {}
+                }
+              }
+            } catch (_) {
+            } finally {
+              completed += 1;
+              notifyMapDownloadProgress(completed, urls.length);
+            }
+          }
+        });
+        await Promise.all(workers);
+        await updateOfflineStorageStatus();
+      } catch (e) {
+        console.error('Error descargando área: ' + e.message);
+        notifyMapDownload('No se pudo descargar el área');
+      }
+    };
   </script>
 </body>
 </html>

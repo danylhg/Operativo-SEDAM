@@ -94,6 +94,31 @@ class MainJsBridge(
     }
 
     @JavascriptInterface
+    fun onMobileToolSelected() {
+        activity.runOnUiThread { activity.showSelectedMeasurementDeleteButton(true) }
+    }
+
+    @JavascriptInterface
+    fun onMobileToolSelectionCleared() {
+        activity.runOnUiThread { activity.showSelectedMeasurementDeleteButton(false) }
+    }
+
+    @JavascriptInterface
+    fun onMapDownloadStatus(message: String) {
+        activity.runOnUiThread { activity.showMapDownloadStatus(message) }
+    }
+
+    @JavascriptInterface
+    fun onMapDownloadProgress(completed: Int, total: Int) {
+        activity.runOnUiThread { activity.showMapDownloadProgress(completed, total) }
+    }
+
+    @JavascriptInterface
+    fun onMapStorageUsage(percent: Int, usedBytes: Long) {
+        activity.runOnUiThread { activity.showMapStorageUsage(percent, usedBytes) }
+    }
+
+    @JavascriptInterface
     fun sendTrafficAlert(message: String) {
         activity.runOnUiThread {
             if (message == "Mapa listo") {

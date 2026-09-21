@@ -42,6 +42,12 @@
   function inferDefaultBackend() {
     const { hostname, port, origin, protocol } = window.location;
 
+    // En la instalacion de SEDAM el frontend web se sirve desde .199:8989,
+    // mientras que el mismo backend usado por Android esta en .112:3001.
+    if (hostname === "192.168.202.199") {
+      return "http://192.168.202.112:3001";
+    }
+
     if (port === BACKEND_PORT) return origin;
 
     const tunnelBackend = inferTunnelBackend();
@@ -56,9 +62,11 @@
 
   const override = getQueryOverride();
   const stored = cleanBase(localStorage.getItem(STORAGE_KEY));
-  const apiBase = override || stored || inferDefaultBackend();
+  const inferred = inferDefaultBackend();
+  const staleLocalBase = stored === `http://${window.location.hostname}:${BACKEND_PORT}` && stored !== inferred;
+  const apiBase = override || (stored && !staleLocalBase ? stored : inferred);
 
-  if (override || !stored) {
+  if (override || !stored || staleLocalBase) {
     localStorage.setItem(STORAGE_KEY, apiBase);
   }
 

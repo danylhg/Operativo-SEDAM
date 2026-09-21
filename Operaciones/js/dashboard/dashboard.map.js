@@ -1023,6 +1023,18 @@ function bindMapUiEvents() {
     };
   }
 
+  const createRouteBtn = document.getElementById("calcRoute");
+  if (createRouteBtn) {
+    createRouteBtn.onclick = () => {
+      if (!dashboardState.startPoint || !dashboardState.endPoint) {
+        setRouteInfo("Selecciona primero el origen y el destino en el mapa.");
+        dashboardState.pickMode = dashboardState.startPoint ? "end" : "start";
+        return;
+      }
+      autoCalcRoute();
+    };
+  }
+
   const clearRouteBtn = document.getElementById("clearRoute");
   if (clearRouteBtn) {
     clearRouteBtn.onclick = () => {

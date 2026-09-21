@@ -2,6 +2,171 @@
   box-sizing: border-box;
 }
 
+/* Crear ruta: misma jerarquía visual que el diálogo de Android */
+.routeCreatePanel .routeCreateCard {
+  background: rgba(4, 20, 38, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.routeCreateTitle {
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+
+.routeCreateHint {
+  margin-top: 8px;
+  color: #9bb0c7;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.routeCreateLabel {
+  display: block;
+  margin-top: 18px;
+  margin-bottom: 7px;
+  color: #f3c84b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.routeCreateSelect,
+.routeCoordinateInput {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid rgba(148, 163, 184, .52);
+  border-radius: 7px;
+  background: rgba(38, 51, 67, .94);
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.routeCreateSelect {
+  padding: 0 12px;
+}
+
+.routeCreateSelect:focus,
+.routeCoordinateInput:focus {
+  outline: none;
+  border-color: #67e8f9;
+  box-shadow: 0 0 0 2px rgba(103, 232, 249, .16);
+}
+
+.routeCoordinatesLabel {
+  margin-top: 18px;
+}
+
+.routeCoordinatesRow {
+  gap: 8px;
+}
+
+.routeCoordinateInput {
+  padding: 0 12px;
+}
+
+.routeCoordinateInput::placeholder {
+  color: #71849a;
+}
+
+.routeMapPicker {
+  display: flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(103, 232, 249, .34);
+  border-radius: 8px;
+  background: rgba(20, 68, 91, .42);
+  color: #f4fbff;
+  text-align: left;
+  cursor: pointer;
+  transition: background .2s ease, border-color .2s ease;
+}
+
+.routeMapPicker:hover,
+.routeMapPicker:focus-visible {
+  border-color: #67e8f9;
+  background: rgba(30, 91, 113, .58);
+  outline: none;
+}
+
+.routeMapPickerIcon,
+.routeMapPickerArrow {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: #67e8f9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.routeMapPickerText {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.routeMapPickerText strong {
+  font-size: 13px;
+}
+
+.routeMapPickerText small {
+  color: #a8c6d5;
+  font-size: 10px;
+}
+
+.routeCreateInfo {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-color: rgba(103, 232, 249, .2);
+  background: rgba(56, 189, 248, .06);
+  color: #a8c6d5;
+  font-size: 11px;
+}
+
+.routeCreateActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.routeCancelButton,
+.routeConfirmButton {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.routeCancelButton {
+  color: #94a3b8;
+}
+
+.routeConfirmButton {
+  color: #f3c84b;
+}
+
+.routeCancelButton:hover,
+.routeConfirmButton:hover {
+  filter: brightness(1.2);
+}
+
 :root {
   --dash-surface: rgba(19, 55, 92, 0.42);
   --dash-surface-strong: rgba(22, 63, 105, 0.58);

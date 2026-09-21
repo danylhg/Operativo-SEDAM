@@ -43,6 +43,7 @@ import android.view.SurfaceView
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.PopupWindow
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.graphics.Color
@@ -139,6 +140,12 @@ class MainActivity : AppCompatActivity(),
     private lateinit var btnStreamMedia: ImageButton
     private lateinit var btnBluetoothMedia: ImageButton
     private lateinit var btnDeleteSelectedObject: Button
+    private lateinit var btnDeleteSelectedMeasurement: ImageButton
+    private lateinit var mapDownloadProgressPanel: LinearLayout
+    private lateinit var mapDownloadProgressBar: ProgressBar
+    private lateinit var mapDownloadProgressText: TextView
+    private lateinit var tvOfflineStorage: TextView
+    private lateinit var offlineStorageProgress: ProgressBar
     private var bluetoothController: BluetoothController? = null
 
     private var chatSocketManager: ChatSocketManager? = null
@@ -368,6 +375,12 @@ class MainActivity : AppCompatActivity(),
         btnStreamMedia = findViewById(R.id.btnStreamMedia)
         btnBluetoothMedia = findViewById(R.id.btnBluetoothMedia)
         btnDeleteSelectedObject = findViewById(R.id.btnDeleteSelectedObject)
+        btnDeleteSelectedMeasurement = findViewById(R.id.btnDeleteSelectedMeasurement)
+        mapDownloadProgressPanel = findViewById(R.id.mapDownloadProgressPanel)
+        mapDownloadProgressBar = findViewById(R.id.mapDownloadProgressBar)
+        mapDownloadProgressText = findViewById(R.id.mapDownloadProgressText)
+        tvOfflineStorage = findViewById(R.id.tvOfflineStorage)
+        offlineStorageProgress = findViewById(R.id.offlineStorageProgress)
         webView = findViewById(R.id.cesiumWebView)
 
         bluetoothController = BluetoothController(this, btnBluetoothMedia).apply {
@@ -504,6 +517,7 @@ class MainActivity : AppCompatActivity(),
         setupMyLocationButton()
         setupMediaStreamButton()
         setupSelectedObjectDeleteButton()
+        setupSelectedMeasurementDeleteButton()
         setupObjectToolsMenu()
         setupMapToolsDrawer()
         panelNavigationController.setupNavigation()
@@ -609,6 +623,47 @@ class MainActivity : AppCompatActivity(),
         mapObjectsController.setupDeleteControls(btnDeleteSelectedObject)
     }
 
+    private fun setupSelectedMeasurementDeleteButton() {
+        btnDeleteSelectedMeasurement.visibility = View.GONE
+        btnDeleteSelectedMeasurement.setOnClickListener {
+            cesiumWebController.deleteSelectedMobileTool()
+        }
+    }
+
+    fun showSelectedMeasurementDeleteButton(show: Boolean) {
+        if (::btnDeleteSelectedMeasurement.isInitialized) {
+            btnDeleteSelectedMeasurement.visibility = if (show) View.VISIBLE else View.GONE
+        }
+    }
+
+    fun showMapDownloadStatus(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    fun showMapDownloadProgress(completed: Int, total: Int) {
+        if (!::mapDownloadProgressPanel.isInitialized) return
+        if (total <= 0) {
+            mapDownloadProgressPanel.visibility = View.GONE
+            return
+        }
+        val percent = ((completed.coerceIn(0, total) * 100f) / total).toInt()
+        mapDownloadProgressText.text = "Descargando mapas… $completed/$total ($percent%)"
+        mapDownloadProgressBar.progress = percent
+        mapDownloadProgressPanel.visibility = View.VISIBLE
+        if (completed >= total) {
+            mapDownloadProgressText.text = "Descarga completa · $total/$total (100%)"
+            mapDownloadProgressPanel.postDelayed({ mapDownloadProgressPanel.visibility = View.GONE }, 1200)
+        }
+    }
+
+    fun showMapStorageUsage(percent: Int, usedBytes: Long) {
+        if (!::tvOfflineStorage.isInitialized) return
+        val megabytes = usedBytes.coerceAtLeast(0L) / (1024L * 1024L)
+        val safePercent = percent.coerceIn(0, 100)
+        tvOfflineStorage.text = "Uso de almacenamiento\n$safePercent% ocupado · ${megabytes} MB"
+        offlineStorageProgress.progress = safePercent
+    }
+
     private fun configurePanelContentSize() {
         val chatExpanded = ::panelNavigationController.isInitialized &&
             panelNavigationController.activePanel == Panel.CHAT
@@ -705,6 +760,7 @@ class MainActivity : AppCompatActivity(),
     }
 
     fun onMapObjectSelectedFromBridge(payloadJson: String) {
+        showSelectedMeasurementDeleteButton(false)
         mapObjectsController.onMapObjectSelectedFromBridge(payloadJson)
     }
 
@@ -713,6 +769,7 @@ class MainActivity : AppCompatActivity(),
     }
 
     fun clearSelectedMapObject() {
+        showSelectedMeasurementDeleteButton(false)
         if (::mapObjectsController.isInitialized) {
             mapObjectsController.clearSelectedMapObject()
         }
@@ -4180,6 +4237,7 @@ class MainActivity : AppCompatActivity(),
         btnMapToolsDrawer?.setOnClickListener {
             val isVisible = mapToolsDrawer?.visibility == View.VISIBLE
             mapToolsDrawer?.visibility = if (isVisible) View.GONE else View.VISIBLE
+            if (!isVisible) cesiumWebController.refreshMapStorageUsage()
         }
 
         btnCloseMapToolsDrawer?.setOnClickListener {
@@ -4196,6 +4254,28 @@ class MainActivity : AppCompatActivity(),
             selectDrawerButton(baseLayerButtons, R.id.btnLayerSatellite)
             mapToolsDrawer?.visibility = View.GONE
             cesiumWebController.setMobileBaseLayer("satellite")
+        }
+
+        findViewById<View>(R.id.btnDownloadArea)?.setOnClickListener {
+            mapToolsDrawer?.visibility = View.GONE
+            findViewById<android.widget.Switch>(R.id.switchOnlineMode)?.isChecked = true
+            cesiumWebController.setOfflineMode(false)
+            cesiumWebController.downloadVisibleMapArea()
+        }
+
+        findViewById<android.widget.Switch>(R.id.switchOnlineMode)?.setOnCheckedChangeListener { _, online ->
+            cesiumWebController.setOfflineMode(!online)
+            Toast.makeText(
+                this,
+                if (online) "Modo online activado" else "Modo offline activado: se usará la caché descargada",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        findViewById<View>(R.id.btnClearOfflineMaps)?.setOnClickListener {
+            cesiumWebController.clearOfflineMapCache()
+            showMapStorageUsage(0, 0L)
+            Toast.makeText(this, "Mapas offline eliminados", Toast.LENGTH_SHORT).show()
         }
 
         findViewById<View>(R.id.btnMeasureDistance)?.setOnClickListener {

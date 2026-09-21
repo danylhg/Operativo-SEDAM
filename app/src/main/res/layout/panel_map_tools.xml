@@ -33,7 +33,7 @@
             <TextView android:id="@+id/btnClearMapTools" style="@style/MapDrawerTextAction" android:layout_marginTop="8dp" android:drawableStart="@drawable/ic_clear_drawings" android:drawablePadding="8dp" android:text="Limpiar dibujos\nElimina la medición o dibujo activo"/>
 
             <View style="@style/MapDrawerDivider"/><TextView style="@style/MapDrawerSection" android:text="ALMACENAMIENTO OFFLINE"/>
-            <TextView android:id="@+id/tvOfflineStorage" style="@style/MapDrawerTextAction" android:drawableStart="@drawable/ic_storage" android:drawablePadding="8dp" android:text="Almacenamiento\nCalculando espacio utilizado…"/>
+            <TextView android:id="@+id/tvOfflineStorage" style="@style/MapDrawerTextAction" android:background="@android:color/transparent" android:clickable="false" android:focusable="false" android:drawableStart="@drawable/ic_storage" android:drawablePadding="8dp" android:text="Uso de almacenamiento\nCalculando porcentaje…"/>
             <ProgressBar android:id="@+id/offlineStorageProgress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="3dp" android:layout_marginHorizontal="8dp" android:max="100" android:progress="1" android:progressTint="#F3C84B"/>
             <TextView android:id="@+id/btnClearOfflineMaps" style="@style/MapDrawerTextAction" android:drawableStart="@drawable/ic_clear_drawings" android:drawablePadding="8dp" android:text="Vaciar mapas offline\nLibera espacio"/>
             <View style="@style/MapDrawerDivider"/>

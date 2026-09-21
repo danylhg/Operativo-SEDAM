@@ -23,7 +23,8 @@ import {
   loadStructuresFromBackend,
   loadRoutesFromBackend,
   loadOperationZoneFromBackend,
-  restoreGridFromBackend
+  restoreGridFromBackend,
+  restoreTacticalLayersFromMapaData
 } from "./dashboard.tactical.js";
 import { initCesium, centerMapOnOperationZone } from "./dashboard.map.js";
 import { bindAreaEvents } from "./dashboard.area.js";
@@ -270,9 +271,17 @@ async function loadDashboardFromBD() {
         fetch(`${API_BASE}/catalog/personal?rol=${rol}`, requestOptions).catch(() => null)
       )
     ]);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[MAPA] /ops/${opId}/mapa respondio HTTP ${res.status} usando ${API_BASE}`);
+      setServerConnectionState(false, `No se pudieron cargar las capas del mapa (HTTP ${res.status}).`);
+      return null;
+    }
     const data = await res.json();
-    if (!data.ok) return null;
+    if (!data.ok) {
+      console.error("[MAPA] Respuesta invalida:", data);
+      setServerConnectionState(false, "El servidor no devolvio los datos del mapa.");
+      return null;
+    }
 
     let personal = Array.isArray(data.personal) ? data.personal : [];
     const catalogPeople = [];
@@ -310,7 +319,9 @@ async function loadDashboardFromBD() {
       cuadricula_operacion: data.cuadricula_operacion || data.grid || null,
       _mapaData: data   // para tracking
     };
-  } catch {
+  } catch (error) {
+    console.error(`[MAPA] No se pudo consultar ${API_BASE}/ops/${opId}/mapa:`, error);
+    setServerConnectionState(false, "No se pudo conectar con el servidor de mapas.");
     return null;
   }
 }
@@ -596,12 +607,21 @@ async function initDashboard() {
   runDashboardStep("actualizar disponibilidad", () => updateChatAvailability());
 
   if (dashboardState.viewer) {
-    // Cargar POIs existentes desde la BD
-    await runDashboardAsyncStep("cargar POIs", () => loadPoisFromBackend());
-    await runDashboardAsyncStep("cargar areas", () => loadAreasFromBackend());
-    await runDashboardAsyncStep("cargar estructuras", () => loadStructuresFromBackend());
-    await runDashboardAsyncStep("cargar rutas", () => loadRoutesFromBackend());
-    await runDashboardAsyncStep("cargar zona", () => loadOperationZoneFromBackend());
+    // Android y web deben pintar las mismas capas de la misma respuesta /mapa.
+    // Las capas consolidadas incluyen POI, areas, edificios y rutas tacticas.
+    const mapaData = bdData?._mapaData;
+    if (Array.isArray(mapaData?.capas) && mapaData.capas.length) {
+      runDashboardStep("restaurar capas tacticas desde mapa", () =>
+        restoreTacticalLayersFromMapaData(mapaData)
+      );
+    } else {
+      // Compatibilidad con respuestas antiguas del API que no incluian capas.
+      await runDashboardAsyncStep("cargar POIs", () => loadPoisFromBackend());
+      await runDashboardAsyncStep("cargar areas", () => loadAreasFromBackend());
+      await runDashboardAsyncStep("cargar estructuras", () => loadStructuresFromBackend());
+      await runDashboardAsyncStep("cargar rutas", () => loadRoutesFromBackend());
+      await runDashboardAsyncStep("cargar zona", () => loadOperationZoneFromBackend());
+    }
     await runDashboardAsyncStep("restaurar cuadricula", () => restoreGridFromBackend(bdData?.grid || bdData?.cuadricula_operacion));
     await runDashboardAsyncStep("cargar dibujos", () => loadDrawingsFromBackend());
 
