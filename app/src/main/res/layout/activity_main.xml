@@ -742,6 +742,14 @@
         android:visibility="gone" />
 
     <LinearLayout
+        android:id="@+id/directedAlertStack"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_marginTop="14dp"
+        android:orientation="vertical" />
+
+    <LinearLayout
         android:id="@+id/directedAlertBanner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -765,15 +773,75 @@
             android:src="@drawable/ic_emergency_alert"
             android:tint="#FFFFFF" />
 
-        <TextView
-            android:id="@+id/tvDirectedAlertMessage"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="10dp"
             android:layout_weight="1"
-            android:maxLines="3"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvDirectedAlertMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxLines="2"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvDirectedAlertStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:textColor="#FFF7ED"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/directedAlertVitals"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView android:id="@+id/tvAlertVitalHeart" style="@style/DirectedAlertVital" />
+                    <TextView android:id="@+id/tvAlertVitalOxygen" style="@style/DirectedAlertVital" />
+                    <TextView android:id="@+id/tvAlertVitalRespiration" style="@style/DirectedAlertVital" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:orientation="horizontal">
+
+                    <TextView android:id="@+id/tvAlertVitalTemperature" style="@style/DirectedAlertVital" />
+                    <TextView android:id="@+id/tvAlertVitalPressure" style="@style/DirectedAlertVital" />
+                    <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/btnViewDirectedAlert"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Ver ubicación de la alerta"
+            android:gravity="center"
+            android:paddingHorizontal="6dp"
+            android:text="VER\nUBICACIÓN"
+            android:textAlignment="center"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="10sp"
             android:textStyle="bold" />
 
         <TextView

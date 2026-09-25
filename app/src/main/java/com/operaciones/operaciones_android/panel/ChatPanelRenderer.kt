@@ -28,6 +28,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.operaciones.operaciones_android.R
+import com.operaciones.operaciones_android.data.SedamMovilChatIds
 import com.operaciones.operaciones_android.model.ChatMessage
 import com.operaciones.operaciones_android.model.PersonalItem
 import com.operaciones.operaciones_android.model.User
@@ -165,11 +166,13 @@ internal class ChatPanelRenderer(
 
         fun selectionFor(channel: ChannelDef, targetIdx: Int): ChatChannelSelection {
             val target = channel.targets.getOrNull(targetIdx)
+            val destinoId = target?.id ?: channel.fixedId
             return ChatChannelSelection(
                 type = channel.type,
                 destinatarioRol = channel.destinatarioRol,
                 destinoTipo = channel.destinoTipo,
-                destinoId = target?.id ?: channel.fixedId,
+                chatId = SedamMovilChatIds.idDeChat(channel.type, destinoId),
+                destinoId = destinoId,
                 destinoLabel = target?.label ?: channel.fixedLabel,
                 destinoSendId = target?.sendId ?: channel.fixedId
             )

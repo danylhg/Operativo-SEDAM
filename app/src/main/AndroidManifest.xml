@@ -76,7 +76,7 @@
             android:foregroundServiceType="location" />
 
         <service
-            android:name=".services.MediaStreamForegroundService"
+            android:name=".streaming.MediaStreamingService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="camera|microphone" />

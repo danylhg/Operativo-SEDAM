@@ -2,9 +2,14 @@
 
 import { dom } from "./dashboard.dom.js?v=20260728-web-alert-sound-4";
 import { escapeHtml } from "./dashboard.storage.js";
-import { formatTime } from "./dashboard.ui.js";
+import { formatTime } from "./dashboard.ui.js?v=20260923-draggable-person-popup";
 import { getVehicleOccupants } from "./dashboard.tracking.clustering.js";
-import { focusEmergencyForChatMessage, pulseEmergencyForChatMessage } from "./dashboard.emergency.js";
+import {
+  clearEmergencyForChatMessage,
+  focusEmergencyForChatMessage,
+  getEmergencyCoordsForChatMessage,
+  pulseEmergencyForChatMessage
+} from "./dashboard.emergency.js";
 
 const API_BASE = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
 
@@ -26,9 +31,9 @@ let _chatDirectory = {
 let _mediaRecorder = null;
 let _audioChunks = [];
 let _isRecordingAudio = false;
-let _emergencyFeedBound = false;
+let _emergencyTopBannerBound = false;
+const _activeEmergencyAlerts = new Map();
 let _alertAudioContext = null;
-const _dismissedEmergencyIds = new Set();
 const _unreadByChannel = new Map();
 
 const ATTACHMENT_PREFIX = "CHAT_ATTACHMENT:";
@@ -339,6 +344,52 @@ function fullName(person) {
     person?.apodo_personal ||
     [person?.nombre, person?.apellido].filter(Boolean).join(" ").trim() ||
     `Personal ${person?.id_personal || ""}`.trim();
+}
+
+function abbreviateAlertRank(value) {
+  const rank = String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (!rank) return "";
+  if (rank.includes("capitan de navio")) return "Cap. Nav.";
+  if (rank.includes("capitan de fragata")) return "Cap. Frag.";
+  if (rank.includes("capitan de corbeta")) return "Cap. Corb.";
+  if (rank.includes("capitan primero") || rank.includes("capitan 1/o")) return "Cap. 1/o";
+  if (rank.includes("capitan segundo") || rank.includes("capitan 2/o")) return "Cap. 2/o";
+  if (rank.includes("teniente de navio")) return "Tte. Nav.";
+  if (rank.includes("teniente de fragata")) return "Tte. Frag.";
+  if (rank.includes("teniente de corbeta")) return "Tte. Corb.";
+  if (rank.includes("primer teniente") || rank.includes("1er teniente")) return "1er. Tte.";
+  if (rank.includes("segundo teniente") || rank.includes("2do teniente")) return "2do. Tte.";
+  if (rank.includes("subteniente")) return "Subtte.";
+  if (rank.includes("teniente") || rank === "tte" || rank === "tte.") return "Tte.";
+  if (rank.includes("capitan") || rank === "cap" || rank === "cap.") return "Cap.";
+  if (rank.includes("sargento primero")) return "Sgto. 1/o";
+  if (rank.includes("sargento segundo")) return "Sgto. 2/o";
+  if (rank.includes("sargento")) return "Sgto.";
+  if (rank.includes("cabo")) return "Cbo.";
+  if (rank.includes("soldado")) return "Sld.";
+  if (rank.includes("marinero")) return "Mro.";
+  if (rank.includes("general de division")) return "Gral. Div.";
+  if (rank.includes("general de brigada")) return "Gral. Brig.";
+  if (rank.includes("general")) return "Gral.";
+  if (rank.includes("coronel")) return "Cnel.";
+  if (rank.includes("mayor")) return "My.";
+  return "";
+}
+
+function emergencyAuthorLabel(msg) {
+  const person = _chatDirectory.personalById.get(String(msg?.id_personal ?? ""));
+  const incoming = String(msg?.autor_nombre || "PERSONAL OPERATIVO").trim();
+  const incomingParts = incoming.split(/\s*[-·|]\s*/).filter(Boolean);
+  const incomingRank = abbreviateAlertRank(incomingParts[incomingParts.length - 1]);
+  const name = person
+    ? [person.nombre, person.apellido].filter(Boolean).join(" ").trim() || person.apodo || incoming
+    : (incomingRank ? incomingParts.slice(0, -1).join(" ").trim() : incoming);
+  const rank = abbreviateAlertRank(person?.puesto) || incomingRank;
+  return [rank, name].filter(Boolean).join(" ") || "PERSONAL OPERATIVO";
 }
 
 function isRootGroupName(name) {
@@ -1076,6 +1127,9 @@ function formatDestino(msg) {
 function shouldHideChatMessage(msg) {
   const tipo = String(msg?.tipo_mensaje || "").toUpperCase();
   const contenido = String(msg?.contenido || "").toLowerCase();
+  // Los GEO-MSG pertenecen exclusivamente al mapa. Ocultamos también los
+  // que pudieron haberse guardado en el historial antes de este ajuste.
+  if (contenido.startsWith("[geo-msg]")) return true;
   if (tipo !== "SISTEMA") return false;
   return (
     contenido.includes("trigger de bd") ||
@@ -1093,81 +1147,176 @@ function isEmergencyMessage(msg) {
   return markedAsAlert && !shouldHideChatMessage(msg);
 }
 
-function emergencyMessageKey(msg) {
-  return String(msg?.id_mensaje ?? `${msg?.fecha_envio || ""}:${msg?.autor_nombre || ""}:${msg?.contenido || ""}`);
+function layoutEmergencyTopBanners() {
+  // El contenedor flex se encarga de ordenar la pila verticalmente.
 }
 
-function buildEmergencyFeedItem(msg) {
-  const key = escapeHtml(encodeURIComponent(emergencyMessageKey(msg)));
-  const autor = escapeHtml(msg.autor_nombre || "Sistema");
-  const hora = escapeHtml(formatTime(msg.fecha_envio));
-  const contenido = escapeHtml(String(msg.contenido || "").trim());
-
-  return `
-    <article class="emergencyFeedItem" data-emergency-id="${key}" role="button" tabindex="0" title="Abrir ubicacion en el mapa">
-      <button class="emergencyFeedClose" type="button" data-dismiss-emergency="${key}" aria-label="Eliminar emergencia">x</button>
-      <div class="emergencyFeedMeta">
-        <strong>${autor}</strong>
-        <span>${hora}</span>
-      </div>
-      <div class="emergencyFeedText">${contenido}</div>
-    </article>
-  `;
-}
-
-function renderEmergencyFeed({ scrollToBottom = false, preserveScroll = false } = {}) {
-  // Las alertas se muestran solo como burbujas en el chat, no en el panel de emergencias
-  if (dom.emergencyFeedPanel) dom.emergencyFeedPanel.hidden = true;
-}
-
-function bindEmergencyFeedEvents() {
-  if (_emergencyFeedBound || !dom.emergencyFeedList) return;
-  _emergencyFeedBound = true;
-  const decodeEmergencyKey = (value) => {
-    try {
-      return decodeURIComponent(String(value || ""));
-    } catch (_) {
-      return String(value || "");
-    }
-  };
-
-  const openEmergencyLocation = (item) => {
-    const key = decodeEmergencyKey(item?.dataset?.emergencyId);
-    if (!key) return;
-    const msg = _allMsgs.find((candidate) => emergencyMessageKey(candidate) === key);
-    if (msg) focusEmergencyForChatMessage(msg);
-  };
-
-  dom.emergencyFeedList.addEventListener("click", (event) => {
-    const closeBtn = event.target.closest("[data-dismiss-emergency]");
-    if (closeBtn) {
-      event.preventDefault();
-      event.stopPropagation();
-      _dismissedEmergencyIds.add(decodeEmergencyKey(closeBtn.dataset.dismissEmergency));
-      renderEmergencyFeed({ preserveScroll: true });
-      return;
-    }
-
-    const item = event.target.closest("[data-emergency-id]");
-    if (!item) return;
-    openEmergencyLocation(item);
+function expandEmergencyTopBanner(card) {
+  _activeEmergencyAlerts.forEach(({ card: otherCard }) => {
+    otherCard.classList.toggle("compact", otherCard !== card);
   });
+  requestAnimationFrame(layoutEmergencyTopBanners);
+}
 
-  dom.emergencyFeedList.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    if (event.target.closest("[data-dismiss-emergency]")) return;
+function alertField(content, label) {
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(content || "").match(new RegExp(`^${escapedLabel}\\s*:\\s*(.+)$`, "im"));
+  return match?.[1]?.trim() || "";
+}
 
-    const item = event.target.closest("[data-emergency-id]");
-    if (!item) return;
-    event.preventDefault();
-    openEmergencyLocation(item);
+function alertVitalNumber(value) {
+  const match = String(value || "").replace(",", ".").match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+function criticalVitalAlerts({ heartRate, oxygen, respiration, temperature, bloodPressure }) {
+  const alerts = [];
+  const heart = alertVitalNumber(heartRate);
+  const spo2 = alertVitalNumber(oxygen);
+  const breaths = alertVitalNumber(respiration);
+  const temp = alertVitalNumber(temperature);
+  const systolic = alertVitalNumber(bloodPressure);
+
+  // Señales de triaje visual: avisan para verificación inmediata; no sustituyen
+  // una valoración clínica ni diagnostican a la persona.
+  if (heart !== null) {
+    if (heart <= 0) alerts.push(`SIN PULSO DETECTADO (FC ${heartRate})`);
+    else if (heart < 40 || heart > 180) alerts.push(`FC CRÍTICA: ${heartRate}`);
+  }
+  if (spo2 !== null && spo2 <= 85) alerts.push(`OXÍGENO CRÍTICO: ${oxygen}`);
+  if (breaths !== null) {
+    if (breaths <= 0) alerts.push(`SIN RESPIRACIÓN DETECTADA (${respiration})`);
+    else if (breaths < 8 || breaths > 35) alerts.push(`RESPIRACIÓN CRÍTICA: ${respiration}`);
+  }
+  if (temp !== null && (temp < 32 || temp >= 41)) alerts.push(`TEMPERATURA CRÍTICA: ${temperature}`);
+  if (systolic !== null && systolic < 70) alerts.push(`PRESIÓN CRÍTICA: ${bloodPressure}`);
+  return alerts;
+}
+
+function showEmergencyTopBanner(msg) {
+  if (!dom.emergencyTopBanner) return;
+  // Algunos eventos de socket llegan antes de que la BD asigne un id (0/null).
+  // No usamos ese valor como llave, pues dos PTT simultáneos se reemplazaban.
+  const numericMessageId = Number(msg?.id_mensaje ?? msg?.id);
+  const key = Number.isFinite(numericMessageId) && numericMessageId > 0
+    ? `M:${numericMessageId}`
+    : `E:${msg?.autor_nombre || msg?.id_personal || "personal"}:${msg?.fecha_envio || Date.now()}:${String(msg?.contenido || "").slice(0, 80)}`;
+  let card = _activeEmergencyAlerts.get(key)?.card;
+  if (!card) {
+    const baseCard = dom.emergencyTopBanner;
+    card = _activeEmergencyAlerts.size === 0 && baseCard.hidden
+      ? baseCard
+      : baseCard.cloneNode(true);
+    if (card !== baseCard) document.getElementById("emergencyAlertStack")?.append(card);
+    _activeEmergencyAlerts.set(key, { msg, card });
+    card.querySelector("#closeEmergencyTopBanner")?.addEventListener("click", () => {
+      const alert = _activeEmergencyAlerts.get(key);
+      if (!alert) return;
+      clearEmergencyForChatMessage(alert.msg);
+      _activeEmergencyAlerts.delete(key);
+      if (card === baseCard) {
+        card.classList.remove("visible");
+        card.hidden = true;
+      } else {
+        card.remove();
+      }
+      layoutEmergencyTopBanners();
+    });
+    card.querySelector("#viewEmergencyLocationBtn")?.addEventListener("click", () => {
+      const alert = _activeEmergencyAlerts.get(key)?.msg;
+      if (alert) focusEmergencyForChatMessage(alert);
+    });
+    card.querySelector(".emergencyTopBannerTitle")?.addEventListener("click", () => {
+      expandEmergencyTopBanner(card);
+    });
+  }
+  const coords = getEmergencyCoordsForChatMessage(msg);
+  const author = emergencyAuthorLabel(msg).toUpperCase();
+  const timestamp = formatTime(msg?.fecha_envio);
+  const content = String(msg?.contenido || "");
+  const isLifeLine = /LINEA\s+DE\s+VIDA/i.test(content);
+  // La identidad del emisor se normaliza con su grado, igual que el resto de alertas.
+  const reportedUser = author;
+  const heartRate = alertField(content, "FRECUENCIA CARDIACA") ||
+    alertField(content, "PULSO") || alertField(content, "PULSO ACTUAL");
+  const oxygen = alertField(content, "OXIGENO EN SANGRE");
+  const respiration = alertField(content, "FRECUENCIA RESPIRATORIA");
+  const temperature = alertField(content, "TEMPERATURA CORPORAL");
+  const bloodPressure = alertField(content, "PRESION ARTERIAL");
+  const criticalAlerts = criticalVitalAlerts({
+    heartRate, oxygen, respiration, temperature, bloodPressure
   });
+  const allVitalsSummary = [
+    ["FC", heartRate || "no disponible"],
+    ["SpO2", oxygen || "no disponible"],
+    ["Resp.", respiration || "no disponible"],
+    ["Temp.", temperature || "no disponible"],
+    ["PA", bloodPressure || "no disponible"]
+  ];
+
+  const find = (selector) => card.querySelector(selector);
+  const name = find("#emergencyTopBannerName");
+  if (name) {
+    name.textContent = isLifeLine
+      ? `LINEA DE VIDA - ${reportedUser.toUpperCase()}`
+      : `ALERTA DE ${author}`;
+  }
+  const time = find("#emergencyTopBannerTime");
+  if (time) time.textContent = timestamp;
+  const vitals = find("#emergencyTopBannerVitals");
+  if (vitals) {
+    vitals.replaceChildren();
+    if (isLifeLine) {
+      allVitalsSummary.forEach(([label, value]) => {
+        const metric = document.createElement("span");
+        metric.className = "emergencyVitalMetric";
+        const metricLabel = document.createElement("small");
+        metricLabel.textContent = label;
+        const metricValue = document.createElement("strong");
+        metricValue.textContent = value;
+        metric.append(metricLabel, metricValue);
+        vitals.append(metric);
+      });
+    } else {
+      const status = document.createElement("strong");
+      status.textContent = "EMERGENCIA OPERATIVA";
+      vitals.append(status);
+    }
+  }
+  const status = find("#emergencyTopBannerStatus");
+  if (status) {
+    status.hidden = !isLifeLine || !criticalAlerts.length;
+    status.textContent = criticalAlerts.length
+      ? `⚠ ${criticalAlerts.join(" · ")} — VERIFICAR DE INMEDIATO`
+      : "";
+  }
+  card.classList.toggle("critical-vitals", criticalAlerts.length > 0);
+  const coordsLabel = find("#emergencyTopBannerCoords");
+  if (coordsLabel) {
+    // La ubicación se abre con el botón; no repetimos coordenadas técnicas en
+    // la alerta para que pueda leerse de un vistazo.
+    coordsLabel.hidden = true;
+  }
+  const locationButton = find("#viewEmergencyLocationBtn");
+  if (locationButton) locationButton.disabled = !coords;
+
+  card.hidden = false;
+  expandEmergencyTopBanner(card);
+  requestAnimationFrame(() => {
+    card.classList.add("visible");
+    layoutEmergencyTopBanners();
+  });
+}
+
+function bindEmergencyTopBanner() {
+  // Los controles se enlazan al crear cada tarjeta, para que múltiples
+  // emergencias simultáneas tengan acciones independientes.
 }
 
 function buildBubble(msg) {
   if (shouldHideChatMessage(msg)) return "";
   const mine  = isMine(msg);
-  const autor = escapeHtml(msg.autor_nombre || "Sistema");
+  const autor = escapeHtml(isEmergencyMessage(msg) ? emergencyAuthorLabel(msg) : (msg.autor_nombre || "Sistema"));
   const hora  = escapeHtml(formatTime(msg.fecha_envio));
   const tipo  = (msg.tipo_mensaje || "NORMAL").toUpperCase();
   const rol   = (msg.autor_rol   || "").toLowerCase();    // admin | cut | cet | cell
@@ -1224,7 +1373,9 @@ function buildAttachmentMarkup(msg) {
 function renderMessages() {
   if (!dom.chatMessages) return;
   dom.chatMessages.innerHTML = "";
-  _allMsgs.filter(msg => !shouldHideChatMessage(msg) && isVisibleInTab(msg)).forEach(msg => {
+  _allMsgs.filter(msg =>
+    !shouldHideChatMessage(msg) && !isEmergencyMessage(msg) && isVisibleInTab(msg)
+  ).forEach(msg => {
     dom.chatMessages.insertAdjacentHTML("beforeend", buildBubble(msg));
   });
   setupVoicePlayers(dom.chatMessages);
@@ -1232,7 +1383,6 @@ function renderMessages() {
     if (!image.complete) image.addEventListener("load", scrollChatToLatest, { once: true });
   });
   scrollChatToLatest();
-  renderEmergencyFeed({ scrollToBottom: true });
 }
 
 export function scrollChatToLatest() {
@@ -1256,9 +1406,16 @@ function appendMessage(msg) {
   // Dedup por id_mensaje
   if (msg.id_mensaje && _allMsgs.some(m => m.id_mensaje === msg.id_mensaje)) return false;
   _allMsgs.push(msg);
-  renderEmergencyFeed({ scrollToBottom: true });
 
   if (shouldHideChatMessage(msg)) return true;
+  // Las alertas se reciben por el mismo canal en tiempo real, pero se muestran
+  // exclusivamente en el aviso superior, no dentro de la conversación.
+  if (isEmergencyMessage(msg)) {
+    // También se conserva la alerta enviada por la cuenta actual; todas las
+    // emergencias activas deben permanecer visibles en la central.
+    showEmergencyTopBanner(msg);
+    return true;
+  }
   if (!isVisibleInTab(msg)) return true;
 
   const atBottom =
@@ -1496,13 +1653,15 @@ async function toggleAudioRecording() {
 export function initChat(opId, socket) {
   _opId   = opId;
   _socket = socket;
-  bindEmergencyFeedEvents();
+  bindEmergencyTopBanner();
   armWebAlertAudio();
 
   socket.on("chat_message", (msg) => {
-    playWebAlertSound(msg);
-    registerUnreadMessage(msg);
-    if (appendMessage(msg)) {
+    if (!isMine(msg)) {
+      playWebAlertSound(msg);
+      registerUnreadMessage(msg);
+    }
+    if (appendMessage(msg) && !isMine(msg)) {
       pulseEmergencyForChatMessage(msg);
     }
   });

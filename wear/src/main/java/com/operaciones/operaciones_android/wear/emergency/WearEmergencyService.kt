@@ -31,6 +31,7 @@ import com.operaciones.operaciones_android.wear.call.WearIncomingCallActivity
 import com.operaciones.operaciones_android.wear.call.WearVoiceCallManager
 import com.operaciones.operaciones_android.wear.config.WearApiConfig
 import com.operaciones.operaciones_android.wear.data.WearOperationStatus
+import com.operaciones.operaciones_android.wear.health.HeartRateMonitor
 import com.operaciones.operaciones_android.wear.network.WearApiClient
 import com.operaciones.operaciones_android.wear.network.WearSocketManager
 import com.operaciones.operaciones_android.wear.ui.WearOperationStatusActivity
@@ -60,6 +61,12 @@ class WearEmergencyService : Service(), SensorEventListener {
         private const val MIN_LOCATION_DISTANCE_M = 0f
         private const val FUSED_PROVIDER = "fused"
         private const val OPERATION_STATUS_INTERVAL_MS = 10_000L
+        // Valores deliberadamente conservadores: esta alerta pide verificar a la persona,
+        // no emite un diagnóstico médico.
+        private const val CRITICAL_LOW_HEART_RATE_BPM = 35.0
+        private const val CRITICAL_READINGS_REQUIRED = 3
+        private const val CRITICAL_READING_WINDOW_MS = 30_000L
+        private const val VITAL_ALERT_COOLDOWN_MS = 5 * 60_000L
     }
 
     private val api = WearApiClient()
@@ -77,6 +84,10 @@ class WearEmergencyService : Service(), SensorEventListener {
     private var voiceSocket: WearSocketManager? = null
     private var incomingVoiceCall: JSONObject? = null
     private var voiceCallManager: WearVoiceCallManager? = null
+    private var heartRateMonitor: HeartRateMonitor? = null
+    private var lowPulseReadings = 0
+    private var firstLowPulseAt = 0L
+    private var lastVitalAlertAt = 0L
     private val operationStatusHandler = Handler(Looper.getMainLooper())
     private var operationStatusCheckRunning = false
     private var operationClosedShown = false
@@ -97,6 +108,7 @@ class WearEmergencyService : Service(), SensorEventListener {
         startForeground(NOTIFICATION_ID, buildNotification())
         registerAccelerometer()
         registerLocationListener()
+        startLifeLineMonitor()
         startVoiceCallSocket()
         startOperationStatusMonitor()
     }
@@ -118,6 +130,8 @@ class WearEmergencyService : Service(), SensorEventListener {
     override fun onDestroy() {
         unregisterAccelerometer()
         unregisterLocationListener()
+        heartRateMonitor?.stop()
+        heartRateMonitor = null
         voiceCallManager?.close()
         voiceCallManager = null
         voiceSocket?.disconnect()
@@ -363,7 +377,46 @@ class WearEmergencyService : Service(), SensorEventListener {
         locationListener = null
     }
 
-    private fun triggerEmergency(source: String) {
+    /**
+     * Monitorea el pulso aun cuando la pantalla del reloj no está abierta. Para evitar
+     * alertas por una lectura aislada, exige tres lecturas bajas sostenidas durante 30 s.
+     */
+    private fun startLifeLineMonitor() {
+        if (heartRateMonitor != null) return
+        heartRateMonitor = HeartRateMonitor(
+            context = this,
+            onHeartRate = ::onHeartRateReading,
+            onStatus = { status -> Log.d(TAG, "Linea de vida: $status") }
+        ).also { it.start() }
+    }
+
+    private fun onHeartRateReading(bpm: Double) {
+        val now = System.currentTimeMillis()
+        if (bpm <= 0.0) {
+            lowPulseReadings = 0
+            firstLowPulseAt = 0L
+            return
+        }
+        if (bpm > CRITICAL_LOW_HEART_RATE_BPM) {
+            lowPulseReadings = 0
+            firstLowPulseAt = 0L
+            return
+        }
+
+        if (lowPulseReadings == 0) firstLowPulseAt = now
+        lowPulseReadings++
+        val sustained = lowPulseReadings >= CRITICAL_READINGS_REQUIRED &&
+            now - firstLowPulseAt >= CRITICAL_READING_WINDOW_MS
+        if (!sustained || now - lastVitalAlertAt < VITAL_ALERT_COOLDOWN_MS) return
+
+        lastVitalAlertAt = now
+        lowPulseReadings = 0
+        firstLowPulseAt = 0L
+        Log.w(TAG, "Linea de vida activada: pulso sostenido de $bpm bpm")
+        triggerEmergency(source = "LINEA_DE_VIDA", heartRateBpm = bpm)
+    }
+
+    private fun triggerEmergency(source: String, heartRateBpm: Double? = null) {
         if (emergencyPending) return
         val user = WearSession.user(this)
         val operation = WearSession.operation(this)
@@ -385,11 +438,28 @@ class WearEmergencyService : Service(), SensorEventListener {
         } else {
             "ubicacion no disponible"
         }
-        val content = "EMERGENCIA RELOJ:\n" +
+        val alertTitle = if (source == "LINEA_DE_VIDA") {
+            "ALERTA LINEA DE VIDA: PULSO CRITICAMENTE BAJO"
+        } else {
+            "EMERGENCIA RELOJ"
+        }
+        val vitalSigns = if (source == "LINEA_DE_VIDA") {
+            "SIGNOS VITALES:\n" +
+                "FRECUENCIA CARDIACA: " + (heartRateBpm?.let { "%.0f bpm".format(it) } ?: "no disponible") + "\n" +
+                "OXIGENO EN SANGRE: no disponible\n" +
+                "FRECUENCIA RESPIRATORIA: no disponible\n" +
+                "TEMPERATURA CORPORAL: no disponible\n" +
+                "PRESION ARTERIAL: no disponible\n"
+        } else {
+            heartRateBpm?.let { "PULSO: %.0f bpm\n".format(it) }.orEmpty()
+        }
+        val content = "$alertTitle:\n" +
             "USUARIO: ${user.nombreCompleto}\n" +
             "ORIGEN: $source\n" +
+            vitalSigns +
             "UBICACION: $location\n" +
-            "HORA: $timestamp"
+            "HORA: $timestamp\n" +
+            "REQUIERE VERIFICACION INMEDIATA"
 
         api.sendMessage(
             operationId = operation.id,
@@ -434,7 +504,7 @@ class WearEmergencyService : Service(), SensorEventListener {
         }
         return builder
             .setContentTitle("SEDAM Reloj activo")
-            .setContentText("SOS por boton o agitada listo")
+            .setContentText("SOS y linea de vida activos")
             .setSmallIcon(R.drawable.ic_watch_notification)
             .setOngoing(true)
             .build()

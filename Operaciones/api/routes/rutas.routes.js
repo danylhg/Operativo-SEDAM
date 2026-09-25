@@ -323,7 +323,7 @@ router.get("/ops/:id/rutas/navegacion", requireAuth, async (req, res) => {
                 r.distancia_m, r.duracion_s, r.id_vehiculo,
                 r.estado_operacion_creacion,
                 r.created_by_tipo, r.id_usuario, r.id_personal,
-                r.fecha_creacion,
+                r.fecha_creacion, p.puesto AS creador_puesto,
                 COALESCE(u.nombre || ' ' || u.apellido, p.nombre || ' ' || p.apellido, 'Sistema') AS creador_nombre
          FROM ruta_navegacion r
          LEFT JOIN usuario  u ON u.id_usuario  = r.id_usuario
@@ -350,7 +350,7 @@ router.get("/ops/:id/rutas/navegacion", requireAuth, async (req, res) => {
                 r.distancia_m, r.duracion_s, r.id_vehiculo,
                 r.estado_operacion_creacion,
                 r.created_by_tipo, r.id_usuario, r.id_personal,
-                r.fecha_creacion,
+                r.fecha_creacion, p.puesto AS creador_puesto,
                 COALESCE(u.nombre || ' ' || u.apellido, p.nombre || ' ' || p.apellido, 'Sistema') AS creador_nombre
          FROM ruta_navegacion r
          LEFT JOIN usuario  u ON u.id_usuario  = r.id_usuario

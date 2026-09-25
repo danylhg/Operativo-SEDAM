@@ -20,6 +20,7 @@ class CesiumWebController(
 ) {
     private var isPageReady: Boolean = false
     private var pendingMyPosition: Triple<Double, Double, Boolean>? = null
+    private var pendingMyHeading: Double? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     fun setup() {
@@ -82,6 +83,7 @@ class CesiumWebController(
                 pendingMyPosition?.let { (lat, lon, showMarker) ->
                     updateMyPosition(lat, lon, showMarker)
                 }
+                pendingMyHeading?.let(::updateMyHeading)
                 resize()
             }
 
@@ -344,6 +346,15 @@ class CesiumWebController(
         webView.post {
             webView.evaluateJavascript(
                 "(function(){ if(typeof pulseEmergencyAtLocation==='function') pulseEmergencyAtLocation($idPersonal, $latitude, $longitude); })();",
+                null
+            )
+        }
+    }
+
+    fun clearEmergencyPulse(idPersonal: Int) {
+        webView.post {
+            webView.evaluateJavascript(
+                "(function(){ if(typeof clearEmergencyPulse==='function') clearEmergencyPulse($idPersonal); })();",
                 null
             )
         }
@@ -924,6 +935,26 @@ class CesiumWebController(
             WebSettings.LOAD_CACHE_ONLY
         } else {
             WebSettings.LOAD_DEFAULT
+        }
+    }
+
+    fun updateMyHeading(headingDegrees: Double) {
+        if (headingDegrees.isNaN() || headingDegrees.isInfinite()) return
+        pendingMyHeading = headingDegrees
+        if (!isPageReady) return
+        webView.post {
+            webView.evaluateJavascript(
+                """
+                (function() {
+                    if (typeof updateMyHeading === 'function') {
+                        updateMyHeading($headingDegrees);
+                        return 'OK';
+                    }
+                    return 'ERROR:updateMyHeading no existe';
+                })();
+                """.trimIndent(),
+                null
+            )
         }
     }
 

@@ -11,9 +11,9 @@ import {
   renderInfoPanel,
   updateChatAvailability,
   openPanel
-} from "./dashboard.ui.js";
+} from "./dashboard.ui.js?v=20260923-draggable-person-popup";
 import { bindDashboardEvents } from "./dashboard.events.js";
-import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20260728-web-alert-sound-4";
+import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20260924-emergency-ranks";
 import {
   setTacticalUI,
   bindTacticalEvents,
@@ -25,18 +25,18 @@ import {
   loadOperationZoneFromBackend,
   restoreGridFromBackend,
   restoreTacticalLayersFromMapaData
-} from "./dashboard.tactical.js";
-import { initCesium, centerMapOnOperationZone } from "./dashboard.map.js";
+} from "./dashboard.tactical.js?v=20260923-geo-msg-edit-modal";
+import { initCesium, centerMapOnOperationZone } from "./dashboard.map.js?v=20260923-route-deselect";
 import { bindAreaEvents } from "./dashboard.area.js";
 import { restoreTacticalData } from "./dashboard.persistence.js";
 import {
   populateRouteVehicleSelect,
   loadRouteForSelectedVehicle,
   initRoutes
-} from "./dashboard.routes.js";
+} from "./dashboard.routes.js?v=20260922-route-syntax-fix-2";
 import { loadTrackingFromBackend, loadTrackingFromMapaData, initTrackingSocket, startTrackingPolling } from "./dashboard.tracking.js";
 import { bindDrawingEvents, loadDrawingsFromBackend, initDrawingSocket } from "./dashboard.drawing.js";
-import { initCameraFeeds } from "./dashboard.camera.js";
+import { initCameraFeeds } from "./dashboard.camera.js?v=20260922-person-camera-stream";
 import { initPttAlerts } from "./dashboard.ptt.js";
 
 const API_BASE = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
@@ -265,8 +265,12 @@ async function loadDashboardFromBD() {
     const requestOptions = {
       headers: { "Authorization": `Bearer ${token}` }
     };
-    const [res, ...personalCatalogResponses] = await Promise.all([
+    const [res, assignedPersonalResponse, ...personalCatalogResponses] = await Promise.all([
       fetch(`${API_BASE}/ops/${opId}/mapa`, requestOptions),
+      // Esta lista alimenta el panel de información y no debe depender de la
+      // presencia en tiempo real. El endpoint /mapa sigue siendo exclusivo
+      // para los iconos de personas conectadas en el mapa.
+      fetch(`${API_BASE}/ops/${opId}/personal`, requestOptions).catch(() => null),
       ...["CUT", "CET", "CELL"].map((rol) =>
         fetch(`${API_BASE}/catalog/personal?rol=${rol}`, requestOptions).catch(() => null)
       )
@@ -284,6 +288,11 @@ async function loadDashboardFromBD() {
     }
 
     let personal = Array.isArray(data.personal) ? data.personal : [];
+    if (assignedPersonalResponse?.ok) {
+      const assignedData = await assignedPersonalResponse.json().catch(() => null);
+      const assignedPeople = assignedData?.items ?? assignedData?.personal ?? assignedData;
+      if (Array.isArray(assignedPeople)) personal = assignedPeople;
+    }
     const catalogPeople = [];
     for (const catalogResponse of personalCatalogResponses) {
       if (!catalogResponse?.ok) continue;
@@ -303,7 +312,8 @@ async function loadDashboardFromBD() {
           ...person,
           nombre: identity.nombre || person.nombre || "",
           apellido: identity.apellido || person.apellido || "",
-          apodo: identity.apodo || person.apodo || ""
+          apodo: identity.apodo || person.apodo || "",
+          puesto: identity.puesto || person.puesto || ""
         };
       });
     }
@@ -406,9 +416,14 @@ function getSocketJoinPayload(opId) {
   const rol = String(tokenPayload.rol || stored.rol || "").toUpperCase();
   const idPersonal = tokenPayload.id_personal || stored.id_personal ||
     (tabla === "personal" ? tokenPayload.sub : null);
+  const idUsuario = tokenPayload.id_usuario || stored.id_usuario ||
+    (tabla === "usuario" ? tokenPayload.sub : null);
   const payload = { id_operacion: Number(opId) };
 
   if (idPersonal) payload.id_personal = Number(idPersonal);
+  if (idUsuario) payload.id_usuario = Number(idUsuario);
+  payload.author = [stored.nombre, stored.apellido].filter(Boolean).join(" ").trim()
+    || stored.nombre_usuario || stored.username || stored.apodo || "";
   if (rol) payload.rol = rol;
 
   return payload;

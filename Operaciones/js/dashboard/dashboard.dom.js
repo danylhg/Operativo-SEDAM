@@ -73,9 +73,14 @@ export const dom = {
   chatImageInput: document.getElementById("chatImageInput"),
   chatAttachmentInput: document.getElementById("chatAttachmentInput"),
   chatAttachStatus: document.getElementById("chatAttachStatus"),
-  emergencyFeedPanel: document.getElementById("emergencyFeedPanel"),
-  emergencyFeedList: document.getElementById("emergencyFeedList"),
-  emergencyFeedCount: document.getElementById("emergencyFeedCount"),
+  emergencyTopBanner: document.getElementById("emergencyTopBanner"),
+  emergencyTopBannerName: document.getElementById("emergencyTopBannerName"),
+  emergencyTopBannerTime: document.getElementById("emergencyTopBannerTime"),
+  emergencyTopBannerVitals: document.getElementById("emergencyTopBannerVitals"),
+  emergencyTopBannerStatus: document.getElementById("emergencyTopBannerStatus"),
+  emergencyTopBannerCoords: document.getElementById("emergencyTopBannerCoords"),
+  viewEmergencyLocationBtn: document.getElementById("viewEmergencyLocationBtn"),
+  closeEmergencyTopBanner: document.getElementById("closeEmergencyTopBanner"),
   // Cámaras
   cameraFeeds: document.getElementById("cameraFeeds"),
   cameraLayoutGrid: document.getElementById("cameraLayoutGrid"),
@@ -166,4 +171,12 @@ export const dom = {
   personInfoPopup: document.getElementById("personInfoPopup"),
   personInfoPopupContent: document.getElementById("personInfoPopupContent"),
   btnClosePersonInfoPopup: document.getElementById("btnClosePersonInfoPopup")
+  ,geoMsgModal: document.getElementById("geoMsgModal")
+  ,geoMsgModalTitle: document.getElementById("geoMsgModalTitle")
+  ,geoMsgModalCoords: document.getElementById("geoMsgModalCoords")
+  ,geoMsgModalText: document.getElementById("geoMsgModalText")
+  ,geoMsgModalPublic: document.getElementById("geoMsgModalPublic")
+  ,geoMsgModalClose: document.getElementById("geoMsgModalClose")
+  ,geoMsgModalCancel: document.getElementById("geoMsgModalCancel")
+  ,geoMsgModalConfirm: document.getElementById("geoMsgModalConfirm")
 };

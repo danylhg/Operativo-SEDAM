@@ -634,7 +634,9 @@ export async function issueWearSession(req, res) {
     const token = jwt.sign(
       buildTokenPayload(row, "personal", deviceValidation),
       JWT_SECRET,
-      { expiresIn: "4h" }
+      // El reloj conserva su propia sesión operativa durante seis horas. El
+      // cliente Wear lee el claim `exp` y cierra la sesión al vencer.
+      { expiresIn: "6h" }
     );
 
     const operacion = await fetchAssignedOperationForPersonal(row.id);

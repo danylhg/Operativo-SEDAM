@@ -11,6 +11,7 @@ class ChatSocketManager(
     private val onNewMessage: (JSONObject) -> Unit,
     private val onNavigationRouteEvt: ((event: String, data: JSONObject) -> Unit)? = null,
     private val onTrackingPersonal: ((JSONObject) -> Unit)? = null,
+    private val onPersonalDisconnected: ((JSONObject) -> Unit)? = null,
     private val onTrackingVehiculo: ((JSONObject) -> Unit)? = null,
     private val onTrackingEquipo: ((JSONObject) -> Unit)? = null,
     private val onTrackingDispositivo: ((JSONObject) -> Unit)? = null,
@@ -116,6 +117,11 @@ class ChatSocketManager(
         socket?.on("tracking_personal") { args ->
             val data = args.firstOrNull() as? JSONObject ?: return@on
             onTrackingPersonal?.invoke(data)
+        }
+
+        socket?.on("personal_desconectado") { args ->
+            val data = args.firstOrNull() as? JSONObject ?: return@on
+            onPersonalDisconnected?.invoke(data)
         }
 
         socket?.on("signos_vitales_personal") { args ->

@@ -61,7 +61,7 @@ function coordsFromTrackingHistory(idPersonal) {
   );
 }
 
-function getEmergencyCoordsForChatMessage(msg) {
+export function getEmergencyCoordsForChatMessage(msg) {
   const idPersonal = senderPersonalId(msg);
   return coordsFromEmergencyText(msg?.contenido) ||
     coordsFromTrackingEntity(idPersonal) ||
@@ -86,7 +86,7 @@ function removeEmergencyPulse(key) {
   emergencyPulseEntities.delete(key);
 }
 
-function drawEmergencyPulse(key, coords, name) {
+function drawEmergencyPulse(key, coords, name, persistent = true) {
   const viewer = dashboardState.viewer;
   if (!viewer || !key || !coords) return;
 
@@ -99,10 +99,11 @@ function drawEmergencyPulse(key, coords, name) {
     const color = Cesium.Color.fromCssColorString(colorHex);
     const delayMs = index * 430;
 
-    const progress = () => Math.max(
-      0,
-      Math.min(1, (Date.now() - startedAt - delayMs) / durationMs)
-    );
+    const progress = () => {
+      const elapsed = Date.now() - startedAt - delayMs;
+      if (persistent) return ((elapsed % durationMs) + durationMs) % durationMs / durationMs;
+      return Math.max(0, Math.min(1, elapsed / durationMs));
+    };
 
     return viewer.entities.add({
       name: name || "Emergencia",
@@ -125,31 +126,38 @@ function drawEmergencyPulse(key, coords, name) {
       },
       properties: {
         tacticalType: "emergency-pulse",
-        transient: true,
+        transient: !persistent,
         draggable: false
       }
     });
   });
 
   emergencyPulseEntities.set(key, pulseEntities);
-  window.setTimeout(() => {
-    removeEmergencyPulse(key);
-  }, durationMs + (EMERGENCY_PULSE_COLOR_HEX.length * 430) + 300);
+  if (!persistent) {
+    window.setTimeout(() => {
+      removeEmergencyPulse(key);
+    }, durationMs + (EMERGENCY_PULSE_COLOR_HEX.length * 430) + 300);
+  }
+}
+
+function emergencyKeyForMessage(msg) {
+  const idPersonal = senderPersonalId(msg);
+  return idPersonal ? `P:${idPersonal}` : `M:${msg?.id_mensaje || Date.now()}`;
+}
+
+export function clearEmergencyForChatMessage(msg) {
+  removeEmergencyPulse(emergencyKeyForMessage(msg));
 }
 
 export function pulseEmergencyForChatMessage(msg) {
   if (!isUrgentMessage(msg)) return false;
 
-  const idPersonal = senderPersonalId(msg);
   const coords = getEmergencyCoordsForChatMessage(msg);
 
   if (!coords) return false;
 
-  const key = idPersonal
-    ? `P:${idPersonal}`
-    : `M:${msg?.id_mensaje || Date.now()}`;
   const author = String(msg?.autor_nombre || "").trim();
-  drawEmergencyPulse(key, coords, author ? `Emergencia - ${author}` : "Emergencia");
+  drawEmergencyPulse(emergencyKeyForMessage(msg), coords, author ? `Emergencia - ${author}` : "Emergencia");
   return true;
 }
 
@@ -177,10 +185,7 @@ export function focusEmergencyForChatMessage(msg) {
     duration: 0.55
   });
 
-  const key = idPersonal
-    ? `P:${idPersonal}`
-    : `M:${msg?.id_mensaje || Date.now()}`;
   const author = String(msg?.autor_nombre || "").trim();
-  drawEmergencyPulse(key, coords, author ? `Emergencia - ${author}` : "Emergencia");
+  drawEmergencyPulse(emergencyKeyForMessage(msg), coords, author ? `Emergencia - ${author}` : "Emergencia");
   return true;
 }

@@ -3369,6 +3369,14 @@ function renderPersonnelCameraInto(container, personId, displayName = "") {
 
   destroyHlsPlayersIn(container);
   container.dataset.playbackKey = playbackKey;
+  // El mismo playbackKey se usa para el estado de espera y para el stream
+  // real (por ejemplo, person:42). Conservamos aparte el stream que ya se
+  // dibujó para no confundir una ficha vacía con un video activo.
+  if (camera?.streamId) {
+    container.dataset.personCameraStreamId = String(camera.streamId);
+  } else {
+    delete container.dataset.personCameraStreamId;
+  }
   container.innerHTML = `
     <div class="personInfoCameraFeed cameraFeed">
       <div class="cameraFeedBadge">${escapeHtml(badge)}</div>
@@ -3407,7 +3415,17 @@ export async function renderPersonnelLiveCamera(container, personId, displayName
   const camera = findCameraForPerson(personKey, displayName);
   const nextPlaybackKey = camera ? (camera.playbackKey || getCameraPlaybackKey(camera)) : "";
 
-  if (currentPlaybackKey && nextPlaybackKey && currentPlaybackKey === nextPlaybackKey) return;
+  const renderedStreamId = Number(container.dataset.personCameraStreamId || 0);
+  const nextStreamId = Number(camera?.streamId || 0);
+  // Si primero se mostró “Esperando señal”, el playbackKey coincide con el
+  // posterior stream de esa persona. En ese caso sí hay que redibujar para
+  // insertar el <video> y unirse a WebRTC.
+  if (
+    currentPlaybackKey &&
+    nextPlaybackKey &&
+    currentPlaybackKey === nextPlaybackKey &&
+    renderedStreamId === nextStreamId
+  ) return;
   renderPersonnelCameraInto(container, personKey, displayName);
 }
 

@@ -54,7 +54,7 @@ class WearSocketManager(
                 }
             }
             val mapEvents = listOf(
-                "tracking_personal", "tracking_vehiculo", "tracking_equipo", "tracking_dispositivo",
+                "tracking_personal", "tracking_vehiculo", "tracking_equipo", "tracking_dispositivo", "personal_desconectado",
                 "ruta_navegacion_creada", "ruta_navegacion_eliminada", "ruta_operacion_creada", "ruta_operacion_eliminada",
                 "poi_creado", "poi_actualizado", "poi_eliminado", "area_creada", "area_actualizada", "area_eliminada",
                 "estructura_creada", "estructura_actualizada", "estructura_eliminada", "dibujo_creado", "dibujo_eliminado",

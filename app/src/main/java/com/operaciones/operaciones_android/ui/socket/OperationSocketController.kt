@@ -25,6 +25,7 @@ class OperationSocketController(
         fun onSocketTacticalRouteCreated(route: JSONObject)
         fun onSocketTacticalRouteDeleted(idRoute: Int)
         fun onSocketTrackingPersonal(id: Int, lat: Double, lon: Double, label: String, rumboGrados: Double?, speed: Double?)
+        fun onSocketPersonalDisconnected(idPersonal: Int)
         fun onSocketSignosVitalesPersonal(
             idPersonal: Int,
             fc: Int?,
@@ -166,6 +167,12 @@ class OperationSocketController(
                     if (id > 0 && isValidTrackingLocation(lat, lon)) {
                         host.onSocketTrackingPersonal(id, lat, lon, label, rumboGrados, speed)
                     }
+                }
+            },
+            onPersonalDisconnected = { data ->
+                host.runSocketOnUi {
+                    data.optInt("id_personal", -1).takeIf { it > 0 }
+                        ?.let(host::onSocketPersonalDisconnected)
                 }
             },
             onTrackingVehiculo = { data ->

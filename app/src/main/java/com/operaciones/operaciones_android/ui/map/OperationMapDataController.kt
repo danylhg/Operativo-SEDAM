@@ -656,6 +656,11 @@ class OperationMapDataController(
 
         val js = buildString {
             append("(function(){")
+            // La respuesta ya contiene únicamente presencia activa. Antes de
+            // insertar posiciones, se retiran marcadores de sesiones previas.
+            append("if(typeof syncTrackingPersonal==='function') syncTrackingPersonal(")
+            append(JSONArray(personal.map { it.idPersonal }).toString())
+            append(");")
             personal.forEach { person ->
                 val lat = person.lat ?: return@forEach
                 val lon = person.lon ?: return@forEach

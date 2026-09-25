@@ -636,6 +636,229 @@ body::after {
   word-break: break-word;
 }
 
+/* Pila superior de emergencias: mantiene cada aviso separado y legible. */
+.emergencyAlertStack {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 100001;
+  width: min(560px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.emergencyAlertStack .emergencyTopBanner {
+  position: relative;
+  top: auto !important;
+  left: auto;
+  width: 100%;
+  box-sizing: border-box;
+  transform: translateY(-12px);
+}
+
+.emergencyAlertStack .emergencyTopBanner.visible { transform: translateY(0); }
+
+.emergencyTopBanner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 1;
+  width: min(560px, calc(100vw - 32px));
+  padding: 10px 44px 10px 14px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(127, 29, 29, .98), rgba(190, 18, 60, .96));
+  border: 2px solid #fb7185;
+  border-radius: 12px;
+  box-shadow: 0 10px 35px rgba(127, 29, 29, .55);
+  opacity: 0;
+  transform: translate(-50%, -130%);
+  transition: transform .25s ease, opacity .25s ease;
+}
+
+.emergencyTopBanner[hidden] { display: none; }
+.emergencyTopBanner.visible { opacity: 1; transform: translate(-50%, 0); }
+
+.emergencyTopBannerTitle,
+.emergencyTopBannerBody {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.emergencyTopBannerTitle {
+  min-width: 0;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.emergencyTopBanner:not(.compact) .emergencyTopBannerTitle { cursor: default; }
+.emergencyTopBanner.compact {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  cursor: pointer;
+}
+.emergencyTopBanner.compact .emergencyTopBannerTitle {
+  margin-bottom: 0;
+  cursor: pointer;
+}
+.emergencyTopBanner.compact .emergencyTopBannerBody { display: none; }
+.emergencyTopBanner.compact .emergencyTopBannerTitle::after {
+  content: "VER DETALLE";
+  margin-left: 6px;
+  color: #fecdd3;
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.emergencyTopBannerTitle strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emergencyTopBannerTitle span:last-child {
+  margin-left: auto;
+  color: #ffe4e6;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.emergencyTopBannerIndicator {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  background: #fecdd3;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(254, 205, 211, .2);
+}
+
+.emergencyTopBannerBody {
+  justify-content: space-between;
+  color: #ffe4e6;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.emergencyTopBannerDetails {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0;
+}
+
+.emergencyTopBannerDetails > span { font-variant-numeric: tabular-nums; }
+
+.emergencyTopBannerStatus {
+  color: #fff7ed;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.emergencyVitalsGrid {
+  color: #fff;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 7px;
+}
+
+.emergencyVitalMetric {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.emergencyVitalMetric small {
+  color: #fecdd3;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.emergencyVitalMetric strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emergencyTopBanner.critical-vitals .emergencyVitalMetric:first-child strong {
+  color: #fff7ed;
+}
+
+#emergencyTopBannerCoords[hidden] { display: none; }
+
+.emergencyTopBannerBody button {
+  flex: 0 0 auto;
+  color: #fff;
+  background: rgba(255, 255, 255, .15);
+  border: 1px solid rgba(255, 255, 255, .65);
+  cursor: pointer;
+}
+
+.emergencyTopBannerBody .emergencyLocationButton {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  margin-left: 6px;
+  color: #f8fafc;
+  background: rgba(8, 25, 40, .52);
+  border-color: rgba(219, 234, 254, .7);
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: .2px;
+}
+
+.emergencyLocationButton:hover { background: rgba(8, 25, 40, .76); }
+.emergencyLocationButton .emergencyLocationIcon {
+  color: #bae6fd;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.emergencyTopBannerBody button:hover { background: rgba(255, 255, 255, .27); }
+.emergencyTopBannerBody button:disabled { opacity: .55; cursor: not-allowed; }
+
+.emergencyTopBannerClose {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+@media (max-width: 540px) {
+  .emergencyTopBannerBody { align-items: flex-start; flex-direction: column; }
+  .emergencyTopBannerDetails { width: 100%; }
+  .emergencyTopBannerBody .emergencyLocationButton { align-self: flex-end; }
+}
+
 .mapLayerControl {
   position: fixed;
   top: 18px;
@@ -1166,6 +1389,44 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* El panel conserva sus esquinas redondeadas; solo el contenido se desplaza. */
+#infoPanel.open {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#infoPanel .panelTitle {
+  flex: 0 0 auto;
+}
+
+#infoPanel .infoPanelContent {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 8px 10px 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(96, 165, 250, 0.56) transparent;
+}
+
+#infoPanel .infoPanelContent::-webkit-scrollbar {
+  width: 8px;
+}
+
+#infoPanel .infoPanelContent::-webkit-scrollbar-track {
+  margin: 4px 0 10px;
+  background: transparent;
+}
+
+#infoPanel .infoPanelContent::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.56);
+  background-clip: padding-box;
 }
 
 .infoBlock {
@@ -2665,7 +2926,11 @@ body::after {
   font-size: 16px;
   font-weight: 900;
   letter-spacing: 0;
+  cursor: grab;
+  user-select: none;
 }
+
+.personInfoPopup.is-dragging .personInfoTitle { cursor: grabbing; }
 
 .personInfoGrid {
   display: grid;
@@ -5621,6 +5886,107 @@ body {
   overflow-wrap: anywhere !important;
 }
 
+/* Detalle de rutas sincronizadas: equivalente al cuadro de información Android. */
+.routePopupDetails {
+  display: grid;
+  gap: 5px;
+  margin: 2px 0 10px;
+  padding: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 8px;
+  background: rgba(14, 116, 144, 0.12);
+}
+
+.routePopupDetails > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: #b8c9d9;
+  font-size: 10px;
+}
+
+.routePopupDetails strong {
+  color: #e7f8ff;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.poiPopupDetails {
+  display: grid;
+  gap: 7px;
+  margin: 2px 0 10px;
+  padding: 8px;
+  border: 1px solid rgba(56, 189, 248, .28);
+  border-radius: 8px;
+  background: rgba(14, 116, 144, .12);
+}
+
+.poiPopupVisibility {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #bdcfdd;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.poiVisibilityToggle {
+  appearance: none;
+  position: relative;
+  width: 34px;
+  height: 19px;
+  margin: 0;
+  background: #344c61;
+  border: 1px solid rgba(160, 201, 222, .5);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .18s ease;
+}
+
+.poiVisibilityToggle::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  content: "";
+  background: #e9f6ff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .42);
+  transition: transform .18s ease;
+}
+
+.poiVisibilityToggle:checked { background: #168ed1; }
+.poiVisibilityToggle:checked::after { transform: translateX(15px); }
+
+.poiPopupCoordinates {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 3px;
+  color: #d9effd;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.poiCoordinateValue { display: inline-flex; align-items: center; gap: 5px; }
+.poiCoordinateIcon { display: inline-flex; color: #b9d8e8; }
+.poiCoordinateIcon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; }
+.poiPopupMovement { display: flex; justify-content: space-between; gap: 8px; color: #d9effd; font-size: 10px; font-variant-numeric: tabular-nums; }
+
+.poiCopyCoordinates,
+.poiPopupActions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; }
+.poiCopyCoordinates { width: 22px; height: 22px; padding: 3px; color: #38bdf8; background: transparent; border: 0; }
+.poiCopyCoordinates svg,
+.poiPopupActions svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.poiCopyCoordinates.copied { color: #41e1b2; }
+.poiPopupActions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 2px; }
+.poiPopupActions button { min-height: 32px; border-radius: 7px; font-size: 11px; font-weight: 800; }
+.poiEditButton { color: #bfefff; background: rgba(14, 116, 144, .28); border: 1px solid rgba(56, 189, 248, .6); }
+.poiDeleteButton { color: #ffd6d6; background: rgba(127, 29, 29, .34); border: 1px solid rgba(248, 113, 113, .55); }
+
 #btnCloseEntityPopup {
   width: auto !important;
   height: auto !important;
@@ -6197,6 +6563,287 @@ body {
   .cameraPanel {
     height: min(48dvh, 250px) !important;
   }
+}
+
+/* CreaciÃ³n de waypoints y blancos: equivalente visual al flujo mÃ³vil. */
+.pointObjectModal {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 6, 14, .48);
+  backdrop-filter: blur(2px);
+}
+
+.pointObjectModal.hidden { display: none; }
+
+.pointObjectModalCard {
+  box-sizing: border-box;
+  width: min(400px, calc(100vw - 28px));
+  padding: 14px;
+  color: #e9f6ff;
+  background: linear-gradient(145deg, rgba(5, 25, 45, .98), rgba(8, 36, 61, .98));
+  border: 1px solid rgba(62, 192, 240, .48);
+  border-radius: 14px;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, .48);
+}
+
+.pointObjectModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.pointObjectModalHeader h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 17px;
+}
+
+.pointObjectModalHeader button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: #d9ecf8;
+  font-size: 24px;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.pointObjectPreview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  padding: 9px;
+  margin-bottom: 12px;
+  background: rgba(5, 29, 52, .68);
+  border: 1px solid rgba(60, 175, 220, .32);
+  border-radius: 8px;
+}
+
+.pointObjectPreviewIcon {
+  display: grid;
+  flex: 0 0 58px;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  overflow: hidden;
+  background: #06172b;
+  border: 0;
+}
+
+.pointObjectPreviewIcon img {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+}
+
+.pointObjectPreview small,
+.pointObjectPreview em {
+  display: block;
+  color: #9eb4c7;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.pointObjectPreview strong {
+  display: block;
+  margin: 2px 0;
+  color: #fff;
+  font-size: 16px;
+}
+
+.pointObjectModal .opsInput {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 12px;
+  color: #edf8ff;
+  background: rgba(21, 51, 80, .85);
+  border-color: rgba(105, 186, 228, .5);
+}
+
+.pointObjectModal .fieldLabel {
+  display: block;
+  margin: 0 0 6px;
+  color: #9ab5ca;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.pointChoiceRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+#pointObjectIdentityButtons { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.pointChoiceButton {
+  min-height: 35px;
+  padding: 5px 4px;
+  color: #e5f2fa;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(4, 24, 44, .72);
+  border: 1px solid rgba(87, 170, 212, .64);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.pointChoiceButton.is-selected {
+  color: #152333;
+  background: #e5bc3f;
+  border-color: #f1cf62;
+}
+
+#pointObjectModalMetrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+#pointObjectModalMetrics .opsInput { margin-bottom: 10px; }
+
+.pointObjectModalCoords {
+  margin: 2px 0 12px;
+  color: #8baabe;
+  font-size: 11px;
+}
+
+.pointObjectModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.pointObjectModalActions button {
+  min-width: 96px;
+  min-height: 38px;
+  padding: 8px 13px;
+  color: #dcecf7;
+  font-size: 11px;
+  font-weight: 700;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pointObjectModalActions #pointObjectModalConfirm {
+  color: #132536;
+  background: #e5bc3f;
+}
+
+.pointObjectModalActions #pointObjectModalConfirm:disabled {
+  color: #7c93a5;
+  background: #29415b;
+  cursor: not-allowed;
+}
+
+.geoMsgModalCard textarea.opsInput {
+  min-height: 92px;
+  resize: vertical;
+  margin: 4px 0 12px;
+}
+
+.geoMsgVisibilityControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #dcecf7;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.geoMsgVisibilityControl input {
+  accent-color: #159bd3;
+}
+
+.pointObjectModalActions #geoMsgModalConfirm {
+  color: #132536;
+  background: #e5bc3f;
+}
+
+.pointObjectModalActions #geoMsgModalConfirm:disabled {
+  color: #7c93a5;
+  background: #29415b;
+  cursor: not-allowed;
+}
+
+.geoMsgModalCard {
+  width: min(390px, calc(100vw - 40px));
+  padding: 26px 25px 22px;
+  background: #071c2d;
+  border-color: rgba(42, 133, 207, .68);
+  border-radius: 18px;
+}
+.geoMsgModalCard .pointObjectModalHeader { margin-bottom: 12px; }
+.geoMsgModalCard .pointObjectModalHeader h2 { font-size: 23px; letter-spacing: .5px; font-weight: 900; }
+.geoMsgModalCard .pointObjectModalHeader button { display: none; }
+.geoMsgModalCard .pointObjectModalCoords { margin: 0 0 17px; color: #ffd55a; font-size: 14px; font-weight: 800; }
+.geoMsgModalCard textarea.opsInput { min-height: 114px; margin: 0 0 18px; padding: 14px; color: #e9f6ff; font-size: 16px; background: #112d47; border-color: #1d5684; border-radius: 10px; }
+.geoMsgModalCard textarea.opsInput::placeholder { color: #7f94ab; }
+.geoMsgModalCard .pointObjectModalActions { gap: 18px; }
+.geoMsgModalCard .pointObjectModalActions button { min-width: 108px; font-size: 13px; }
+
+/* GEO-MSG: pin y ficha anclada, equivalente al flujo móvil. */
+.geoMsgPopup { width: min(238px, calc(100vw - 28px)) !important; min-width: 0 !important; padding: 11px !important; border-color: rgba(40, 212, 198, .8) !important; border-radius: 11px !important; background: rgba(3, 37, 51, .97) !important; box-shadow: 0 10px 25px rgba(0, 0, 0, .48) !important; }
+.geoMsgPopup::after { position: absolute; left: 50%; bottom: -10px; width: 18px; height: 18px; content: ""; background: rgba(3, 37, 51, .97); border-right: 1px solid rgba(40, 212, 198, .8); border-bottom: 1px solid rgba(40, 212, 198, .8); transform: translateX(-50%) rotate(45deg); }
+.geoMsgPopup > * { position: relative; z-index: 1; }
+.geoMsgPopup #entityPopupName { max-width: 100% !important; margin-bottom: 9px; color: #bbfff6 !important; font-size: 13px !important; }
+.geoMsgPopup .entityPopupCreator, .geoMsgPopup .poiPopupDetails, .geoMsgPopup .routePopupDetails { display: none !important; }
+.geoMsgText { min-height: 37px; padding: 9px 10px; margin: 0 0 10px; color: #ffffff; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; background: #063444; border-left: 3px solid #24d5c3; border-radius: 5px; }
+.geoMsgCoordinates { margin-bottom: 10px; color: #b8d2df; font-size: 10px; font-variant-numeric: tabular-nums; letter-spacing: .8px; }
+.geoMsgVisibility { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px; color: #b8d2df; font-size: 10px; }
+.geoMsgVisibilityToggle { appearance: none; position: relative; width: 31px; height: 18px; margin: 0; background: #4a6074; border: 0; border-radius: 999px; cursor: pointer; }
+.geoMsgVisibilityToggle::after { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; content: ""; background: #eaf8ff; border-radius: 50%; transition: transform .18s ease; }
+.geoMsgVisibilityToggle:checked { background: #168ed1; }
+.geoMsgVisibilityToggle:checked::after { transform: translateX(13px); }
+.geoMsgActions { display: flex; justify-content: flex-end; gap: 9px; }
+.geoMsgActions button { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 34px; padding: 0; color: #c5f6ff; background: rgba(8, 76, 98, .75); border: 1px solid #39b5dc; border-radius: 7px; cursor: pointer; }
+.geoMsgActions .geoMsgDeleteButton { color: #ffd7d7; background: rgba(93, 20, 29, .65); border-color: #ef8585; }
+.geoMsgActions svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+/* El selector de capas se muestra como icono, sin el recuadro de fondo. */
+.mapLayerControl .mapLayerButton,
+.mapLayerControl .mapLayerButton:hover,
+.mapLayerControl.open .mapLayerButton {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Mantener el icono de ayuda de Cesium sin el botón cuadrado que lo envuelve. */
+.cesium-navigationHelpButton-wrapper,
+.cesium-navigationHelpButton-wrapper .cesium-button {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Ocultar el control de ayuda de Cesium: no se usa en esta interfaz. */
+.cesium-navigationHelpButton-wrapper {
+  visibility: hidden !important;
+}
+
+/* Mostrar solo la lupa del buscador, sin el botón cuadrado de Cesium. */
+.cesium-geocoder-searchButton,
+.cesium-geocoder-searchButton:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 

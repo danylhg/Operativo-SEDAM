@@ -13,7 +13,7 @@ import {
   refreshPersonnelInfoPopup,
   updateFollowedPersonalLocation,
   updateFollowedTrackingLocation
-} from "./dashboard.ui.js";
+} from "./dashboard.ui.js?v=20260923-draggable-person-popup";
 
 const API_BASE = () => localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
 const token = () => localStorage.getItem("token");
@@ -346,6 +346,44 @@ function headingEndPosition(lat, lng, headingDegrees, meters = TRACKING_HEADING_
   return { start, end };
 }
 
+function trackingDirectionArrowImage(headingDegrees) {
+  // Mismo gráfico de rumbo utilizado por los Blancos tácticos.
+  const radians = Cesium.Math.toRadians(headingDegrees);
+  const pointsUpward = true;
+  const startX = 40 + Math.sin(radians) * 19;
+  const startY = 40 - Math.cos(radians) * 19;
+  const elbowX = 40;
+  const elbowY = 40;
+  const length = 39;
+  const tipX = elbowX + Math.sin(radians) * length;
+  const tipY = elbowY - Math.cos(radians) * length;
+  const headLength = 9;
+  const leftX = tipX - Math.sin(radians - Math.PI / 6) * headLength;
+  const leftY = tipY + Math.cos(radians - Math.PI / 6) * headLength;
+  const rightX = tipX - Math.sin(radians + Math.PI / 6) * headLength;
+  const rightY = tipY + Math.cos(radians + Math.PI / 6) * headLength;
+  const n = (value) => Number(value).toFixed(1);
+  const connector = pointsUpward
+    ? `M${startX} ${startY}L${n(tipX)} ${n(tipY)}`
+    : `M${startX} ${startY}V${elbowY}L${n(tipX)} ${n(tipY)}`;
+  const arrowPath = `${connector}M${n(tipX)} ${n(tipY)}L${n(leftX)} ${n(leftY)}M${n(tipX)} ${n(tipY)}L${n(rightX)} ${n(rightY)}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><path d="${arrowPath}" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="${arrowPath}" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return {
+    image: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+    pointsUpward
+  };
+}
+
+function northAlignedAxis(position) {
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(position);
+  const north = Cesium.Matrix4.multiplyByPointAsVector(
+    enu,
+    new Cesium.Cartesian3(0, 1, 0),
+    new Cesium.Cartesian3()
+  );
+  return Cesium.Cartesian3.normalize(north, north);
+}
+
 function upsertTrackingHeadingLine(key, lat, lng, color, meta = {}) {
   const viewer = dashboardState.viewer;
   if (!viewer) return;
@@ -356,8 +394,66 @@ function upsertTrackingHeadingLine(key, lat, lng, color, meta = {}) {
     return;
   }
 
-  const coords = headingEndPosition(lat, lng, heading);
   const existing = dashboardState.trackingHeadingEntities.get(key);
+  const usesBlancoArrow = /^P:|^V:/.test(String(key));
+  // Personal y vehículos muestran la misma flecha SVG que los Blancos.
+  if (usesBlancoArrow) {
+    const arrowGraphic = trackingDirectionArrowImage(heading);
+    const verticalOrigin = Cesium.VerticalOrigin.CENTER;
+    const pixelOffset = new Cesium.Cartesian2(0, -21);
+    const alignedAxis = new Cesium.CallbackProperty(() => {
+      const target = dashboardState.trackingEntities.get(key);
+      const position = target?.position
+        ? (target.position.getValue ? target.position.getValue(viewer.clock.currentTime) : target.position)
+        : Cesium.Cartesian3.fromDegrees(lng, lat);
+      return northAlignedAxis(position);
+    }, false);
+
+    if (existing) {
+      existing.name = `Rumbo ${Math.round(heading)}°`;
+      existing.billboard.image = arrowGraphic.image;
+      existing.billboard.verticalOrigin = verticalOrigin;
+      existing.billboard.pixelOffset = pixelOffset;
+      existing.billboard.alignedAxis = alignedAxis;
+      existing.properties.headingDegrees = heading;
+      return;
+    }
+
+    const arrow = viewer.entities.add({
+      name: `Rumbo ${Math.round(heading)}°`,
+      position: new Cesium.CallbackProperty(() => {
+        const target = dashboardState.trackingEntities.get(key);
+        if (target?.position) {
+          return target.position.getValue
+            ? target.position.getValue(viewer.clock.currentTime)
+            : target.position;
+        }
+        return Cesium.Cartesian3.fromDegrees(lng, lat);
+      }, false),
+      billboard: {
+        image: arrowGraphic.image,
+        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+        verticalOrigin,
+        pixelOffset,
+        // La flecha conserva el rumbo geográfico aunque se rote el mapa.
+        alignedAxis,
+        width: 80,
+        height: 80,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY
+      },
+      properties: {
+        trackingKey: key,
+        tacticalType: "tracking-heading",
+        headingLine: true,
+        headingDegrees: heading,
+        draggable: false
+      }
+    });
+    dashboardState.trackingHeadingEntities.set(key, arrow);
+    return;
+  }
+
+  const coords = headingEndPosition(lat, lng, heading);
   if (existing) {
     existing.polyline.positions = [coords.start, coords.end];
     existing.polyline.material = color.withAlpha(0.92);
@@ -664,6 +760,12 @@ function removeTrackingEntity(key) {
 
 // ── Carga desde datos de mapa ya obtenidos (sin fetch extra) ─
 export function loadTrackingFromMapaData(mapaData) {
+  const activePersonal = new Set(
+    (mapaData.personal || []).map(p => String(p.id_personal)).filter(Boolean)
+  );
+  Array.from(dashboardState.trackingEntities.keys()).forEach(key => {
+    if (key.startsWith("P:") && !activePersonal.has(key.slice(2))) removeTrackingEntity(key);
+  });
   (mapaData.personal || []).forEach(p => {
     upsertPersonalTracking(p);
   });
@@ -728,9 +830,30 @@ async function fetchTrackingList(path) {
   }
 }
 
+// `/mapa` ya filtra `personal` por presencia de socket activa. Usarlo como
+// fuente de verdad evita volver a pintar ubicaciones hist\u00f3ricas de personas
+// que se desconectaron de la operaci\u00f3n.
+async function fetchConnectedPersonalTracking() {
+  const id = opId();
+  if (!id || !token()) return [];
+
+  try {
+    const res = await fetch(`${API_BASE()}/ops/${id}/mapa`, {
+      headers: { "Authorization": `Bearer ${token()}` },
+      cache: "no-store"
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.ok && Array.isArray(data.personal) ? data.personal : [];
+  } catch (err) {
+    console.warn("[TRACKING] No se pudo refrescar personal conectado:", err.message);
+    return [];
+  }
+}
+
 export async function refreshTrackingPositions() {
   const [personal, vehiculos, equipos, dispositivos] = await Promise.all([
-    fetchTrackingList("/tracking/personal"),
+    fetchConnectedPersonalTracking(),
     fetchTrackingList("/tracking/vehiculos"),
     fetchTrackingList("/tracking/equipos"),
     fetchTrackingList("/tracking/dispositivos")
@@ -743,6 +866,12 @@ export async function refreshTrackingPositions() {
     );
   }
 
+  const connectedPersonalKeys = new Set(
+    personal.map(item => `P:${item.id_personal}`).filter(key => key !== "P:undefined" && key !== "P:null")
+  );
+  [...dashboardState.trackingEntities.keys()]
+    .filter(key => key.startsWith("P:") && !connectedPersonalKeys.has(key))
+    .forEach(removeTrackingEntity);
   personal.forEach(upsertPersonalTracking);
   vehiculos.forEach(upsertVehiculoTracking);
   equipos.forEach(upsertEquipoTracking);
@@ -756,6 +885,11 @@ export function startTrackingPolling(intervalMs = 5000) {
 
 // ── Socket en tiempo real ────────────────────────────────────
 export function initTrackingSocket(socket) {
+  socket.on("personal_desconectado", (data) => {
+    const id = Number(data?.id_personal);
+    if (Number.isFinite(id) && id > 0) removeTrackingEntity(`P:${id}`);
+  });
+
   socket.on("tracking_personal", (data) => {
     upsertPersonalTracking(data);
   });

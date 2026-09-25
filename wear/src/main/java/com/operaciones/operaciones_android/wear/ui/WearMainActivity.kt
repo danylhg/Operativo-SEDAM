@@ -20,6 +20,7 @@ import android.graphics.Canvas
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -512,6 +513,12 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             metricCard("BARO", lastPressure?.let { "%.0f hPa".format(it) } ?: "--", C_BLUE).also { baroValue = it.value }
         ))
         container.addView(grid)
+        container.addView(proButton(
+            "PROBAR LINEA DE VIDA",
+            contentWidthDp(),
+            C_TEXT,
+            C_ALERT_BG
+        ) { sendLifeLineTest() })
     }
 
     private fun renderChatPanel(container: LinearLayout) {
@@ -708,12 +715,17 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         val operation = WearSession.operation(this)
+        val user = WearSession.user(this)
         militarySymbolRenderer?.destroy()
         val symbolRenderer = MilitarySymbolRenderer(this).also { militarySymbolRenderer = it }
         val map = OperationMapView(this, symbolRenderer) {
             homeMenuOpen = true
             renderHome()
         }.apply {
+            setRouteOwner(
+                if (user?.tabla.equals("personal", ignoreCase = true)) "PERSONAL" else "USUARIO",
+                user?.id
+            )
             operationLat = operation?.zonaLat?.takeIf { it != 0.0 }
             operationLon = operation?.zonaLon?.takeIf { it != 0.0 }
             userLat = lastLat
@@ -773,7 +785,6 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
 
     private fun refreshOperationTracking(map: OperationMapView, operationId: Int, token: String) {
         listOf(
-            "personal" to "tracking_personal",
             "vehiculos" to "tracking_vehiculo",
             "equipos" to "tracking_equipo",
             "dispositivos" to "tracking_dispositivo"
@@ -1201,7 +1212,9 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
     private fun renderMessages(messages: List<WearChatMessage>) {
         val list = chatList ?: return
         list.removeAllViews()
-        val last = messages.filterForSelectedChat().takeLast(6)
+        // Las emergencias sólo se ven como alerta operativa; nunca forman parte
+        // del historial ni de una conversación del reloj.
+        val last = messages.filterNot(::isOperationalAlert).filterForSelectedChat().takeLast(6)
         if (last.isEmpty()) {
             list.addView(chatStatusBlock("sin mensajes", selectedChatChannel.shortLabel))
             return
@@ -1438,6 +1451,33 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
         )
     }
 
+    /** Sends a clearly labelled global test without altering the real vital-sign detector. */
+    private fun sendLifeLineTest() {
+        val user = WearSession.user(this)
+        val operation = WearSession.operation(this)
+        val token = WearSession.token(this)
+        if (user == null || operation == null || token.isBlank()) {
+            toast("Sin sesion u operacion")
+            return
+        }
+
+        setStatus("enviando prueba")
+        api.sendMessage(
+            operationId = operation.id,
+            token = token,
+            contenido = lifeLineTestContent(user),
+            tipoMensaje = "URGENTE",
+            destinatarioRol = "GLOBAL",
+            onSuccess = {
+                runOnUiThread {
+                    setStatus("prueba enviada a todos")
+                    toast("Prueba de linea de vida enviada")
+                }
+            },
+            onError = { error -> runOnUiThread { setStatus(error) } }
+        )
+    }
+
     private fun emergencyContent(user: WearUser, source: String): String {
         val timestamp = SimpleDateFormat("HH:mm:ss dd/MM/yyyy", Locale.getDefault()).format(Date())
         val location = if (lastLat != null && lastLon != null) {
@@ -1450,6 +1490,27 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             "USUARIO: ${user.nombreCompleto}\n" +
             "ORIGEN: $source\n" +
             "PULSO: $heart\n" +
+            "UBICACION: $location\n" +
+            "HORA: $timestamp"
+    }
+
+    private fun lifeLineTestContent(user: WearUser): String {
+        val timestamp = SimpleDateFormat("HH:mm:ss dd/MM/yyyy", Locale.getDefault()).format(Date())
+        val location = if (lastLat != null && lastLon != null) {
+            "%.6f, %.6f".format(lastLat, lastLon)
+        } else {
+            "ubicacion no disponible"
+        }
+        val heart = lastHeartRate?.let { "%.0f bpm".format(it) } ?: "no disponible"
+        return "PRUEBA - ALERTA LINEA DE VIDA:\n" +
+            "ESTE MENSAJE ES UNA PRUEBA; NO ES UNA EMERGENCIA REAL.\n" +
+            "USUARIO: ${user.nombreCompleto}\n" +
+            "SIGNOS VITALES:\n" +
+            "FRECUENCIA CARDIACA: $heart\n" +
+            "OXIGENO EN SANGRE: no disponible\n" +
+            "FRECUENCIA RESPIRATORIA: no disponible\n" +
+            "TEMPERATURA CORPORAL: no disponible\n" +
+            "PRESION ARTERIAL: no disponible\n" +
             "UBICACION: $location\n" +
             "HORA: $timestamp"
     }
@@ -1758,7 +1819,7 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                 val currentUser = WearSession.user(this)
                 val mine = message.autor.equals(currentUser?.nombreCompleto, ignoreCase = true) ||
                     message.autor.equals(currentUser?.username, ignoreCase = true)
-                if (!mine) {
+                if (!mine && !isOperationalAlert(message)) {
                     showChatNotification(message)
                     val messageChannel = channelForMessage(message)
                     if (activePanel != Panel.MENSAJES || !chatConversationOpen ||
@@ -1791,6 +1852,9 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                     if (event.startsWith("tracking_")) {
                         map.applyRealtimeTracking(event, data)
                     } else {
+                        if (event == "personal_desconectado") {
+                            map.removeRealtimePersonal(data.optInt("id_personal", -1))
+                        }
                         if (event == "dibujo_eliminado") {
                             map.removeDrawing(data.optInt("id_dibujo", -1))
                         }
@@ -1895,6 +1959,7 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
     }
 
     private fun showChatNotification(message: WearChatMessage) {
+        if (isOperationalAlert(message)) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             !hasPermission(Manifest.permission.POST_NOTIFICATIONS)
         ) return
@@ -1934,6 +1999,11 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
         }
         getSystemService(NotificationManager::class.java).notify(notificationId, notification)
     }
+
+    private fun isOperationalAlert(message: WearChatMessage): Boolean =
+        message.tipo.equals("URGENTE", ignoreCase = true) ||
+            message.tipo.equals("ALERTA", ignoreCase = true) ||
+            message.tipo.equals("ALERT", ignoreCase = true)
 
     private fun setStatus(message: String) {
         statusText?.text = message.take(34)
@@ -2368,10 +2438,17 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
         private var edgeSwipeActive = false
         private val realtimeMarkers = mutableMapOf<String, JSONObject>()
         private var drawings = JSONArray()
+        private var routeOwnerType: String? = null
+        private var routeOwnerId: Int? = null
 
         fun zoomIn() = adjustZoom(0.25f)
         fun zoomOut() = adjustZoom(-0.25f)
         fun adjustZoom(delta: Float) = changeZoom(zoom + delta)
+
+        fun setRouteOwner(type: String, id: Int?) {
+            routeOwnerType = type.uppercase(Locale.US)
+            routeOwnerId = id?.takeIf { it > 0 }
+        }
 
         fun updateUserLocation(lat: Double, lon: Double) {
             userLat = lat
@@ -2419,8 +2496,24 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             invalidate()
         }
 
+        fun removeRealtimePersonal(idPersonal: Int) {
+            if (idPersonal <= 0) return
+            realtimeMarkers.remove("tracking_personal:$idPersonal")
+            invalidate()
+        }
+
         fun setOperationData(data: JSONObject) {
             operationData = data
+            val personal = data.optJSONArray("personal") ?: JSONArray()
+            val activePersonalIds = (0 until personal.length())
+                .mapNotNull { index ->
+                    personal.optJSONObject(index)
+                        ?.optInt("id_personal", -1)?.takeIf { it > 0 }
+                }.toSet()
+            realtimeMarkers.keys
+                .filter { key -> key.startsWith("tracking_personal:") && key.substringAfter(':').toIntOrNull() !in activePersonalIds }
+                .toList()
+                .forEach(realtimeMarkers::remove)
             data.optJSONObject("zona_operacion")?.let { zone ->
                 operationLat = zone.optDouble("centroide_lat", operationLat ?: 0.0)
                 operationLon = zone.optDouble("centroide_lon", operationLon ?: 0.0)
@@ -2566,6 +2659,8 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             super.onDraw(canvas)
             val opLat = operationLat
             val opLon = operationLon
+            val currentLat = userLat
+            val currentLon = userLon
             paint.style = Paint.Style.FILL
             paint.color = Color.parseColor("#102326")
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
@@ -2592,40 +2687,41 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                     canvas.drawBitmap(bitmap, 0f, 0f, paint)
                     canvas.restore()
                 }
+                if (currentLat != null && currentLon != null) {
+                    val point = screenPoint(currentLat, currentLon, opLat, opLon)
+                    paint.color = C_GREEN
+                    canvas.drawCircle(point.first, point.second, 8f, paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 2f
+                    paint.color = Color.WHITE
+                    canvas.drawCircle(point.first, point.second, 10f, paint)
+                    paint.style = Paint.Style.FILL
+                }
+                // Las capas tácticas (incluido el destino) van al frente.
                 drawOperationLayers(canvas, opLat, opLon)
-            }
-            val currentLat = userLat
-            val currentLon = userLon
-            if (opLat != null && opLon != null && currentLat != null && currentLon != null) {
-                val point = screenPoint(currentLat, currentLon, opLat, opLon)
-                paint.color = C_GREEN
-                canvas.drawCircle(point.first, point.second, 8f, paint)
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 2f
-                paint.color = Color.WHITE
-                canvas.drawCircle(point.first, point.second, 10f, paint)
-                paint.style = Paint.Style.FILL
             }
         }
 
         private fun drawOperationLayers(canvas: Canvas, centerLat: Double, centerLon: Double) {
             val data = operationData ?: return
-            data.optJSONObject("zona_operacion")?.optJSONObject("geometria")
+            val operationZone = data.optJSONObject("zona_operacion")
+            jsonObject(operationZone?.opt("geometria"))
                 ?.optJSONArray("coordinates")?.optJSONArray(0)?.let { ring ->
-                    drawCoordinateRing(canvas, ring, centerLat, centerLon, C_BLUE, true)
+                    val zoneColor = parseCssColor(operationZone?.optString("color").orEmpty(), C_BLUE)
+                    drawCoordinateRing(
+                        canvas, ring, centerLat, centerLon, zoneColor, true,
+                        dashPattern = floatArrayOf(9f, 7f)
+                    )
+                    drawSectorLabel(canvas, ring, operationZone?.optString("nombre").orEmpty(), centerLat, centerLon)
                     drawOperationGrid(canvas, ring, data.optJSONObject("grid") ?: data.optJSONObject("cuadricula_operacion"), centerLat, centerLon)
                 }
-            val layers = data.optJSONArray("capas") ?: return
+            val layers = data.optJSONArray("capas") ?: JSONArray()
             for (index in 0 until layers.length()) {
                 val item = layers.optJSONObject(index) ?: continue
                 val type = item.optString("tipo_capa")
                 when (type) {
                     "RUTA", "AREA" -> {
-                        val geometry = when (val raw = item.opt("geometria")) {
-                            is JSONObject -> raw
-                            is String -> runCatching { JSONObject(raw) }.getOrNull()
-                            else -> null
-                        } ?: continue
+                        val geometry = jsonObject(item.opt("geometria")) ?: continue
                         val meta = geometry.optJSONObject("meta")
                         if (type == "AREA" && meta?.optString("shape") == "circle") {
                             val center = meta.optJSONArray("center") ?: continue
@@ -2633,20 +2729,34 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                             val lon = center.optDouble(0)
                             val centerPoint = screenPoint(lat, lon, centerLat, centerLon)
                             val edgePoint = screenPoint(lat, lon + meta.optDouble("radius_m", 1.0) / (111320.0 * cos(lat * PI / 180.0)), centerLat, centerLon)
-                            paint.style = Paint.Style.STROKE
-                            paint.strokeWidth = 3f
-                            paint.color = parseCssColor(item.optString("color", "#FFD700"), Color.YELLOW)
-                            canvas.drawCircle(centerPoint.first, centerPoint.second, kotlin.math.abs(edgePoint.first - centerPoint.first), paint)
+                            val color = parseCssColor(item.optString("color", "#FFD700"), Color.YELLOW)
+                            val radius = kotlin.math.abs(edgePoint.first - centerPoint.first)
+                            val opacity = meta.optDouble("opacity", .35).coerceIn(0.0, 1.0)
                             paint.style = Paint.Style.FILL
+                            paint.color = Color.argb((opacity * 255).toInt(), Color.red(color), Color.green(color), Color.blue(color))
+                            canvas.drawCircle(centerPoint.first, centerPoint.second, radius, paint)
+                            paint.style = Paint.Style.STROKE
+                            paint.strokeWidth = sectorOutlineWidth(meta)
+                            paint.color = color
+                            canvas.drawCircle(centerPoint.first, centerPoint.second, radius, paint)
+                            paint.style = Paint.Style.FILL
+                            drawSectorLabel(canvas, lat, lon, item.optString("nombre"), centerLat, centerLon)
                             continue
                         }
                         val coordinates = geometry.optJSONArray("coordinates") ?: continue
                         val ring = if (type == "AREA") coordinates.optJSONArray(0) else coordinates
-                        if (ring != null) drawCoordinateRing(
-                            canvas, ring, centerLat, centerLon,
-                            parseCssColor(item.optString("color", "#FFD700"), C_BLUE),
-                            type == "AREA"
-                        )
+                        if (ring != null) {
+                            val color = parseCssColor(item.optString("color", "#FFD700"), C_BLUE)
+                            val opacity = meta?.optDouble("opacity", .35)?.coerceIn(0.0, 1.0) ?: .35
+                            drawCoordinateRing(
+                                canvas, ring, centerLat, centerLon, color, type == "AREA",
+                                fillColor = if (type == "AREA") Color.argb((opacity * 255).toInt(), Color.red(color), Color.green(color), Color.blue(color)) else null,
+                                strokeWidth = if (type == "AREA") sectorOutlineWidth(meta) else 3f
+                            )
+                            if (type == "AREA") {
+                                drawSectorLabel(canvas, ring, item.optString("nombre"), centerLat, centerLon)
+                            }
+                        }
                     }
                     "EDIFICIO", "EQUIPO" -> drawMarker(canvas, item, centerLat, centerLon)
                 }
@@ -2659,9 +2769,17 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             if (vehicles != null) for (index in 0 until vehicles.length()) {
                 drawMarker(canvas, vehicles.optJSONObject(index) ?: continue, centerLat, centerLon)
             }
+            // Una actualizaci\u00f3n en tiempo real sustituye la posici\u00f3n inicial
+            // de esa persona; de ese modo el mapa no pinta dos copias.
+            val realtimePersonalIds = realtimeMarkers.values
+                .mapNotNull { marker -> marker.optInt("id_personal", -1).takeIf { it > 0 } }
+                .toSet()
             val people = data.optJSONArray("personal")
             if (people != null) for (index in 0 until people.length()) {
-                drawMarker(canvas, people.optJSONObject(index) ?: continue, centerLat, centerLon)
+                val person = people.optJSONObject(index) ?: continue
+                if (person.optInt("id_personal", -1) !in realtimePersonalIds) {
+                    drawMarker(canvas, person, centerLat, centerLon)
+                }
             }
             val devices = data.optJSONArray("dispositivos")
             if (devices != null) for (index in 0 until devices.length()) {
@@ -2670,13 +2788,79 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             realtimeMarkers.values.forEach { drawMarker(canvas, it, centerLat, centerLon) }
             drawFreehandDrawings(canvas, centerLat, centerLon)
             val remoteRoutes = data.optJSONArray("rutas_navegacion")
-            if (remoteRoutes != null) for (index in 0 until remoteRoutes.length()) {
-                val route = remoteRoutes.optJSONObject(index) ?: continue
-                val geometry = route.optJSONObject("geometria") ?: route.optJSONObject("geometry") ?: continue
-                geometry.optJSONArray("coordinates")?.let {
-                    drawCoordinateRing(canvas, it, centerLat, centerLon, Color.parseColor("#48E5FF"), false)
+            // Igual que el mapa principal, el reloj conserva solamente la última
+            // ruta del usuario actual. Así no se acumulan destinos antiguos.
+            val latestOwnRoute = remoteRoutes?.let { routes ->
+                (0 until routes.length())
+                    .mapNotNull { routes.optJSONObject(it) }
+                    .filter(::isOwnNavigationRoute)
+                    .maxByOrNull { it.optInt("id_ruta", -1) }
+            }
+            latestOwnRoute?.let { route ->
+                // La API entrega las rutas calculadas como `geojson`, mientras que
+                // clientes antiguos podían llamarlo `geometria` o `geometry`.
+                val geometry = jsonObject(route.opt("geojson"))
+                    ?: jsonObject(route.opt("geometria"))
+                    ?: jsonObject(route.opt("geometry"))
+                geometry?.optJSONArray("coordinates")?.let { coordinates ->
+                    val color = navigationRouteColor(route)
+                    drawCoordinateRing(canvas, coordinates, centerLat, centerLon, color, false, strokeWidth = 4f)
+                    drawNavigationDestination(canvas, coordinates, centerLat, centerLon)
                 }
             }
+        }
+
+        private fun sectorOutlineWidth(meta: JSONObject?): Float =
+            meta?.optDouble("outline_width", meta.optDouble("outlineWidth", 3.0))
+                ?.toFloat()?.coerceIn(1.5f, 5f) ?: 3f
+
+        private fun drawSectorLabel(
+            canvas: Canvas,
+            points: JSONArray,
+            label: String,
+            centerLat: Double,
+            centerLon: Double
+        ) {
+            if (label.isBlank() || points.length() == 0) return
+            var latSum = 0.0
+            var lonSum = 0.0
+            var count = 0
+            for (index in 0 until points.length()) {
+                val point = points.optJSONArray(index) ?: continue
+                val lon = point.optDouble(0, Double.NaN)
+                val lat = point.optDouble(1, Double.NaN)
+                if (!lat.isFinite() || !lon.isFinite()) continue
+                latSum += lat
+                lonSum += lon
+                count++
+            }
+            if (count == 0) return
+            drawSectorLabel(canvas, latSum / count, lonSum / count, label, centerLat, centerLon)
+        }
+
+        private fun drawSectorLabel(
+            canvas: Canvas,
+            lat: Double,
+            lon: Double,
+            label: String,
+            centerLat: Double,
+            centerLon: Double
+        ) {
+            val point = screenPoint(lat, lon, centerLat, centerLon)
+            val text = label.take(18)
+            paint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            paint.textSize = 10f
+            paint.textAlign = Paint.Align.CENTER
+            val padding = 4f
+            val halfWidth = paint.measureText(text) / 2f + padding
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(185, 8, 17, 19)
+            canvas.drawRoundRect(RectF(point.first - halfWidth, point.second - 10f, point.first + halfWidth, point.second + 4f), 4f, 4f, paint)
+            paint.color = C_TEXT
+            paint.setShadowLayer(2f, 0f, 1f, Color.BLACK)
+            canvas.drawText(text, point.first, point.second, paint)
+            paint.clearShadowLayer()
+            paint.textAlign = Paint.Align.LEFT
         }
 
         private fun drawFreehandDrawings(canvas: Canvas, centerLat: Double, centerLon: Double) {
@@ -2744,25 +2928,170 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             val maxLat = coordinates.maxOf { it.first }
             val minLon = coordinates.minOf { it.second }
             val maxLon = coordinates.maxOf { it.second }
-            paint.color = Color.parseColor("#E7F7FF")
-            paint.strokeWidth = 1.2f
+            // Igual que los mapas Android/web: cada divisoria toma el siguiente
+            // color t\u00e1ctico y se dibuja discontinua, sin tapar el sat\u00e9lite.
+            val colors = intArrayOf(
+                Color.parseColor("#FFA000"), Color.parseColor("#1E88E5"),
+                Color.parseColor("#E53935"), Color.parseColor("#00897B"),
+                Color.parseColor("#8E24AA"), Color.parseColor("#FB8C00"),
+                Color.parseColor("#D81B60"), Color.parseColor("#039BE5"),
+                Color.parseColor("#43A047"), Color.parseColor("#FDD835")
+            )
+            var colorIndex = 0
+            paint.strokeWidth = 2.5f
             paint.style = Paint.Style.STROKE
-            for (row in 1 until rows) {
-                val lat = minLat + (maxLat - minLat) * row / rows
-                val start = screenPoint(lat, minLon, centerLat, centerLon)
-                val end = screenPoint(lat, maxLon, centerLat, centerLon)
-                canvas.drawLine(start.first, start.second, end.first, end.second, paint)
-            }
+            paint.pathEffect = DashPathEffect(floatArrayOf(10f, 7f), 0f)
             for (col in 1 until cols) {
                 val lon = minLon + (maxLon - minLon) * col / cols
                 val start = screenPoint(minLat, lon, centerLat, centerLon)
                 val end = screenPoint(maxLat, lon, centerLat, centerLon)
+                paint.color = colors[colorIndex++ % colors.size]
                 canvas.drawLine(start.first, start.second, end.first, end.second, paint)
+            }
+            for (row in 1 until rows) {
+                val lat = minLat + (maxLat - minLat) * row / rows
+                val start = screenPoint(lat, minLon, centerLat, centerLon)
+                val end = screenPoint(lat, maxLon, centerLat, centerLon)
+                paint.color = colors[colorIndex++ % colors.size]
+                canvas.drawLine(start.first, start.second, end.first, end.second, paint)
+            }
+            paint.pathEffect = null
+            val names = grid.optJSONArray("names") ?: grid.optJSONArray("nombres") ?: JSONArray()
+            var index = 0
+            for (row in 0 until rows) {
+                val latTop = maxLat - (maxLat - minLat) * row / rows
+                for (col in 0 until cols) {
+                    val lonLeft = minLon + (maxLon - minLon) * col / cols
+                    val label = names.optString(index).trim().ifBlank { operationGridDefaultName(index) }
+                    drawGridLabel(canvas, latTop, lonLeft, label, centerLat, centerLon)
+                    index += 1
+                }
             }
             paint.style = Paint.Style.FILL
         }
 
-        private fun drawCoordinateRing(canvas: Canvas, points: org.json.JSONArray, centerLat: Double, centerLon: Double, color: Int, closed: Boolean) {
+        private fun operationGridDefaultName(index: Int): String {
+            val phonetic = arrayOf(
+                "ALFA", "BRAVO", "CHARLIE", "DELTA", "ECHO", "FOXTROT", "GOLF", "HOTEL",
+                "INDIA", "JULIETT", "KILO", "LIMA", "MIKE", "NOVEMBER", "OSCAR", "PAPA",
+                "QUEBEC", "ROMEO", "SIERRA", "TANGO", "UNIFORM", "VICTOR", "WHISKEY", "X-RAY",
+                "YANKEE", "ZULU"
+            )
+            val base = phonetic[index % phonetic.size]
+            val cycle = index / phonetic.size
+            return if (cycle == 0) base else "$base-${cycle + 1}"
+        }
+
+        private fun drawGridLabel(canvas: Canvas, lat: Double, lon: Double, label: String, centerLat: Double, centerLon: Double) {
+            val point = screenPoint(lat, lon, centerLat, centerLon)
+            val text = label.take(18)
+            paint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            paint.textSize = 10f
+            paint.textAlign = Paint.Align.LEFT
+            val width = paint.measureText(text) + 8f
+            paint.style = Paint.Style.FILL
+            paint.color = Color.argb(184, 0, 0, 0)
+            canvas.drawRoundRect(RectF(point.first + 4f, point.second + 4f, point.first + width + 4f, point.second + 18f), 3f, 3f, paint)
+            paint.color = Color.WHITE
+            canvas.drawText(text, point.first + 8f, point.second + 15f, paint)
+            paint.typeface = Typeface.DEFAULT
+        }
+
+        private fun jsonObject(raw: Any?): JSONObject? = when (raw) {
+            is JSONObject -> raw
+            is String -> runCatching { JSONObject(raw) }.getOrNull()
+            else -> null
+        }
+
+        private fun navigationRouteColor(route: JSONObject): Int {
+            val explicit = route.optString("color").trim()
+            if (Regex("^#[0-9A-Fa-f]{6}$").matches(explicit) && !explicit.equals("#1E90FF", true)) {
+                return parseCssColor(explicit, Color.CYAN)
+            }
+            val creator = route.optString("creador_nombre").ifBlank { route.optString("routeCreator") }
+            return when {
+                creator.contains("pineda", true) -> Color.parseColor("#9333EA")
+                creator.contains("campos", true) -> Color.parseColor("#F97316")
+                else -> {
+                    val key = creator.ifBlank { route.optString("id_vehiculo", "global") }
+                    val palette = intArrayOf(0xFFFF00FF.toInt(), 0xFFFFA500.toInt(), 0xFF32CD32.toInt(), 0xFFFFC0CB.toInt(), 0xFF00BFFF.toInt(), 0xFFFF69B4.toInt(), 0xFFFFD700.toInt(), 0xFFEE82EE.toInt(), 0xFF00FF7F.toInt())
+                    palette[(key.hashCode() and Int.MAX_VALUE) % palette.size]
+                }
+            }
+        }
+
+        /** El reloj es un visor personal: nunca muestra la navegación de otra cuenta. */
+        private fun isOwnNavigationRoute(route: JSONObject): Boolean {
+            val ownerId = routeOwnerId ?: return false
+            return when (route.optString("created_by_tipo").uppercase(Locale.US)) {
+                "PERSONAL" -> routeOwnerType == "PERSONAL" && route.optInt("id_personal", -1) == ownerId
+                "USUARIO" -> routeOwnerType == "USUARIO" && route.optInt("id_usuario", -1) == ownerId
+                else -> false
+            }
+        }
+
+        private fun drawNavigationDestination(
+            canvas: Canvas,
+            coordinates: JSONArray,
+            centerLat: Double,
+            centerLon: Double
+        ) {
+            val last = coordinates.optJSONArray(coordinates.length() - 1) ?: return
+            // La geometría de la ruta es la fuente visual de verdad. Así el pin
+            // siempre queda conectado al trazo, incluso si el destino guardado
+            // proviene de una posición anterior.
+            val lat = last.optDouble(1, Double.NaN)
+            val lon = last.optDouble(0, Double.NaN)
+            if (!lat.isFinite() || !lon.isFinite()) return
+            val point = screenPoint(lat, lon, centerLat, centerLon)
+            // Una bandera pequeña distingue el destino sin cubrir el mapa.
+            val pin = Path().apply {
+                moveTo(point.first, point.second)
+                cubicTo(
+                    point.first - 9f, point.second - 10f,
+                    point.first - 15f, point.second - 21f,
+                    point.first - 15f, point.second - 30f
+                )
+                cubicTo(
+                    point.first - 15f, point.second - 39f,
+                    point.first - 8.3f, point.second - 46f,
+                    point.first, point.second - 46f
+                )
+                cubicTo(
+                    point.first + 8.3f, point.second - 46f,
+                    point.first + 15f, point.second - 39f,
+                    point.first + 15f, point.second - 30f
+                )
+                cubicTo(
+                    point.first + 15f, point.second - 21f,
+                    point.first + 9f, point.second - 10f,
+                    point.first, point.second
+                )
+                close()
+            }
+            paint.style = Paint.Style.FILL
+            paint.color = C_GREEN
+            canvas.drawPath(pin, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.5f
+            paint.color = C_GREEN_DARK
+            canvas.drawPath(pin, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = C_BG
+            canvas.drawCircle(point.first, point.second - 30f, 8f, paint)
+        }
+
+        private fun drawCoordinateRing(
+            canvas: Canvas,
+            points: org.json.JSONArray,
+            centerLat: Double,
+            centerLon: Double,
+            color: Int,
+            closed: Boolean,
+            fillColor: Int? = null,
+            strokeWidth: Float = 3f,
+            dashPattern: FloatArray? = null
+        ) {
             val path = Path()
             var count = 0
             for (index in 0 until points.length()) {
@@ -2771,10 +3100,17 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                 if (count++ == 0) path.moveTo(screen.first, screen.second) else path.lineTo(screen.first, screen.second)
             }
             if (closed) path.close()
+            if (closed && fillColor != null) {
+                paint.style = Paint.Style.FILL
+                paint.color = fillColor
+                canvas.drawPath(path, paint)
+            }
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 3f
+            paint.strokeWidth = strokeWidth
             paint.color = color
+            paint.pathEffect = dashPattern?.let { DashPathEffect(it, 0f) }
             canvas.drawPath(path, paint)
+            paint.pathEffect = null
             paint.style = Paint.Style.FILL
         }
 
@@ -2807,9 +3143,13 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                 item.optString("tipo_capa").equals("POI", ignoreCase = true)
             // Legacy records can be marked MIL without a usable SIDC. Treat those
             // as ordinary POIs instead of drawing a fake generic symbol with an X.
-            val isMilitaryPoi =
-                item.optString("tipo_poi").equals("MIL", ignoreCase = true) &&
-                    explicitSidc != null
+            // Waypoints (G...) y blancos (S...) usan los mismos SVG que el
+            // mapa Android genera con milsymbol; nunca se reducen a un punto.
+            val isMilitaryPoi = explicitSidc != null && (
+                item.optString("tipo_poi").equals("MIL", ignoreCase = true) ||
+                    explicitSidc.startsWith("G", ignoreCase = true) ||
+                    explicitSidc.startsWith("S", ignoreCase = true)
+                )
             if (isPoi && !isMilitaryPoi) {
                 paint.style = Paint.Style.FILL
                 paint.color = markerColor
@@ -2837,6 +3177,15 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                 canvas.drawCircle(point.first, point.second, 7.5f, paint)
                 paint.style = Paint.Style.FILL
             }
+            if (item.has("id_personal")) {
+                personHeadingDegrees(item)?.let { heading ->
+                    drawHeadingArrow(canvas, point.first, point.second, heading, C_GREEN, 1.25f)
+                }
+            }
+            drawMarkerLabel(canvas, point.first, point.second, item)
+        }
+
+        private fun drawMarkerLabel(canvas: Canvas, x: Float, y: Float, item: JSONObject) {
             val label = item.optString("apodo").ifBlank {
                 item.optString("alias").ifBlank {
                     item.optString("nombre").ifBlank { item.optString("codigo_interno") }
@@ -2846,10 +3195,58 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                 paint.color = Color.WHITE
                 paint.textSize = 10f
                 paint.style = Paint.Style.FILL
+                paint.textAlign = Paint.Align.CENTER
                 paint.setShadowLayer(3f, 0f, 1f, Color.BLACK)
-                canvas.drawText(label.take(14), point.first + 8f, point.second + 3f, paint)
+                canvas.drawText(label.take(14), x, y + 18f, paint)
                 paint.clearShadowLayer()
+                paint.textAlign = Paint.Align.LEFT
             }
+        }
+
+
+        /**
+         * El servicio de tracking puede llamar al rumbo de distintas formas
+         * seg\u00fan el dispositivo que reporta la posici\u00f3n. Todos representan
+         * grados con norte = 0, por lo que se normalizan antes de dibujarlos.
+         */
+        private fun personHeadingDegrees(item: JSONObject): Float? =
+            sequenceOf("rumbo_grados", "heading", "curso", "heading_deg")
+                .map { item.optDouble(it, Double.NaN) }
+                .firstOrNull { it.isFinite() }
+                ?.let { (((it % 360.0) + 360.0) % 360.0).toFloat() }
+
+        private fun drawHeadingArrow(
+            canvas: Canvas,
+            x: Float,
+            y: Float,
+            headingDegrees: Float,
+            color: Int,
+            scale: Float
+        ) {
+            // La flecha se dise\u00f1a apuntando al norte; Canvas rota en sentido
+            // horario, igual que los grados de rumbo (90\u00b0 = este).
+            val arrow = Path().apply {
+                moveTo(x, y - 20f)
+                lineTo(x - 5f, y - 10f)
+                lineTo(x - 2f, y - 11.5f)
+                lineTo(x - 2f, y - 5f)
+                lineTo(x + 2f, y - 5f)
+                lineTo(x + 2f, y - 11.5f)
+                lineTo(x + 5f, y - 10f)
+                close()
+            }
+            canvas.save()
+            canvas.scale(scale, scale, x, y)
+            canvas.rotate(headingDegrees, x, y)
+            paint.style = Paint.Style.FILL
+            paint.color = color
+            canvas.drawPath(arrow, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.25f
+            paint.color = C_BG
+            canvas.drawPath(arrow, paint)
+            paint.style = Paint.Style.FILL
+            canvas.restore()
         }
 
         private fun drawBuildingMarker(
@@ -2873,9 +3270,11 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             paint.color = Color.WHITE
             paint.textSize = 10f
             paint.style = Paint.Style.FILL
+            paint.textAlign = Paint.Align.CENTER
             paint.setShadowLayer(3f, 0f, 1f, Color.BLACK)
-            canvas.drawText(label.take(16), x + 8f, y + 3f, paint)
+            canvas.drawText(label.take(16), x, y + 16f, paint)
             paint.clearShadowLayer()
+            paint.textAlign = Paint.Align.LEFT
         }
 
         private fun drawMilitaryMarker(
@@ -2885,6 +3284,11 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             item: JSONObject,
             sidc: String?
         ) {
+            val isPerson = item.has("id_personal")
+            // En la pantalla peque\u00f1a del reloj el personal necesita destacar
+            // sobre veh\u00edculos y equipos sin alterar el tama\u00f1o de estos \u00faltimos.
+            canvas.save()
+            if (isPerson) canvas.scale(1.25f, 1.25f, x, y)
             if (sidc != null) {
                 val bitmap = symbolRenderer?.bitmap(sidc)
                 if (bitmap != null && !bitmap.isRecycled) {
@@ -2903,6 +3307,7 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                         ),
                         paint
                     )
+                    canvas.restore()
                     return
                 }
             }
@@ -2972,6 +3377,7 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             }
             paint.strokeCap = Paint.Cap.BUTT
             paint.style = Paint.Style.FILL
+            canvas.restore()
         }
 
         private fun trackingSidc(item: JSONObject): String? {

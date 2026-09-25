@@ -10,13 +10,14 @@ import {
 } from "./dashboard.storage.js";
 import { getVehicleOccupants } from "./dashboard.tracking.clustering.js";
 import { dashboardState } from "./dashboard.state.js";
-import { renderPersonnelLiveCamera } from "./dashboard.camera.js";
+import { renderPersonnelLiveCamera } from "./dashboard.camera.js?v=20260922-person-camera-stream";
 
 const PERSONAL_CONNECTION_STALE_MS = 30000;
 const TRACKING_ACTIVE_STALE_MS = PERSONAL_CONNECTION_STALE_MS;
 const personalLiveData = new Map();
 let activePersonInfoPopup = null;
 let personInfoRefreshTimer = null;
+let personInfoPopupDragBound = false;
 const DEFAULT_PERSONNEL_SIDC = "SFGPUCI--------";
 
 export function setRouteInfo(text) {
@@ -1667,8 +1668,44 @@ function placePersonInfoPopup(anchor = {}) {
   dom.personInfoPopup.style.left = "auto";
 }
 
+function bindPersonInfoPopupDrag() {
+  const popup = dom.personInfoPopup;
+  if (!popup || personInfoPopupDragBound) return;
+  personInfoPopupDragBound = true;
+
+  popup.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || !event.target.closest(".personInfoTitle")) return;
+    event.preventDefault();
+    const rect = popup.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    popup.setPointerCapture?.(event.pointerId);
+    popup.classList.add("is-dragging");
+
+    const move = (moveEvent) => {
+      const width = popup.offsetWidth;
+      const height = popup.offsetHeight;
+      const left = Math.max(8, Math.min(moveEvent.clientX - offsetX, window.innerWidth - width - 8));
+      const top = Math.max(8, Math.min(moveEvent.clientY - offsetY, window.innerHeight - height - 8));
+      popup.style.right = "auto";
+      popup.style.left = `${left}px`;
+      popup.style.top = `${top}px`;
+    };
+    const finish = () => {
+      popup.classList.remove("is-dragging");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  });
+}
+
 export function showPersonnelDetail(personId, anchor = {}) {
   if (!dom.personInfoPopup || !dom.personInfoPopupContent || personId == null) return;
+  bindPersonInfoPopupDrag();
 
   const person = findPerson(personId, anchor.name);
   if (!person) {

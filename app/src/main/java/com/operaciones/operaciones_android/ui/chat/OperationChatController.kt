@@ -103,7 +103,7 @@ class OperationChatController(
             val visibleInActiveChat = isVisibleInActiveChatFilter(msg)
 
             messages.add(msg)
-            if (!msg.isMine && msg.type != MessageType.SYSTEM &&
+            if (!msg.isMine && msg.type != MessageType.SYSTEM && msg.type != MessageType.ALERT &&
                 !(conversationOpen && visibleInActiveChat)) {
                 unreadMessages.add(msg)
                 host.onChatUnreadCountsChanged()
@@ -299,7 +299,7 @@ class OperationChatController(
                         val message = parseChatMessage(item)
                         messages.add(message)
                         val visibleInOpenConversation = conversationOpen && isVisibleInActiveChatFilter(message)
-                        if (!message.isMine && message.type != MessageType.SYSTEM &&
+                        if (!message.isMine && message.type != MessageType.SYSTEM && message.type != MessageType.ALERT &&
                             (message.id == null || message.id !in readMessageIds) && !visibleInOpenConversation) {
                             unreadMessages.add(message)
                         } else if (!message.isMine && visibleInOpenConversation) {
@@ -468,6 +468,8 @@ class OperationChatController(
         selection: ChatChannelSelection
     ): Boolean {
         if (msg.type == MessageType.SYSTEM) return true
+        // Las emergencias se muestran mediante la alerta superior, no en el chat.
+        if (msg.type == MessageType.ALERT) return false
         val destinatario = msg.destinatarioRol.orEmpty().trim().uppercase().ifBlank { "GLOBAL" }
         val destinoTipo = msg.destinoTipo.orEmpty().trim().uppercase()
         val destinoId = msg.destinoId

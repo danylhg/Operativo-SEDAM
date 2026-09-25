@@ -12,6 +12,7 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import androidx.core.app.ActivityCompat
@@ -26,7 +27,8 @@ class LocationHelper(
         speedKmh: Double?,
         headingDegrees: Double?,
         accuracyMeters: Float?
-    ) -> Unit)? = null
+    ) -> Unit)? = null,
+    private val onHeadingUpdate: ((headingDegrees: Double) -> Unit)? = null
 ) {
 
     companion object {
@@ -40,6 +42,13 @@ class LocationHelper(
     private var headingSensor: Sensor? = null
     private var headingSensorListener: SensorEventListener? = null
     @Volatile private var lastSensorHeadingDegrees: Double? = null
+    private var lastHeadingEmissionAtMs = 0L
+    private var lastEmittedHeadingDegrees: Double? = null
+
+    private fun headingDifferenceDegrees(first: Double, second: Double): Double {
+        val difference = kotlin.math.abs(first - second) % 360.0
+        return minOf(difference, 360.0 - difference)
+    }
 
     private fun speedKmh(location: Location): Double? =
         if (location.hasSpeed()) (location.speed * 3.6).toDouble() else null
@@ -92,7 +101,12 @@ class LocationHelper(
                 SensorManager.remapCoordinateSystem(rotationMatrix, axisX, axisY, adjustedMatrix)
                 SensorManager.getOrientation(adjustedMatrix, orientation)
                 val azimuth = Math.toDegrees(orientation[0].toDouble())
-                lastSensorHeadingDegrees = ((azimuth % 360.0) + 360.0) % 360.0
+                val heading = ((azimuth % 360.0) + 360.0) % 360.0
+                lastSensorHeadingDegrees = heading
+                if (shouldPublishHeading(heading, SystemClock.elapsedRealtime())) {
+                    onHeadingUpdate?.invoke(heading)
+                    emitHeadingIfChanged(heading)
+                }
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
@@ -107,6 +121,8 @@ class LocationHelper(
         headingSensorListener = null
         headingSensor = null
         lastSensorHeadingDegrees = null
+        lastEmittedHeadingDegrees = null
+        lastHeadingEmissionAtMs = 0L
     }
 
     @SuppressLint("MissingPermission")
@@ -223,6 +239,33 @@ class LocationHelper(
             accuracyMeters
         )
         lastEmittedLocation = Location(loc)
+        headingDegrees?.let {
+            lastEmittedHeadingDegrees = it
+            lastHeadingEmissionAtMs = SystemClock.elapsedRealtime()
+        }
+    }
+
+    private fun shouldPublishHeading(headingDegrees: Double, now: Long): Boolean {
+        val previousHeading = lastEmittedHeadingDegrees
+        return now - lastHeadingEmissionAtMs >= 250L &&
+            (previousHeading == null || headingDifferenceDegrees(previousHeading, headingDegrees) >= 2.0)
+    }
+
+    private fun emitHeadingIfChanged(headingDegrees: Double) {
+        val location = lastEmittedLocation ?: return
+        val now = SystemClock.elapsedRealtime()
+        // Mismo límite para la actualización local y la publicada al resto.
+        if (!shouldPublishHeading(headingDegrees, now)) return
+
+        onEmitLocation?.invoke(
+            location.latitude,
+            location.longitude,
+            speedKmh(location),
+            headingDegrees,
+            if (location.hasAccuracy()) location.accuracy else null
+        )
+        lastEmittedHeadingDegrees = headingDegrees
+        lastHeadingEmissionAtMs = now
     }
 
     fun stopLocationUpdates() {

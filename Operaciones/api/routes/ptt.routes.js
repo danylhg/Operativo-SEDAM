@@ -36,10 +36,24 @@ router.post("/ptt/assignments", requireAuth, async (req, res) => {
     return res.status(400).json({ ok: false, mensaje: "Direccion Bluetooth no valida" });
   }
 
+  let client;
   try {
     await ensurePttAssignmentsSchema();
     const alias = advertisedName.toUpperCase().startsWith("PTT") ? advertisedName : "PTT";
-    const { rows } = await pool.query(
+    client = await pool.connect();
+    await client.query("BEGIN");
+
+    // El PTT se identifica por su MAC. Al enlazarlo físicamente, su nuevo
+    // propietario sustituye la asignación previa (por ejemplo, tras un cambio
+    // de turno o si el propietario anterior cerró la aplicación sin liberarlo).
+    await client.query(
+      `DELETE FROM ptt_assignment
+       WHERE bluetooth_address = $1
+         AND NOT (owner_table = $2 AND owner_id = $3)`,
+      [bluetoothAddress, ownerTable, ownerId]
+    );
+
+    const { rows } = await client.query(
       `INSERT INTO ptt_assignment
          (owner_table, owner_id, bluetooth_address, advertised_name, alias)
        VALUES ($1, $2, $3, $4, $5)
@@ -52,12 +66,13 @@ router.post("/ptt/assignments", requireAuth, async (req, res) => {
                  bluetooth_address, advertised_name, alias, updated_at`,
       [ownerTable, ownerId, bluetoothAddress, advertisedName, alias]
     );
+    await client.query("COMMIT");
     return res.json({ ok: true, item: rows[0] });
   } catch (error) {
-    if (error?.code === "23505") {
-      return res.status(409).json({ ok: false, mensaje: "Ese PTT ya esta asignado a otro usuario" });
-    }
+    await client?.query("ROLLBACK").catch(() => {});
     return sendDbError(res, error, "No se pudo asignar el PTT");
+  } finally {
+    client?.release();
   }
 });
 

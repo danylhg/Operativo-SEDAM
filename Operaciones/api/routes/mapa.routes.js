@@ -21,7 +21,8 @@ import {
   emitDibujoCreado,
   emitDibujoEliminado,
   emitCuadriculaActualizada,
-  emitCuadriculaEliminada
+  emitCuadriculaEliminada,
+  getConnectedPersonalIds
 } from "../sockets/index.js";
 
 // Helper para responder errores de BD/backend de forma uniforme
@@ -305,7 +306,7 @@ router.patch("/ops/:id/pois/:id_poi/privatizar", requireAuth, async (req, res) =
     );
     if (!rows[0]) return res.status(404).json({ ok: false, mensaje: "POI publico no encontrado o no te pertenece" });
     const io = req.app.get("io");
-    if (io) emitPoiEliminado(io, id_operacion, id_poi);
+    if (io) emitPoiEliminado(io, id_operacion, id_poi, owner);
     res.json({ ok: true, poi: rows[0] });
   } catch (err) {
     sendDbError(res, err, "No se pudo hacer privado el POI");
@@ -1678,6 +1679,13 @@ router.get("/ops/:id/mapa", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, mensaje: "Operación no existe" });
     }
 
+    // El personal del mapa representa presencia actual, no todas las
+    // asignaciones históricas: sólo se entrega quien mantiene un socket activo.
+    const connectedPersonalIds = getConnectedPersonalIds(id_operacion);
+    const connectedPersonal = personalRes.rows.filter((person) =>
+      connectedPersonalIds.has(Number(person.id_personal))
+    );
+
     // Devuelve todo el paquete de datos del mapa
     return res.json({
       ok: true,
@@ -1685,7 +1693,7 @@ router.get("/ops/:id/mapa", requireAuth, async (req, res) => {
       zona_operacion: zonaRes.rows[0] || null,
       capas: capasRes.rows,
       pois: poisRes.rows,
-      personal: personalRes.rows,
+      personal: connectedPersonal,
       vehiculos: vehiculosRes.rows,
       equipos: equiposRes.rows,
       dispositivos: dispositivosRes.rows,

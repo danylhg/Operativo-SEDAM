@@ -19,6 +19,7 @@ data class ChatChannelSelection(
     val type: String,
     val destinatarioRol: String,
     val destinoTipo: String? = null,
+    val chatId: Int? = null,
     val destinoId: String? = null,
     val destinoLabel: String? = null,
     val destinoSendId: String? = null

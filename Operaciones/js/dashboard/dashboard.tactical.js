@@ -2,7 +2,7 @@
 
 import { dashboardState } from "./dashboard.state.js";
 import { dom } from "./dashboard.dom.js";
-import { setRouteInfo, updateSelectionInfo } from "./dashboard.ui.js";
+import { setRouteInfo, updateSelectionInfo } from "./dashboard.ui.js?v=20260923-draggable-person-popup";
 import { getCurrentOperation } from "./dashboard.storage.js";
 import { clearPlanningArea, finishPlanningAreaByPoints } from "./dashboard.area.js";
 import { cartesianToLatLng, saveTacticalData } from "./dashboard.persistence.js";
@@ -44,6 +44,146 @@ const _mySentPoiIds = new Set();
 const _mySentRouteIds = new Set();
 let gridSaveTimer = null;
 let lastLocalGridSaveAt = 0;
+const poiMotionStates = new Map();
+let poiMotionInterval = null;
+let geoMsgSocket = null;
+let geoMsgDraft = null;
+let geoMsgEditingId = null;
+const geoMessagesById = new Map();
+
+function getGeoMsgCurrentUser() {
+  let user = {};
+  try { user = JSON.parse(localStorage.getItem("userData") || "{}"); } catch { }
+  const table = String(user.tabla || "").toLowerCase();
+  const id = Number(table === "personal" ? user.id_personal : user.id_usuario);
+  const name = [user.nombre, user.apellido].filter(Boolean).join(" ").trim()
+    || user.nombre_usuario || user.username || "Usuario";
+  return { id: Number.isInteger(id) && id > 0 ? id : null, name };
+}
+
+function nextGeoMsgId() {
+  // Coincide con Android: entero positivo y seguro para Socket.IO/JavaScript.
+  return Math.floor(Date.now() % 2000000000);
+}
+
+function closeGeoMsgModal() {
+  dom.geoMsgModal?.classList.add("hidden");
+  geoMsgDraft = null;
+  geoMsgEditingId = null;
+}
+
+function openGeoMsgModal() {
+  geoMsgEditingId = null;
+  if (dom.geoMsgModalTitle) dom.geoMsgModalTitle.textContent = "MENSAJE GEO-ANCLADO";
+  if (dom.geoMsgModalCoords) dom.geoMsgModalCoords.textContent = "Escribe el mensaje y después selecciona la ubicación en el mapa.";
+  if (dom.geoMsgModalText) dom.geoMsgModalText.value = "";
+  if (dom.geoMsgModalPublic) dom.geoMsgModalPublic.checked = false;
+  if (dom.geoMsgModalConfirm) dom.geoMsgModalConfirm.disabled = true;
+  if (dom.geoMsgModalConfirm) dom.geoMsgModalConfirm.textContent = "SELECCIONAR UBICACIÓN";
+  dom.geoMsgModal?.classList.remove("hidden");
+  window.setTimeout(() => dom.geoMsgModalText?.focus(), 0);
+}
+
+export function openGeoMsgEditModal(idGeoMsg, text) {
+  geoMsgEditingId = Number(idGeoMsg);
+  if (!Number.isInteger(geoMsgEditingId) || geoMsgEditingId <= 0) return;
+  if (dom.geoMsgModalTitle) dom.geoMsgModalTitle.textContent = "EDITAR MENSAJE GEO-ANCLADO";
+  if (dom.geoMsgModalCoords) dom.geoMsgModalCoords.textContent = "Edita el mensaje y guarda los cambios.";
+  if (dom.geoMsgModalText) dom.geoMsgModalText.value = String(text || "");
+  if (dom.geoMsgModalConfirm) {
+    dom.geoMsgModalConfirm.disabled = !String(text || "").trim();
+    dom.geoMsgModalConfirm.textContent = "GUARDAR CAMBIOS";
+  }
+  dom.geoMsgModal?.classList.remove("hidden");
+  window.setTimeout(() => dom.geoMsgModalText?.focus(), 0);
+}
+
+function createGeoMsgAtDraftLocation() {
+  const text = String(dom.geoMsgModalText?.value || "").trim();
+  if (!text) return;
+  if (geoMsgEditingId) {
+    const id = geoMsgEditingId;
+    closeGeoMsgModal();
+    updateGeoMsg(id, text);
+    if (dom.tbHint) dom.tbHint.textContent = "GEO-MSG actualizado.";
+    return;
+  }
+  geoMsgDraft = { text, visibilidad: dom.geoMsgModalPublic?.checked ? "PUBLICO" : "PRIVADO" };
+  dom.geoMsgModal?.classList.add("hidden");
+  dashboardState.toolMode = "geomsg";
+  dashboardState.placingMode = true;
+  if (dom.toolSelect) dom.toolSelect.value = "geomsg";
+  if (dom.tbHint) dom.tbHint.textContent = "Haz clic en el mapa para anclar el mensaje GEO-MSG.";
+  setTacticalUI();
+}
+
+function placeGeoMsgAtLocation(lat, lng) {
+  const draft = geoMsgDraft;
+  if (!draft?.text) return;
+  const currentUser = getGeoMsgCurrentUser();
+  const geoMsg = {
+    id_geo_msg: nextGeoMsgId(), lat, lon: lng, text: draft.text,
+    author: currentUser.name, id_personal_autor: currentUser.id,
+    visibilidad: draft.visibilidad
+  };
+  renderGeoMsgEntity(geoMsg);
+  geoMsgSocket?.emit("geo_msg_created", geoMsg, (ack = {}) => {
+    if (!ack.ok) {
+      removeGeoMsgEntity(geoMsg.id_geo_msg);
+      alert(ack.mensaje || "No se pudo enviar el GEO-MSG.");
+    } else {
+      // El servidor completa el identificador real del autor. Reemplazamos el
+      // mensaje optimista para que las acciones de propietario sean exactas.
+      renderGeoMsgEntity(ack);
+    }
+  });
+  geoMsgDraft = null;
+  if (dom.tbHint) dom.tbHint.textContent = "GEO-MSG colocado.";
+}
+
+export function updateGeoMsg(idGeoMsg, text) {
+  const id = Number(idGeoMsg);
+  const message = String(text || "").trim();
+  const current = geoMessagesById.get(id);
+  if (!current || !message) return;
+  const updated = { ...current, text: message };
+  renderGeoMsgEntity(updated);
+  geoMsgSocket?.emit("geo_msg_updated", { id_geo_msg: id, text: message }, (ack = {}) => {
+    if (!ack.ok) {
+      renderGeoMsgEntity(current);
+      alert(ack.mensaje || "No se pudo actualizar el GEO-MSG.");
+    }
+  });
+}
+
+export function deleteGeoMsg(idGeoMsg) {
+  const id = Number(idGeoMsg);
+  const current = geoMessagesById.get(id);
+  if (!current) return;
+  removeGeoMsgEntity(id);
+  geoMsgSocket?.emit("geo_msg_deleted", { id_geo_msg: id }, (ack = {}) => {
+    if (!ack.ok) {
+      renderGeoMsgEntity(current);
+      alert(ack.mensaje || "No se pudo eliminar el GEO-MSG.");
+    }
+  });
+}
+
+export function setGeoMsgVisibility(idGeoMsg, isPublic, onResult) {
+  const id = Number(idGeoMsg);
+  const current = geoMessagesById.get(id);
+  if (!current) return;
+  const updated = { ...current, visibilidad: isPublic ? "PUBLICO" : "PRIVADO" };
+  renderGeoMsgEntity(updated);
+  geoMsgSocket?.emit("geo_msg_visibility_changed", { id_geo_msg: id, visibilidad: updated.visibilidad }, (ack = {}) => {
+    if (!ack.ok) {
+      renderGeoMsgEntity(current);
+      onResult?.(false, current.visibilidad);
+      return;
+    }
+    onResult?.(true, updated.visibilidad);
+  });
+}
 
 function getAreaCreatorPayload() {
   const userData = JSON.parse(localStorage.getItem("userData") || "{}");
@@ -62,7 +202,8 @@ function creatorProperties(source = {}) {
     tipo_creador: source.tipo_creador ?? source.created_by_tipo ?? null,
     id_usuario: source.id_usuario ?? null,
     id_personal: source.id_personal ?? null,
-    creador_nombre: source.creador_nombre || source.personal_nombre || source.usuario_nombre || ""
+    creador_nombre: source.creador_nombre || source.personal_nombre || source.usuario_nombre || "",
+    creador_puesto: source.creador_puesto || source.puesto || ""
   };
 }
 
@@ -434,6 +575,7 @@ function renderRadarEntities(poi) {
 function deleteLocalPoiEntities(idPoi) {
   const viewer = dashboardState.viewer;
   if (!viewer || !idPoi) return;
+  poiMotionStates.delete(`poi_${idPoi}`);
 
   // Remove by standard POI id
   const mainEntity = viewer.entities.getById(`poi_${idPoi}`);
@@ -510,6 +652,62 @@ function getMilBillboardSize() {
   return 42;
 }
 
+function createHeadingArrowImage(headingDegrees) {
+  const radians = Cesium.Math.toRadians(headingDegrees);
+  const pointsUpward = true;
+  const startX = 40 + Math.sin(radians) * 19;
+  const startY = 40 - Math.cos(radians) * 19;
+  const elbowY = 40;
+  const length = 39;
+  const tipX = 40 + Math.sin(radians) * length;
+  const tipY = 40 - Math.cos(radians) * length;
+  const headLength = 9;
+  const leftX = tipX - Math.sin(radians - Math.PI / 6) * headLength;
+  const leftY = tipY + Math.cos(radians - Math.PI / 6) * headLength;
+  const rightX = tipX - Math.sin(radians + Math.PI / 6) * headLength;
+  const rightY = tipY + Math.cos(radians + Math.PI / 6) * headLength;
+  const n = (value) => Number(value).toFixed(1);
+  const connector = pointsUpward
+    ? `M${startX} ${startY}L${n(tipX)} ${n(tipY)}`
+    : `M${startX} ${startY}V${elbowY}L${n(tipX)} ${n(tipY)}`;
+  const arrowPath = `${connector}M${n(tipX)} ${n(tipY)}L${n(leftX)} ${n(leftY)}M${n(tipX)} ${n(tipY)}L${n(rightX)} ${n(rightY)}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><path d="${arrowPath}" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="${arrowPath}" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return { image: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, pointsUpward };
+}
+
+function syncPoiHeadingArrow(poiEntity, poi = {}, headingDegrees) {
+  const viewer = dashboardState.viewer;
+  const entityId = String(poiEntity?.id || "");
+  if (!viewer || !entityId) return;
+  const arrowId = `${entityId}_heading`;
+  let arrow = viewer.entities.getById(arrowId);
+  if (headingDegrees === null || headingDegrees === undefined) {
+    if (arrow) viewer.entities.remove(arrow);
+    return;
+  }
+  const arrowGraphic = createHeadingArrowImage(headingDegrees);
+  if (!arrow) {
+    arrow = viewer.entities.add({
+      id: arrowId,
+      name: poiEntity.name,
+      position: new Cesium.CallbackProperty(() => poiEntity.position.getValue(viewer.clock.currentTime), false),
+      billboard: {
+        image: arrowGraphic.image, width: 80, height: 80,
+        verticalOrigin: Cesium.VerticalOrigin.CENTER,
+        pixelOffset: new Cesium.Cartesian2(0, -21),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+      },
+      properties: { tacticalType: "poi-heading", id_poi: poi.id_poi ?? null, sidc: poi.sidc ?? null, visibilidad: poi.visibilidad || "PRIVADO", draggable: false, ...creatorProperties(poi) }
+    });
+  } else if (arrow.billboard) {
+    arrow.name = poiEntity.name;
+    arrow.billboard.image = arrowGraphic.image;
+    arrow.billboard.verticalOrigin = Cesium.VerticalOrigin.CENTER;
+    arrow.billboard.pixelOffset = new Cesium.Cartesian2(0, -21);
+  }
+}
+
 function normalizeNumericInput(value, fallback = null) {
   if (value === undefined || value === null || String(value).trim() === "") return fallback;
   const number = Number(String(value).replace(",", "."));
@@ -549,6 +747,10 @@ function createMovingPosition(lat, lng, speedKmh, headingDegrees) {
   const viewer = dashboardState.viewer;
   if (!viewer || speed <= 0 || heading === null) return Cesium.Cartesian3.fromDegrees(lng, lat);
 
+  // El desplazamiento debe iniciar al momento de colocar el Blanco, aun si
+  // la cámara no se ha tocado después de crearlo.
+  viewer.clock.shouldAnimate = true;
+  viewer.clock.multiplier = 1;
   const startTime = Cesium.JulianDate.clone(viewer.clock.currentTime);
   return new Cesium.CallbackProperty((time) => {
     const elapsedSeconds = Math.max(0, Cesium.JulianDate.secondsDifference(time, startTime));
@@ -556,6 +758,39 @@ function createMovingPosition(lat, lng, speedKmh, headingDegrees) {
     const destination = destinationFromHeading(lat, lng, heading, distanceMeters);
     return Cesium.Cartesian3.fromDegrees(destination.lng, destination.lat);
   }, false);
+}
+
+function updateMovingPois() {
+  const viewer = dashboardState.viewer;
+  if (!viewer) return;
+  const now = Date.now();
+  poiMotionStates.forEach((motion, entityId) => {
+    const entity = viewer.entities.getById(entityId);
+    if (!entity) {
+      poiMotionStates.delete(entityId);
+      return;
+    }
+    const elapsedSeconds = Math.max(0, (now - motion.startedAt) / 1000);
+    const distanceMeters = motion.speedKmh / 3.6 * elapsedSeconds;
+    const headingRad = Cesium.Math.toRadians(motion.headingDeg);
+    const northM = Math.cos(headingRad) * distanceMeters;
+    const eastM = Math.sin(headingRad) * distanceMeters;
+    const currentLat = motion.lat + northM / 111320;
+    const currentLng = motion.lng + eastM / (111320 * Math.max(0.1, Math.cos(Cesium.Math.toRadians(motion.lat))));
+    entity.position = Cesium.Cartesian3.fromDegrees(currentLng, currentLat);
+  });
+}
+
+function setPoiMotion(entity, lat, lng, speedKmh, headingDegrees) {
+  const entityId = String(entity?.id || "");
+  const speed = normalizeNumericInput(speedKmh, 0);
+  const heading = normalizeHeading(headingDegrees);
+  if (!entityId) return;
+  poiMotionStates.delete(entityId);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || speed <= 0 || heading === null) return;
+  poiMotionStates.set(entityId, { lat, lng, speedKmh: speed, headingDeg: heading, startedAt: Date.now() });
+  if (!poiMotionInterval) poiMotionInterval = window.setInterval(updateMovingPois, 1000);
+  updateMovingPois();
 }
 
 function getMilMovementData() {
@@ -727,12 +962,21 @@ function buildPoiEntity(poi, tacticalType = "poi") {
   const lng = Number(poi.longitud ?? poi.lon ?? poi.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
-  const sidc = poi.sidc || (poi.icono_src?.startsWith("S") ? poi.icono_src : null);
-  let iconSrc = resolvePoiImage(poi.icono_src || poi.iconSrc || poi.image);
+  // Blancos comienzan con S y waypoints con G. Ambos son SIDC MIL válidos.
+  const iconSidc = String(poi.icono_src || poi.iconSrc || "");
+  const sidc = poi.sidc || (/^[SG]/.test(iconSidc) ? iconSidc : null);
+  // Al crear un Waypoint/Blanco conservamos el PNG generado en la vista
+  // previa. Es la fuente de verdad visual para el primer render en mapa.
+  const previewImage = poi.previewImage || poi.preview_image || null;
+  let iconSrc = previewImage || resolvePoiImage(poi.icono_src || poi.iconSrc || poi.image);
 
   // Si hay SIDC, generamos el icono dinámicamente con milsymbol
-  if (sidc) {
-    iconSrc = renderMilSymbolImage(sidc, 200) || iconSrc;
+  if (sidc && !previewImage) {
+    // Los waypoints usan el mismo trazo monocromático por identidad que la
+    // vista previa; así no cambia su figura ni su color al ponerlos en mapa.
+    iconSrc = (sidc.charAt(0) === "G"
+      ? renderPointObjectPreviewImage(sidc)
+      : renderMilSymbolImage(sidc, 200)) || iconSrc;
   }
 
   const tipo_poi_raw = (poi.tipo_poi || poi.tipoPoi || "").toUpperCase();
@@ -748,14 +992,25 @@ function buildPoiEntity(poi, tacticalType = "poi") {
   const speedKmh = normalizeNumericInput(poi.velocidad_kmh ?? poi.velocidad ?? poi.speed, 0);
   const headingDegrees = normalizeHeading(poi.rumbo_grados ?? poi.rumbo ?? poi.headingDegrees ?? poi.heading);
 
-  if (entityId && viewer.entities.getById(entityId)) {
+  const existingEntity = entityId && viewer.entities.getById(entityId);
+  if (existingEntity) {
+    // El evento socket puede crear la entidad antes de que POST responda. En
+    // ese caso sustituimos su icono con el mismo canvas usado por la vista
+    // previa, en lugar de conservar el símbolo genérico recibido primero.
+    if (iconSrc && existingEntity.billboard) {
+      existingEntity.billboard.image = iconSrc;
+      existingEntity.billboard.width = isMil ? getMilBillboardSize() : undefined;
+      existingEntity.billboard.height = isMil ? getMilBillboardSize() : undefined;
+      if (existingEntity.properties?.sidc?.setValue) existingEntity.properties.sidc.setValue(sidc);
+    }
     return null;
   }
 
-  return viewer.entities.add({
+  const movementPosition = Cesium.Cartesian3.fromDegrees(lng, lat);
+  const poiEntity = viewer.entities.add({
     id: entityId,
     name: label,
-    position: Cesium.Cartesian3.fromDegrees(lng, lat),
+    position: movementPosition,
     billboard: iconSrc ? {
       image: iconSrc,
       verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
@@ -791,9 +1046,13 @@ function buildPoiEntity(poi, tacticalType = "poi") {
       sidc: sidc,
       velocidad_kmh: speedKmh,
       rumbo_grados: headingDegrees,
+      visibilidad: poi.visibilidad || "PRIVADO",
       ...creatorProperties(poi)
     }
   });
+  if (String(sidc || "").startsWith("S")) syncPoiHeadingArrow(poiEntity, { ...poi, sidc }, headingDegrees);
+  if (isMil) setPoiMotion(poiEntity, lat, lng, speedKmh, headingDegrees);
+  return poiEntity;
 }
 
 async function savePoiToBackend(lat, lng, nombre, tipoPoi, colorName, iconoSrc = null, sidc = null, movement = {}) {
@@ -1634,7 +1893,237 @@ function syncTacticalToolAvailability(currentOperation = getCurrentOperation()) 
     resetDrawingState();
   }
 
+  // La herramienta de Punto de interés dejó de estar disponible en la web.
+  // Se conserva el soporte interno porque MIL y estructuras usan la misma
+  // infraestructura de persistencia, pero no puede activarse como PDI.
+  if (dashboardState.toolMode === "poi") {
+    dashboardState.toolMode = "none";
+    dashboardState.placingMode = false;
+    if (dom.toolSelect) dom.toolSelect.value = "none";
+    resetDrawingState();
+  }
+
   return { canEditTactical, canEditOperationZone };
+}
+
+function configurePointObjectControls(isTarget) {
+  const kindLabel = document.getElementById("pointObjectKindLabel");
+  const kindSelect = document.getElementById("pointObjectKind");
+  const identity = document.getElementById("pointObjectIdentity");
+  const metrics = document.getElementById("targetMetrics");
+  if (!kindSelect) return;
+
+  const desired = isTarget
+    ? [["S", "Superficie"], ["G", "Tierra"], ["A", "Aire"], ["U", "Submarino"]]
+    : [["GPRW", "Referencia"], ["GPOW", "Ruta"], ["GPPW", "Acción"]];
+  const signature = desired.map(([value]) => value).join(",");
+  if (kindSelect.dataset.signature !== signature) {
+    kindSelect.replaceChildren(...desired.map(([value, label]) => new Option(label, value)));
+    kindSelect.dataset.signature = signature;
+  }
+  if (kindLabel) kindLabel.textContent = isTarget ? "Plataforma" : "Tipo";
+  if (metrics) metrics.style.display = isTarget ? "flex" : "none";
+  if (identity) identity.value = isTarget ? "U" : "F";
+}
+
+let pointObjectDraft = {
+  isTarget: false,
+  affiliation: "F",
+  kind: "GPRW"
+};
+
+function getPointObjectSidc() {
+  return pointObjectDraft.isTarget
+    ? `S${pointObjectDraft.affiliation}${pointObjectDraft.kind}P-----------`
+    : `G${pointObjectDraft.affiliation}GP${pointObjectDraft.kind}---X`;
+}
+
+// Mismas reglas de color que usa el selector de Android: los waypoints se
+// dibujan en monocromo por identidad y los blancos usan el tema MIL Light.
+function renderPointObjectPreviewImage(sidc) {
+  if (!sidc || typeof ms === "undefined" || typeof ms.Symbol !== "function") return null;
+  const waypointColors = { F: "#F7FAFF", H: "#FF3347", N: "#00F53D", U: "#FFF000" };
+  const options = sidc.charAt(0) === "G"
+    ? { size: 190, monoColor: waypointColors[sidc.charAt(1)] || "#FFF000", fill: false }
+    : { size: 190, colorMode: "Light", fill: true };
+  try {
+    return new ms.Symbol(sidc, options).asCanvas();
+  } catch (err) {
+    console.warn("[MIL] No se pudo generar la vista previa:", err);
+    return null;
+  }
+}
+
+function updatePointObjectPreview() {
+  const input = document.getElementById("pointObjectModalName");
+  const name = String(input?.value || "").trim();
+  const sidc = getPointObjectSidc();
+  const image = document.getElementById("pointObjectPreviewImage");
+  const canvas = renderPointObjectPreviewImage(sidc);
+  if (image && canvas) {
+    image.src = canvas.toDataURL("image/png");
+    pointObjectDraft.previewImage = image.src;
+  }
+  const previewName = document.getElementById("pointObjectPreviewName");
+  if (previewName) previewName.textContent = name || "Sin nombre";
+  const previewSidc = document.getElementById("pointObjectPreviewSidc");
+  if (previewSidc) previewSidc.textContent = sidc;
+  const confirm = document.getElementById("pointObjectModalConfirm");
+  if (confirm) confirm.disabled = !name;
+}
+
+function renderPointObjectChoices() {
+  const identities = [["F", "Amigo"], ["H", "Hostil"], ["N", "Neutral"], ["U", "Desconocido"]];
+  const kinds = pointObjectDraft.isTarget
+    ? [["S", "Superficie"], ["G", "Tierra"], ["A", "Aire"], ["U", "Submarino"]]
+    : [["GPRW", "Referencia"], ["GPOW", "Ruta"], ["GPPW", "Acción"]];
+  const identityBox = document.getElementById("pointObjectIdentityButtons");
+  const kindBox = document.getElementById("pointObjectKindButtons");
+  const kindLabel = document.getElementById("pointObjectModalKindLabel");
+  if (kindLabel) kindLabel.textContent = pointObjectDraft.isTarget ? "Plataforma" : "Tipo";
+
+  const makeButton = (value, text, selected, onClick) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.className = `pointChoiceButton${selected ? " is-selected" : ""}`;
+    button.addEventListener("click", onClick);
+    return button;
+  };
+  if (identityBox) identityBox.replaceChildren(...identities.map(([value, text]) => makeButton(value, text, pointObjectDraft.affiliation === value, () => {
+    pointObjectDraft.affiliation = value;
+    renderPointObjectChoices();
+    updatePointObjectPreview();
+  })));
+  if (kindBox) kindBox.replaceChildren(...kinds.map(([value, text]) => makeButton(value, text, pointObjectDraft.kind === value, () => {
+    pointObjectDraft.kind = value;
+    renderPointObjectChoices();
+    updatePointObjectPreview();
+  })));
+}
+
+function closePointObjectModal() {
+  document.getElementById("pointObjectModal")?.classList.add("hidden");
+}
+
+function openPointObjectModal(isTarget) {
+  pointObjectDraft = {
+    isTarget,
+    affiliation: isTarget ? "U" : "F",
+    kind: isTarget ? "G" : "GPRW",
+    previewImage: null
+  };
+  const modal = document.getElementById("pointObjectModal");
+  const title = document.getElementById("pointObjectModalTitle");
+  const metrics = document.getElementById("pointObjectModalMetrics");
+  const name = document.getElementById("pointObjectModalName");
+  if (!modal || !name) return;
+  if (title) title.textContent = isTarget ? "Nuevo Blanco" : "Nuevo Waypoint";
+  const confirm = document.getElementById("pointObjectModalConfirm");
+  if (confirm) confirm.textContent = "COLOCAR";
+  if (metrics) metrics.style.display = isTarget ? "grid" : "none";
+  name.value = "";
+  const heading = document.getElementById("pointObjectModalHeading");
+  const speed = document.getElementById("pointObjectModalSpeed");
+  if (heading) heading.value = "";
+  if (speed) speed.value = "";
+  renderPointObjectChoices();
+  updatePointObjectPreview();
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => name.focus());
+}
+
+export function openPointObjectEdit(entity) {
+  const sidc = String(entity?.properties?.sidc?.getValue?.() ?? entity?.properties?.sidc ?? "");
+  const isTarget = sidc.startsWith("S");
+  openPointObjectModal(isTarget);
+  pointObjectDraft.editingEntity = entity;
+  pointObjectDraft.affiliation = sidc.charAt(1) || (isTarget ? "U" : "F");
+  pointObjectDraft.kind = isTarget
+    ? (sidc.charAt(2) || "G")
+    : (sidc.includes("GPOW") ? "GPOW" : sidc.includes("GPPW") ? "GPPW" : "GPRW");
+  const title = document.getElementById("pointObjectModalTitle");
+  const confirm = document.getElementById("pointObjectModalConfirm");
+  const name = document.getElementById("pointObjectModalName");
+  if (title) title.textContent = isTarget ? "Editar Blanco" : "Editar Waypoint";
+  if (confirm) confirm.textContent = "GUARDAR";
+  if (name) name.value = String(entity.name || "");
+  const heading = document.getElementById("pointObjectModalHeading");
+  const speed = document.getElementById("pointObjectModalSpeed");
+  if (heading) heading.value = entity.properties?.rumbo_grados?.getValue?.() ?? "";
+  if (speed) speed.value = entity.properties?.velocidad_kmh?.getValue?.() ?? "";
+  renderPointObjectChoices();
+  updatePointObjectPreview();
+}
+
+async function savePointObjectEdit() {
+  const entity = pointObjectDraft.editingEntity;
+  const poiId = entity?.properties?.id_poi?.getValue?.() ?? entity?.properties?.id_poi;
+  const opId = localStorage.getItem("active_operation_id");
+  const token = localStorage.getItem("token");
+  const name = String(document.getElementById("pointObjectModalName")?.value || "").trim();
+  if (!entity || !poiId || !opId || !token || !name) return false;
+  const sidc = getPointObjectSidc();
+  const heading = Number(document.getElementById("pointObjectModalHeading")?.value);
+  const speed = Number(document.getElementById("pointObjectModalSpeed")?.value);
+  const apiBase = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
+  const body = { nombre: name, sidc, icono_src: sidc };
+  if (pointObjectDraft.isTarget) {
+    body.rumbo_grados = Number.isFinite(heading) ? Math.max(0, Math.min(360, heading)) : null;
+    body.velocidad_kmh = Number.isFinite(speed) ? Math.max(0, speed) : null;
+  }
+  const res = await fetch(`${apiBase}/ops/${opId}/pois/${poiId}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok || !data?.ok) throw new Error(data?.mensaje || "No se pudo actualizar el objeto.");
+  entity.name = name;
+  if (entity.label) entity.label.text = name;
+  if (entity.billboard) entity.billboard.image = pointObjectDraft.previewImage;
+  entity.properties.sidc?.setValue?.(sidc);
+  entity.properties.rumbo_grados?.setValue?.(body.rumbo_grados ?? null);
+  entity.properties.velocidad_kmh?.setValue?.(body.velocidad_kmh ?? null);
+  if (pointObjectDraft.isTarget) {
+    const coords = getEntityCurrentLatLng(entity);
+    if (coords) {
+      entity.position = Cesium.Cartesian3.fromDegrees(coords.lng, coords.lat);
+      setPoiMotion(entity, coords.lat, coords.lng, body.velocidad_kmh, body.rumbo_grados);
+      syncPoiHeadingArrow(entity, { id_poi: poiId, sidc, visibilidad: entity.properties?.visibilidad?.getValue?.() ?? "PRIVADO" }, body.rumbo_grados);
+    }
+  }
+  return true;
+}
+
+function bindPointObjectModal() {
+  const modal = document.getElementById("pointObjectModal");
+  if (!modal || modal.dataset.bound === "true") return;
+  modal.dataset.bound = "true";
+  document.getElementById("pointObjectModalName")?.addEventListener("input", updatePointObjectPreview);
+  const cancel = () => {
+    closePointObjectModal();
+    pointObjectDraft.editingEntity = null;
+    dashboardState.toolMode = "none";
+    dashboardState.placingMode = false;
+    if (dom.toolSelect) dom.toolSelect.value = "none";
+    resetDrawingState();
+    setTacticalUI();
+  };
+  document.getElementById("pointObjectModalCancel")?.addEventListener("click", cancel);
+  document.getElementById("pointObjectModalClose")?.addEventListener("click", cancel);
+  document.getElementById("pointObjectModalConfirm")?.addEventListener("click", () => {
+    const name = String(document.getElementById("pointObjectModalName")?.value || "").trim();
+    if (!name) return;
+    if (pointObjectDraft.editingEntity) {
+      savePointObjectEdit().then(() => {
+        closePointObjectModal();
+        pointObjectDraft.editingEntity = null;
+      }).catch((err) => alert(err.message || "No se pudo actualizar el objeto."));
+      return;
+    }
+    closePointObjectModal();
+    dashboardState.placingMode = true;
+    if (dom.tbHint) dom.tbHint.textContent = "Haz clic en el mapa para colocar el objeto.";
+    setTacticalUI();
+  });
+
 }
 
 export function setTacticalUI() {
@@ -1644,6 +2133,8 @@ export function setTacticalUI() {
   const showOperationZone = phase === "planificada" || phase === "activa";
   const isToolActive = dashboardState.toolMode !== "none";
   const isMil = dashboardState.toolMode === "mil";
+  const isWaypoint = dashboardState.toolMode === "waypoint";
+  const isTarget = dashboardState.toolMode === "target";
   const isPoi = dashboardState.toolMode === "poi";
   const isPencil = dashboardState.toolMode === "pencil";
   const isEraser = dashboardState.drawingMode === "eraser";
@@ -1671,6 +2162,8 @@ export function setTacticalUI() {
   if (milTitle) milTitle.style.display = isMil ? "block" : "none";
 
   if (dom.milSymbolGenerator) dom.milSymbolGenerator.style.display = isMil ? "block" : "none";
+  const pointControls = document.getElementById("pointObjectControls");
+  if (pointControls) pointControls.style.display = "none";
 
   const buildingPreview = document.getElementById("buildingPreview");
   if (buildingPreview) buildingPreview.style.display = isBuilding ? "block" : "none";
@@ -1689,8 +2182,8 @@ export function setTacticalUI() {
   }
 
   if (dom.symLabelContainer) dom.symLabelContainer.style.display = showLabelInput ? "block" : "none";
-  if (dom.colorContainer) dom.colorContainer.style.display = showColorInput ? "block" : "none";
-  if (dom.opacityContainer) dom.opacityContainer.style.display = showOpacityInput ? "block" : "none";
+  if (dom.colorContainer) dom.colorContainer.style.display = showColorInput && dashboardState.toolMode !== "geomsg" ? "block" : "none";
+  if (dom.opacityContainer) dom.opacityContainer.style.display = showOpacityInput && dashboardState.toolMode !== "geomsg" ? "block" : "none";
   if (dom.widthContainer) dom.widthContainer.style.display = showWidthInput ? "block" : "none";
   updateTacticalControlReadouts();
   if (dom.tacticalActionButtons) {
@@ -1777,6 +2270,50 @@ export async function createPoi(lat, lng, iconPath = null) {
 
   const label = getCurrentLabel();
   const color = getCesiumColor(getCurrentColorName(), 1);
+
+  if (["waypoint", "target"].includes(dashboardState.toolMode)) {
+    const isTarget = dashboardState.toolMode === "target";
+    const name = String(document.getElementById("pointObjectModalName")?.value || "").trim();
+    if (!name) {
+      if (dom.tbHint) dom.tbHint.textContent = "Escribe un nombre antes de colocar el objeto.";
+      return;
+    }
+    const affiliation = pointObjectDraft.affiliation || (isTarget ? "U" : "F");
+    const kind = pointObjectDraft.kind || (isTarget ? "G" : "GPRW");
+    const sidc = isTarget
+      ? `S${affiliation}${kind}P-----------`
+      : `G${affiliation}GP${kind}---X`;
+    const heading = Number(document.getElementById("pointObjectModalHeading")?.value);
+    const speed = Number(document.getElementById("pointObjectModalSpeed")?.value);
+    const hex = isTarget
+      ? ({ F: "blue", H: "red", N: "green", U: "yellow" }[affiliation] || "yellow")
+      : ({ F: "white", H: "red", N: "green", U: "yellow" }[affiliation] || "white");
+    const movement = isTarget ? {
+      rumbo_grados: Number.isFinite(heading) ? Math.max(0, Math.min(360, heading)) : null,
+      velocidad_kmh: Number.isFinite(speed) ? Math.max(0, speed) : null
+    } : {};
+    const saved = await savePoiToBackend(lat, lng, name, isTarget ? "MIL" : "PDI", hex, sidc, sidc, movement);
+    // La respuesta de guardado puede omitir icono_src/SIDC. Conservamos el
+    // símbolo elegido localmente para que el primer render sea idéntico a la
+    // vista previa, mientras el backend termina de sincronizarlo.
+    const poi = {
+      ...(saved || {}),
+      id_poi: saved?.id_poi || `local_${Date.now()}`,
+      nombre: saved?.nombre || name,
+      tipo_poi: saved?.tipo_poi || (isTarget ? "MIL" : "PDI"),
+      latitud: Number(saved?.latitud ?? lat),
+      longitud: Number(saved?.longitud ?? lng),
+      color: saved?.color || COLOR_HEX_MAP[hex],
+      icono_src: sidc,
+      sidc,
+      previewImage: pointObjectDraft.previewImage,
+      ...movement
+    };
+    const ent = buildPoiEntity(poi, "poi");
+    if (ent) addTacticalEntity(ent);
+    if (dom.tbHint) dom.tbHint.textContent = `${isTarget ? "Blanco" : "Waypoint"} colocado.`;
+    return;
+  }
 
   if (dashboardState.toolMode === "poi") {
     const storedName = label || "Punto de interés";
@@ -2262,7 +2799,13 @@ export function handleTacticalPlacement(lat, lng) {
     return true;
   }
 
-  if (dashboardState.toolMode === "poi") {
+  if (dashboardState.toolMode === "geomsg") {
+    placeGeoMsgAtLocation(lat, lng);
+    finishActiveTool("GEO-MSG colocado.");
+    return true;
+  }
+
+  if (["poi", "waypoint", "target"].includes(dashboardState.toolMode)) {
     createPoi(lat, lng).finally(() => finishActiveTool("Punto de interes colocado."));
     return true;
   }
@@ -2334,15 +2877,30 @@ function getEntityCurrentLatLng(entity) {
 }
 
 function applyPoiUpdateToEntity(entity, poi) {
-  const lat = Number(poi.latitud ?? poi.lat);
-  const lng = Number(poi.longitud ?? poi.lon ?? poi.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  const savedLat = Number(poi.latitud ?? poi.lat);
+  const savedLng = Number(poi.longitud ?? poi.lon ?? poi.lng);
+  if (!Number.isFinite(savedLat) || !Number.isFinite(savedLng)) return;
 
   const speedKmh = normalizeNumericInput(poi.velocidad_kmh ?? poi.velocidad ?? poi.speed,
     entity.properties?.velocidad_kmh?.getValue?.() ?? entity.properties?.velocidad_kmh ?? 0);
   const headingDegrees = normalizeHeading(poi.rumbo_grados ?? poi.rumbo ?? poi.headingDegrees ?? poi.heading)
     ?? normalizeHeading(entity.properties?.rumbo_grados?.getValue?.() ?? entity.properties?.rumbo_grados);
-  entity.position = createMovingPosition(lat, lng, speedKmh, headingDegrees);
+  const activeMotion = poiMotionStates.get(String(entity.id));
+  // Android envía la fila completa al cambiar rumbo/velocidad. Si sus
+  // coordenadas siguen siendo el punto inicial guardado, no es un traslado:
+  // conservamos la posición visual actual y desde ahí aplicamos el cambio.
+  const isMotionOnlyUpdate = activeMotion
+    && Math.abs(savedLat - activeMotion.lat) < 0.0000001
+    && Math.abs(savedLng - activeMotion.lng) < 0.0000001;
+  const currentCoords = isMotionOnlyUpdate ? getEntityCurrentLatLng(entity) : null;
+  const lat = currentCoords?.lat ?? savedLat;
+  const lng = currentCoords?.lng ?? savedLng;
+  entity.position = Cesium.Cartesian3.fromDegrees(lng, lat);
+  entity.properties?.velocidad_kmh?.setValue?.(speedKmh);
+  entity.properties?.rumbo_grados?.setValue?.(headingDegrees);
+  setPoiMotion(entity, lat, lng, speedKmh, headingDegrees);
+  const sidc = poi.sidc ?? entity.properties?.sidc?.getValue?.() ?? entity.properties?.sidc;
+  if (String(sidc || "").startsWith("S")) syncPoiHeadingArrow(entity, { ...poi, sidc }, headingDegrees);
 }
 
 function applyStructureUpdateToEntity(entity, estructura) {
@@ -2765,19 +3323,26 @@ export async function restoreTacticalLayersFromMapaData(mapaData) {
   }
 
   const capas = mapaData.capas || [];
+  // `capas` trae la geometría común; `pois` aporta SIDC, icono, rumbo y
+  // velocidad. Al combinarlos se renderizan en web los Blancos/Waypoints
+  // públicos creados en Android con el mismo símbolo MIL.
+  const poisById = new Map((mapaData.pois || []).map((poi) => [String(poi.id_poi), poi]));
   capas.forEach(element => {
     try {
       const type = String(element.tipo_capa || "").toUpperCase();
       if (type === "POI") {
         const poi = {
+          ...(poisById.get(String(element.id_elemento)) || {}),
           id_poi: element.id_elemento,
           nombre: element.nombre,
           tipo_poi: element.subtipo,
           latitud: element.latitud,
           longitud: element.longitud,
           color: element.color,
-          icono_src: element.icono_src,
-          sidc: element.sidc,
+          icono_src: element.icono_src ?? poisById.get(String(element.id_elemento))?.icono_src,
+          sidc: element.sidc ?? poisById.get(String(element.id_elemento))?.sidc,
+          velocidad_kmh: poisById.get(String(element.id_elemento))?.velocidad_kmh,
+          rumbo_grados: poisById.get(String(element.id_elemento))?.rumbo_grados,
           tipo_creador: element.tipo_creador,
           id_usuario: element.id_usuario,
           id_personal: element.id_personal,
@@ -2986,28 +3551,22 @@ function renderGeoMsgEntity(geoMsg) {
 
   const author = String(geoMsg.author || "Usuario").trim() || "Usuario";
   const text = String(geoMsg.text || "").trim();
+  const visibility = String(geoMsg.visibilidad || "PRIVADO").toUpperCase() === "PUBLICO" ? "PUBLICO" : "PRIVADO";
+  const ownerId = Number(geoMsg.id_personal_autor ?? geoMsg.owner_id ?? 0) || null;
+  const ownerUserId = Number(geoMsg.id_usuario_autor ?? geoMsg.owner_user_id ?? 0) || null;
+  geoMessagesById.set(id, { id_geo_msg: id, lat, lon: lng, text, author, visibilidad: visibility, id_personal_autor: ownerId, id_usuario_autor: ownerUserId });
   const entity = viewer.entities.add({
     id: entityId,
     name: author,
     position: Cesium.Cartesian3.fromDegrees(lng, lat),
-    point: {
-      pixelSize: 11,
-      color: Cesium.Color.fromCssColorString("#2dd4bf"),
-      outlineColor: Cesium.Color.WHITE,
-      outlineWidth: 2,
+    billboard: {
+      image: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 82"><path d="M32 2C16 2 3 15 3 31c0 22 29 49 29 49s29-27 29-49C61 15 48 2 32 2Z" fill="#148bd5" stroke="#f4ffff" stroke-width="4"/><circle cx="32" cy="30" r="16" fill="#fff"/><path d="M23 23h18v13H28l-5 5v-18Z" fill="#148bd5"/><path d="M28 29h8M28 33h5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>'),
+      width: 39,
+      height: 50,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
       heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
     },
-    label: {
-      text: text || "GEO-MSG",
-      font: "12px sans-serif",
-      pixelOffset: new Cesium.Cartesian2(0, -20),
-      fillColor: Cesium.Color.WHITE,
-      outlineColor: Cesium.Color.BLACK,
-      outlineWidth: 3,
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-    },
-    properties: { tacticalType: "geomsg", id_geo_msg: id, author, text }
+    properties: { tacticalType: "geomsg", id_geo_msg: id, author, text, visibilidad: visibility, id_personal_autor: ownerId, id_usuario_autor: ownerUserId }
   });
   addTacticalEntity(entity);
 }
@@ -3018,11 +3577,18 @@ function removeGeoMsgEntity(idGeoMsg) {
   const entity = viewer.entities.getById(`geomsg_${idGeoMsg}`);
   if (entity) viewer.entities.remove(entity);
   dashboardState.tacticalEntities = dashboardState.tacticalEntities.filter(ent => String(ent.id || "") !== `geomsg_${idGeoMsg}`);
+  geoMessagesById.delete(Number(idGeoMsg));
 }
 
 export function initPoiSocket(socket) {
+  geoMsgSocket = socket;
   socket.on("geo_msg_created", (geoMsg) => renderGeoMsgEntity(geoMsg));
   socket.on("geo_msg_deleted", ({ id_geo_msg, id }) => removeGeoMsgEntity(id_geo_msg || id));
+  socket.on("geo_msg_updated", (geoMsg) => renderGeoMsgEntity(geoMsg));
+  // El socket puede haberse unido a la operación antes de registrar estos
+  // listeners. Pedimos el estado para que los GEO-MSG ya creados en Android
+  // aparezcan también al abrir o recargar la página.
+  socket.emit("geo_msg_sync");
 
   socket.on("poi_creado", ({ poi }) => {
     if (!poi?.id_poi) return;
@@ -3057,13 +3623,19 @@ export function initPoiSocket(socket) {
     if (ent) addTacticalEntity(ent);
   });
 
-  socket.on("poi_eliminado", ({ id_poi }) => {
+  socket.on("poi_eliminado", ({ id_poi, owner }) => {
     if (!id_poi) return;
 
     const viewer = dashboardState.viewer;
     if (!viewer) return;
 
     const entity = viewer.entities.getById(`poi_${id_poi}`);
+    let currentUser = {};
+    try { currentUser = JSON.parse(localStorage.getItem("userData") || "{}"); } catch { }
+    const ownerIsCurrentUser = owner && String(owner.tipo || "").toUpperCase() === String(currentUser.tabla || "").toUpperCase()
+      && String(owner.id) === String(owner.tipo === "PERSONAL" ? currentUser.id_personal : currentUser.id_usuario);
+    if (ownerIsCurrentUser) return;
+    if (entity?._keepPrivateUntil > Date.now()) return;
     if (entity) viewer.entities.remove(entity);
 
     dashboardState.tacticalEntities = dashboardState.tacticalEntities.filter(ent => {
@@ -3608,9 +4180,25 @@ export async function restoreGridFromBackend(initialGrid = null) {
 }
 
 export function bindTacticalEvents() {
+  bindPointObjectModal();
+  const closeGeoMsg = () => closeGeoMsgModal();
+  dom.geoMsgModalClose?.addEventListener("click", closeGeoMsg);
+  dom.geoMsgModalCancel?.addEventListener("click", closeGeoMsg);
+  dom.geoMsgModalText?.addEventListener("input", () => {
+    if (dom.geoMsgModalConfirm) dom.geoMsgModalConfirm.disabled = !String(dom.geoMsgModalText.value || "").trim();
+  });
+  dom.geoMsgModalConfirm?.addEventListener("click", createGeoMsgAtDraftLocation);
   if (dom.toolSelect) {
     dom.toolSelect.addEventListener("change", (e) => {
       const newMode = e.target.value;
+
+      if (newMode === "poi") {
+        dashboardState.toolMode = "none";
+        dashboardState.placingMode = false;
+        e.target.value = "none";
+        setTacticalUI();
+        return;
+      }
 
       // Stop any active drawing mode when switching tools.
       stopAllDrawingModes();
@@ -3637,6 +4225,16 @@ export function bindTacticalEvents() {
         populateMilIconOptions();
         updateMilSymbolPreview();
         if (dom.tbHint) dom.tbHint.textContent = "Haz clic en el mapa para colocar el simbolo MIL.";
+      }
+
+      if (newMode === "waypoint" || newMode === "target") {
+        dashboardState.placingMode = false;
+        openPointObjectModal(newMode === "target");
+      }
+
+      if (newMode === "geomsg") {
+        dashboardState.placingMode = false;
+        openGeoMsgModal();
       }
 
       if (newMode === "circle") {

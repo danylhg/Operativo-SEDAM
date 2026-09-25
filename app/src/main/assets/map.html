@@ -79,6 +79,9 @@
     .targetPopupSwitch:checked { background:#0891b2; }
     .targetPopupSwitch:checked::after { left:15px; background:#fff; }
     #routePopup { padding-bottom: 43px; border-color: rgba(56, 189, 248, .42); background: rgba(7, 31, 56, .97); }
+    /* Las rutas no tienen selector de visibilidad: solo se reserva espacio para cerrar. */
+    #routePopup .targetPopupName,
+    #routePopup .targetPopupType { width: calc(100% - 24px); }
     .targetPopupRoute {
       width: 100%;
       min-height: 38px;
@@ -262,7 +265,7 @@
 
   <div id="routePopup" class="targetPopup" role="dialog" aria-label="Información de la ruta" style="display:none;">
     <button id="routePopupClose" class="targetPopupClose" type="button" aria-label="Cerrar">✕</button>
-    <div id="routePopupTitle" class="targetPopupName" style="padding-right:20px;">Ruta de navegación</div>
+    <div id="routePopupTitle" class="targetPopupName">Ruta de navegación</div>
     <div id="routePopupCreator" class="targetPopupType" style="margin-top:2px;white-space:normal;"></div>
     <div class="targetPopupRule"></div>
     <div class="targetPopupCoords">
@@ -1151,6 +1154,12 @@
     function showGeoMsgPopup(entity, screenPosition, author, text, coords) {
       const popup = document.getElementById('geoMsgPopup');
       if (!popup) return;
+      // Un GEO-MSG tiene sus propias acciones compactas. Ocultamos de forma
+      // explícita el popup genérico para no dejar sus botones duplicados
+      // ("EDITAR" y "ELIMINAR") detrás del popup de GEO-MSG.
+      const targetPopup = document.getElementById('targetPopup');
+      if (targetPopup) targetPopup.style.display = 'none';
+      activePopupEntity = null;
       hideTargetPopup();
       hideRoutePopup();
       const displayAuthor = formatAbbreviatedPersonLabel(author) || String(author || 'Usuario');
@@ -2124,6 +2133,7 @@
         userMarker = null;
 
         if (showMarker === false) {
+          removeTrackingHeadingLine("SELF");
           if (followMyLocation) {
             flyToLocation(lat, lon, FOLLOW_LOCATION_ZOOM, 0.45);
           }
@@ -2147,6 +2157,22 @@
         }
       } catch (e) {
         console.error("Error en updateMyPosition: " + e.message);
+      }
+    };
+
+    window.updateMyHeading = function (headingDegrees) {
+      try {
+        const heading = normalizeHeadingDegrees(headingDegrees);
+        if (!viewer || heading === null || !lastKnownUserLocation) return;
+        upsertTrackingHeadingLine(
+          "SELF",
+          lastKnownUserLocation.lat,
+          lastKnownUserLocation.lon,
+          TRACKING_PERSONAL_COLOR,
+          { rumbo_grados: heading }
+        );
+      } catch (e) {
+        console.error("Error en updateMyHeading: " + e.message);
       }
     };
 
@@ -2591,7 +2617,7 @@
         : entity.position;
     }
 
-    function drawEmergencyPulse(id, position) {
+    function drawEmergencyPulse(id, position, persistent) {
       if (!viewer || !id || !position) return;
 
       removeEmergencyPulse(id);
@@ -2605,16 +2631,25 @@
           position: position,
           ellipse: {
             semiMajorAxis: new Cesium.CallbackProperty(function () {
-              const progress = Math.max(0, Math.min(1, (Date.now() - startedAt - delayMs) / durationMs));
+              const elapsed = Date.now() - startedAt - delayMs;
+              const progress = persistent
+                ? ((elapsed % durationMs) + durationMs) % durationMs / durationMs
+                : Math.max(0, Math.min(1, elapsed / durationMs));
               return 35 + progress * 360;
             }, false),
             semiMinorAxis: new Cesium.CallbackProperty(function () {
-              const progress = Math.max(0, Math.min(1, (Date.now() - startedAt - delayMs) / durationMs));
+              const elapsed = Date.now() - startedAt - delayMs;
+              const progress = persistent
+                ? ((elapsed % durationMs) + durationMs) % durationMs / durationMs
+                : Math.max(0, Math.min(1, elapsed / durationMs));
               return 35 + progress * 360;
             }, false),
             material: new Cesium.ColorMaterialProperty(
               new Cesium.CallbackProperty(function () {
-                const progress = Math.max(0, Math.min(1, (Date.now() - startedAt - delayMs) / durationMs));
+                const elapsed = Date.now() - startedAt - delayMs;
+                const progress = persistent
+                  ? ((elapsed % durationMs) + durationMs) % durationMs / durationMs
+                  : Math.max(0, Math.min(1, elapsed / durationMs));
                 const alpha = progress <= 0 ? 0 : Math.max(0, 0.68 * (1 - progress));
                 return color.withAlpha(alpha);
               }, false)
@@ -2629,9 +2664,11 @@
       });
 
       emergencyPulseEntities.set(id, pulseEntities);
-      window.setTimeout(function () {
-        removeEmergencyPulse(id);
-      }, durationMs + (EMERGENCY_PULSE_COLORS.length * 430) + 300);
+      if (!persistent) {
+        window.setTimeout(function () {
+          removeEmergencyPulse(id);
+        }, durationMs + (EMERGENCY_PULSE_COLORS.length * 430) + 300);
+      }
     }
 
     window.pulseEmergencyPersonal = function (idPersonal) {
@@ -2643,7 +2680,7 @@
         const position = positionForEntity(tracked);
         if (!id || !position) return;
 
-        drawEmergencyPulse(id, position);
+        drawEmergencyPulse(id, position, true);
         setSelectedTrackingPersonal(id);
       } catch (e) {
         console.error("Error en pulseEmergencyPersonal: " + e.message);
@@ -2658,7 +2695,7 @@
         if (!coords) return;
 
         const id = String(idPersonal || ("loc-" + Date.now()));
-        drawEmergencyPulse(id, Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat));
+        drawEmergencyPulse(id, Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat), true);
         if (trackingPersonalEntities.has(id)) setSelectedTrackingPersonal(id);
       } catch (e) {
         console.error("Error en pulseEmergencyAtLocation: " + e.message);
@@ -2740,6 +2777,29 @@
       return [toWorld(0, -5), elbow, tip, headLeft, tip, headRight];
     }
 
+    function trackingEntityForHeadingKey(trackingKey) {
+      const key = String(trackingKey || "");
+      if (key === "SELF") return userMarker;
+      const separator = key.indexOf(":");
+      const id = separator >= 0 ? key.substring(separator + 1) : key;
+      const prefix = separator >= 0 ? key.substring(0, separator) : "";
+      if (prefix === "P") return trackingPersonalEntities.get(id);
+      if (prefix === "V") return trackingVehiculoEntities.get(id);
+      if (prefix === "E") return trackingEquipoEntities.get(id);
+      if (prefix === "D") return trackingDispositivoEntities.get(id);
+      return null;
+    }
+
+    function northAlignedAxis(position) {
+      const enu = Cesium.Transforms.eastNorthUpToFixedFrame(position);
+      const north = Cesium.Matrix4.multiplyByPointAsVector(
+        enu,
+        new Cesium.Cartesian3(0, 1, 0),
+        new Cesium.Cartesian3()
+      );
+      return Cesium.Cartesian3.normalize(north, north);
+    }
+
     function upsertTrackingHeadingLine(trackingKey, lat, lon, color, meta) {
       if (!viewer || !trackingKey) return;
 
@@ -2749,8 +2809,67 @@
         return;
       }
 
-      const positions = headingEndPosition(lat, lon, heading, TRACKING_HEADING_LENGTH_M);
       const current = trackingHeadingEntities.get(trackingKey);
+      const usesBlancoArrow = /^P:|^V:|^SELF$/.test(String(trackingKey));
+      // Personal y vehículos usan el mismo gráfico de rumbo que los Blancos.
+      // Equipos y dispositivos conservan su línea de rumbo actual.
+      if (usesBlancoArrow) {
+        const arrowGraphic = poiDirectionArrowImage(heading);
+        const verticalOrigin = Cesium.VerticalOrigin.CENTER;
+        const pixelOffset = new Cesium.Cartesian2(0, -21);
+        const alignedAxis = new Cesium.CallbackProperty(function () {
+          const target = trackingEntityForHeadingKey(trackingKey);
+          const position = target && target.position
+            ? (target.position.getValue ? target.position.getValue(viewer.clock.currentTime) : target.position)
+            : Cesium.Cartesian3.fromDegrees(lon, lat);
+          return northAlignedAxis(position);
+        }, false);
+
+        if (current) {
+          current.name = "Rumbo " + Math.round(heading) + "°";
+          current.billboard.image = arrowGraphic.image;
+          current.billboard.verticalOrigin = verticalOrigin;
+          current.billboard.pixelOffset = pixelOffset;
+          current.billboard.alignedAxis = alignedAxis;
+          current.properties.headingDegrees = heading;
+          return;
+        }
+
+        const arrow = viewer.entities.add({
+          name: "Rumbo " + Math.round(heading) + "°",
+          position: new Cesium.CallbackProperty(function () {
+            const target = trackingEntityForHeadingKey(trackingKey);
+            if (target && target.position) {
+              return target.position.getValue
+                ? target.position.getValue(viewer.clock.currentTime)
+                : target.position;
+            }
+            return Cesium.Cartesian3.fromDegrees(lon, lat);
+          }, false),
+          billboard: {
+            image: arrowGraphic.image,
+            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            verticalOrigin: verticalOrigin,
+            pixelOffset: pixelOffset,
+            // Mantiene el rumbo geográfico al rotar o desplazar la cámara.
+            alignedAxis: alignedAxis,
+            width: 80,
+            height: 80,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          },
+          properties: {
+            trackingKind: "heading",
+            trackingKey: trackingKey,
+            tacticalType: "tracking-heading",
+            headingLine: true,
+            headingDegrees: heading
+          }
+        });
+        trackingHeadingEntities.set(trackingKey, arrow);
+        return;
+      }
+
+      const positions = headingEndPosition(lat, lon, heading, TRACKING_HEADING_LENGTH_M);
       if (current) {
         current.polyline.positions = [positions.start, positions.end];
         current.polyline.material = color.withAlpha(0.92);
@@ -3521,17 +3640,17 @@
       // el rumbo. Es intencionalmente un gráfico de píxeles para que se vea
       // a cualquier nivel de zoom.
       const radians = Cesium.Math.toRadians(headingDeg);
-      const pointsUpward = headingDeg <= 45 || headingDeg >= 315;
+      const pointsUpward = true;
       // Hacia el norte la flecha sale de la parte superior del símbolo. Evita
       // que el conector vertical y la punta queden superpuestos.
-      const startX = 40;
-      const startY = pointsUpward ? 78 : 1;
+      const startX = 40 + Math.sin(radians) * 19;
+      const startY = 40 - Math.cos(radians) * 19;
       const elbowX = 40;
-      const elbowY = pointsUpward ? 78 : 36;
-      const length = pointsUpward ? 35 : 29;
+      const elbowY = 40;
+      const length = 39;
       const tipX = elbowX + Math.sin(radians) * length;
       const tipY = elbowY - Math.cos(radians) * length;
-      const headLength = 11;
+      const headLength = 9;
       const leftX = tipX - Math.sin(radians - Math.PI / 6) * headLength;
       const leftY = tipY + Math.cos(radians - Math.PI / 6) * headLength;
       const rightX = tipX - Math.sin(radians + Math.PI / 6) * headLength;
@@ -3541,6 +3660,10 @@
         ? 'M' + startX + ' ' + startY + 'L' + n(tipX) + ' ' + n(tipY)
         : 'M' + startX + ' ' + startY + 'V' + elbowY + 'L' + n(tipX) + ' ' + n(tipY);
       const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">' +
+        '<path d="' + connector +
+        'M' + n(tipX) + ' ' + n(tipY) + 'L' + n(leftX) + ' ' + n(leftY) +
+        'M' + n(tipX) + ' ' + n(tipY) + 'L' + n(rightX) + ' ' + n(rightY) +
+        '" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
         '<path d="' + connector +
         'M' + n(tipX) + ' ' + n(tipY) + 'L' + n(leftX) + ' ' + n(leftY) +
         'M' + n(tipX) + ' ' + n(tipY) + 'L' + n(rightX) + ' ' + n(rightY) +
@@ -3565,10 +3688,8 @@
       const current = poiHeadingEntities.get(entityId);
       if (current) {
         current.billboard.image = arrowGraphic.image;
-        current.billboard.verticalOrigin = arrowGraphic.pointsUpward
-          ? Cesium.VerticalOrigin.BOTTOM : Cesium.VerticalOrigin.TOP;
-        current.billboard.pixelOffset = arrowGraphic.pointsUpward
-          ? new Cesium.Cartesian2(0, -28) : Cesium.Cartesian2.ZERO;
+        current.billboard.verticalOrigin = Cesium.VerticalOrigin.CENTER;
+        current.billboard.pixelOffset = new Cesium.Cartesian2(0, -21);
         return;
       }
       const arrow = viewer.entities.add({
@@ -3583,10 +3704,8 @@
         billboard: {
           image: arrowGraphic.image,
           horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-          verticalOrigin: arrowGraphic.pointsUpward
-            ? Cesium.VerticalOrigin.BOTTOM : Cesium.VerticalOrigin.TOP,
-          pixelOffset: arrowGraphic.pointsUpward
-            ? new Cesium.Cartesian2(0, -28) : Cesium.Cartesian2.ZERO,
+          verticalOrigin: Cesium.VerticalOrigin.CENTER,
+          pixelOffset: new Cesium.Cartesian2(0, -21),
           width: 80,
           height: 80,
           disableDepthTestDistance: Number.POSITIVE_INFINITY
@@ -3616,6 +3735,12 @@
           entity.properties.poiLat = lat;
           entity.properties.poiLon = lon;
         }
+        try {
+          localStorage.setItem('poiMotion_' + entityId, JSON.stringify({
+            lat: lat, lon: lon, speedKmh: motion.speedKmh,
+            headingDeg: motion.headingDeg, savedAt: now
+          }));
+        } catch (_) {}
       });
     }
     window.setInterval(updateMovingPois, 1000);
@@ -3670,11 +3795,46 @@
         const cleanLabel = (tipoPoi || '').toUpperCase() === 'MIL' ? rawLabel.replace(/\s\d{17}$/, '').trim() : rawLabel;
         const displayLabelText = getCleanDisplayLabel(cleanLabel, defaultPoiNames, '');
         const entityId = 'poi_' + id;
+        const previousEntity = poiEntities.get(entityId);
+        const previousMotion = poiMotionStates.get(entityId);
+        const savedLat = Number(lat);
+        const savedLon = Number(lon);
+        // Una edición de rumbo/velocidad devuelve también las coordenadas
+        // originales de BD. Si el Blanco ya va en movimiento y ese punto no
+        // cambió, continuamos desde su posición visual actual.
+        const isMotionOnlyUpdate = previousMotion &&
+          Math.abs(savedLat - previousMotion.lat) < 0.0000001 &&
+          Math.abs(savedLon - previousMotion.lon) < 0.0000001;
+        if (isMotionOnlyUpdate && previousEntity && previousEntity.position) {
+          const currentPosition = previousEntity.position.getValue
+            ? previousEntity.position.getValue(viewer.clock.currentTime)
+            : previousEntity.position;
+          if (currentPosition) {
+            const currentCartographic = Cesium.Cartographic.fromCartesian(currentPosition);
+            lat = Cesium.Math.toDegrees(currentCartographic.latitude);
+            lon = Cesium.Math.toDegrees(currentCartographic.longitude);
+          }
+        }
+        // Siempre se descarta el estado anterior; enseguida se crea uno con
+        // la nueva velocidad y rumbo, o queda detenido si velocidad es cero.
+        poiMotionStates.delete(entityId);
         const parsedSpeed = Number(velocidadKmh);
         const parsedHeading = Number(rumboGrados);
         const speedKmh = Number.isFinite(parsedSpeed) ? Math.max(0, parsedSpeed) : 0;
         const hasHeading = Number.isFinite(parsedHeading);
         const headingDeg = hasHeading ? ((parsedHeading % 360) + 360) % 360 : 0;
+        // Tras cerrar y volver a abrir Android no existe el mapa anterior,
+        // pero sí se conserva esta última posición visual en localStorage.
+        // Se usa sólo al recargar un Blanco que continúa en movimiento.
+        if (!previousEntity && speedKmh > 0) {
+          try {
+            const storedMotion = JSON.parse(localStorage.getItem('poiMotion_' + entityId) || 'null');
+            if (storedMotion && Number.isFinite(Number(storedMotion.lat)) && Number.isFinite(Number(storedMotion.lon))) {
+              lat = Number(storedMotion.lat);
+              lon = Number(storedMotion.lon);
+            }
+          } catch (_) {}
+        }
         // En Android los Blancos se guardan como MIL; aceptamos tambiÃ©n el
         // nombre explÃ­cito para los datos recibidos de versiones anteriores.
         const normalizedPoiType = String(tipoPoi || '').trim().toUpperCase();
@@ -3794,6 +3954,8 @@
             color: cesiumColor, showHeadingArrow: isBlanco && hasHeading,
             startedAt: Date.now()
           });
+        } else {
+          try { localStorage.removeItem('poiMotion_' + entityId); } catch (_) {}
         }
       } catch (e) {
         console.error('[POI][WEB] Error addPoiToMap: ' + e.message);
@@ -3856,6 +4018,7 @@
           poiHeadingEntities.delete(entityId);
         }
         poiMotionStates.delete(entityId);
+        try { localStorage.removeItem('poiMotion_' + entityId); } catch (_) {}
       } catch (e) {
         console.error('Error removePoiFromMap: ' + e.message);
       }
@@ -5078,6 +5241,27 @@
           Android.onMobileToolSelectionCleared();
         }
       }
+    };
+
+    window.removeTrackingPersonal = function (idPersonal) {
+      const id = String(idPersonal || "");
+      const entity = trackingPersonalEntities.get(id);
+      if (entity) viewer.entities.remove(entity);
+      trackingPersonalEntities.delete(id);
+      removeTrackingHeadingLine("P:" + id);
+      if (followedTrackingPersonalId === id) followedTrackingPersonalId = null;
+      reevaluateAndroidClusters();
+    };
+
+    window.syncTrackingPersonal = function (activeIds) {
+      const active = new Set((Array.isArray(activeIds) ? activeIds : []).map(String));
+      Array.from(trackingPersonalEntities.keys()).forEach(function (id) {
+        if (!active.has(String(id))) window.removeTrackingPersonal(id);
+      });
+    };
+
+    window.clearEmergencyPulse = function (idPersonal) {
+      removeEmergencyPulse(String(idPersonal || ""));
     };
 
     window.deleteSelectedMobileTool = function () {

@@ -110,7 +110,11 @@ export function isVehicleMoving(vehicleKey) {
 }
 
 export function shouldShowPersonEntity(personKey) {
-  return !getPersonVehicleKey(personKey);
+  // Cada persona que mantiene presencia en la operaci\u00f3n debe conservar su
+  // icono propio en el mapa, incluso si viaja cerca de un veh\u00edculo.
+  // El agrupamiento se mantiene para otros usos de la interfaz, pero ya no
+  // oculta al personal conectado.
+  return true;
 }
 
 export function getVehicleOccupants(vehicleKey) {

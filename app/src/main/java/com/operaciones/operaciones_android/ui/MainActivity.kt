@@ -63,6 +63,7 @@ import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import com.operaciones.operaciones_android.R
 import com.operaciones.operaciones_android.auth.AuthManager
+import com.operaciones.operaciones_android.data.SedamMovilChatIds
 import com.operaciones.operaciones_android.location.LocationHelper
 import com.operaciones.operaciones_android.model.ChatMessage
 import com.operaciones.operaciones_android.model.DispositivoItem
@@ -95,9 +96,12 @@ import com.operaciones.operaciones_android.ui.socket.OperationSocketController
 import com.operaciones.operaciones_android.webview.CesiumWebController
 import com.operaciones.operaciones_android.webview.MainJsBridge
 import com.operaciones.operaciones_android.wear.PhoneWearListenerService
+import com.operaciones.operaciones_android.streaming.MediaStreamingService
 import okhttp3.OkHttpClient
 import org.json.JSONArray
 import org.json.JSONObject
+import org.webrtc.RendererCommon
+import org.webrtc.SurfaceViewRenderer
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -127,8 +131,8 @@ class MainActivity : AppCompatActivity(),
     private lateinit var panelContent: FrameLayout
     private lateinit var connectionBanner: TextView
     private lateinit var pttAlertBanner: TextView
-    private lateinit var directedAlertBanner: View
-    private lateinit var directedAlertMessage: TextView
+    private lateinit var directedAlertStack: LinearLayout
+    private val activeDirectedAlerts = linkedMapOf<String, Pair<ChatMessage, View>>()
     private lateinit var btnNavOperation: LinearLayout
     private lateinit var btnNavChat: LinearLayout
     private lateinit var chatUnreadBadge: TextView
@@ -359,11 +363,7 @@ class MainActivity : AppCompatActivity(),
         panelContent = findViewById(R.id.panelContent)
         connectionBanner = findViewById(R.id.connectionBanner)
         pttAlertBanner = findViewById(R.id.pttAlertBanner)
-        directedAlertBanner = findViewById(R.id.directedAlertBanner)
-        directedAlertMessage = findViewById(R.id.tvDirectedAlertMessage)
-        findViewById<View>(R.id.btnDismissDirectedAlert).setOnClickListener {
-            directedAlertBanner.visibility = View.GONE
-        }
+        directedAlertStack = findViewById(R.id.directedAlertStack)
         btnNavOperation = findViewById(R.id.btnNavOperation)
         btnNavChat = findViewById(R.id.btnNavChat)
         chatUnreadBadge = findViewById(R.id.chatUnreadBadge)
@@ -385,7 +385,7 @@ class MainActivity : AppCompatActivity(),
 
         bluetoothController = BluetoothController(this, btnBluetoothMedia).apply {
             onPttAlertTriggered = { active ->
-                val senderName = if (::currentUser.isInitialized) currentUser.nombreCompleto else "Elemento PTT"
+                val senderName = if (::currentUser.isInitialized) getMapDataCurrentUserLabel() else "Elemento PTT"
                 chatSocketManager?.emitPttAlertToggle(
                     active = active,
                     senderName = senderName,
@@ -393,20 +393,6 @@ class MainActivity : AppCompatActivity(),
                     lon = lastKnownLon,
                     idPersonal = if (::currentUser.isInitialized) currentUser.id else null
                 )
-                showPttAlertBanner(
-                    active = active,
-                    senderName = senderName,
-                    lat = lastKnownLat,
-                    lon = lastKnownLon,
-                    idPersonal = if (::currentUser.isInitialized) currentUser.id else null,
-                    isOwnAlert = true
-                )
-
-                // Evaluar localmente en el WebView del celular
-                val js = "if (typeof handlePttEmergencyAlert === 'function') handlePttEmergencyAlert({ active: $active, sender_name: '${senderName.replace("'", "\\'")}' });"
-                if (::cesiumWebController.isInitialized) {
-                    cesiumWebController.evaluate(js)
-                }
             }
         }
         mediaStreamController = MediaStreamController(this, btnStreamMedia, this)
@@ -498,6 +484,9 @@ class MainActivity : AppCompatActivity(),
                         )
                     }
                 }
+            },
+            onHeadingUpdate = { headingDegrees ->
+                cesiumWebController.updateMyHeading(headingDegrees)
             }
         )
 
@@ -539,6 +528,7 @@ class MainActivity : AppCompatActivity(),
                 idPersonal == currentUser.id
             val js = "if (typeof handlePttEmergencyAlert === 'function') handlePttEmergencyAlert({ active: $active, sender_name: '${senderName.replace("'", "\\'")}' });"
             runOnUiThread {
+                if (isOwnAlert) return@runOnUiThread
                 showPttAlertBanner(active, senderName, lat, lon, idPersonal, isOwnAlert)
                 if (::cesiumWebController.isInitialized) {
                     cesiumWebController.evaluate(js)
@@ -3706,7 +3696,10 @@ class MainActivity : AppCompatActivity(),
         if (message.isMine && message.type != MessageType.ALERT) return
         if (message.type == MessageType.SYSTEM) return
 
-        if (!message.isMine && ::chatNotificationController.isInitialized && ::currentOperation.isInitialized) {
+        // Las alertas se presentan mediante el aviso de emergencia, no como un
+        // mensaje del chat ni como una notificaci\u00f3n de conversaci\u00f3n.
+        if (!message.isMine && message.type != MessageType.ALERT &&
+            ::chatNotificationController.isInitialized && ::currentOperation.isInitialized) {
             if (isChatPanelActive() && visibleInActiveChat) {
                 chatNotificationController.cancelMessage(message)
             } else {
@@ -3714,10 +3707,8 @@ class MainActivity : AppCompatActivity(),
             }
         }
 
-        if (message.type == MessageType.ALERT) {
-            if (!message.isMine) {
-                showDirectedAlertBanner(message)
-            }
+        if (message.type == MessageType.ALERT && !message.isMine) {
+            showDirectedAlertBanner(message)
             if (::emergencyVisualAlertController.isInitialized) {
                 emergencyVisualAlertController.flashScreen()
             }
@@ -4352,20 +4343,136 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun showDirectedAlertBanner(message: ChatMessage) {
-        if (!::directedAlertBanner.isInitialized || !::directedAlertMessage.isInitialized) return
+        if (!::directedAlertStack.isInitialized) return
         val sender = message.user.trim().ifBlank { "Personal" }
         val senderRecord = message.idPersonal?.let { senderId ->
             personalList.firstOrNull { it.idPersonal == senderId }
         }
-        val rank = senderRecord?.puesto?.trim().orEmpty()
-            .ifBlank { senderRecord?.rol?.trim().orEmpty() }
-            .takeUnless { it.equals("Personal", ignoreCase = true) }
-        val senderWithRank = if (rank.isNullOrBlank()) sender else "$sender · $rank"
+        val senderName = senderRecord?.let { person ->
+            listOf(person.nombre, person.apellido)
+                .joinToString(" ") { it.trim() }
+                .ifBlank { person.apodo.trim() }
+        }?.takeIf { it.isNotBlank() } ?: alertSenderName(sender)
+        val rank = abbreviateRank(senderRecord?.puesto.orEmpty())
+            .ifBlank { alertSenderRank(sender) }
+        val senderWithRank = listOf(rank, senderName)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { "Personal" }
+
+        val content = message.text
+        val isLifeLine = Regex("LINEA\\s+DE\\s+VIDA", RegexOption.IGNORE_CASE).containsMatchIn(content)
+        val location = emergencyLocationFromText(content)
+        fun field(label: String): String = Regex(
+            "^${Regex.escape(label)}\\s*:\\s*(.+)$",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)
+        ).find(content)?.groupValues?.getOrNull(1)?.trim().orEmpty().ifBlank { "no disponible" }
+        val heartRate = field("FRECUENCIA CARDIACA")
+        val oxygen = field("OXIGENO EN SANGRE")
+        val respiration = field("FRECUENCIA RESPIRATORIA")
+        val temperature = field("TEMPERATURA CORPORAL")
+        val bloodPressure = field("PRESION ARTERIAL")
+        val criticalAlerts = directedAlertCriticalVitals(
+            heartRate, oxygen, respiration, temperature, bloodPressure
+        )
 
         runOnUiThread {
-            directedAlertMessage.text = "ALERTA ENVIADA DE\n$senderWithRank"
-            directedAlertBanner.visibility = View.VISIBLE
-            directedAlertBanner.bringToFront()
+            val key = message.id?.toString()
+                ?: "${message.idPersonal ?: message.user}-${message.text.hashCode()}"
+            val card = activeDirectedAlerts[key]?.second ?: layoutInflater
+                .inflate(R.layout.view_directed_alert, directedAlertStack, false)
+                .also { newCard ->
+                    activeDirectedAlerts[key] = message to newCard
+                    directedAlertStack.addView(newCard)
+                    newCard.findViewById<View>(R.id.btnDismissDirectedAlert).setOnClickListener {
+                        activeDirectedAlerts.remove(key)?.let { (alert, view) ->
+                            clearDirectedEmergencyPulse(alert)
+                            directedAlertStack.removeView(view)
+                        }
+                    }
+                    newCard.findViewById<View>(R.id.btnViewDirectedAlert).setOnClickListener {
+                        val alert = activeDirectedAlerts[key]?.first ?: return@setOnClickListener
+                        val alertLocation = emergencyLocationFromText(alert.text)
+                        if (alertLocation != null && ::cesiumWebController.isInitialized) {
+                            cesiumWebController.centerOnLocation(alertLocation.first, alertLocation.second, zoom = 1_200)
+                            cesiumWebController.pulseEmergencyAtLocation(alert.idPersonal ?: -1, alertLocation.first, alertLocation.second)
+                        } else {
+                            Toast.makeText(this, "Ubicación de alerta no disponible.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    newCard.setOnClickListener { expandDirectedAlertCard(newCard) }
+                }
+            card.findViewById<TextView>(R.id.tvDirectedAlertMessage).text = if (isLifeLine) {
+                "LINEA DE VIDA · $senderWithRank"
+            } else {
+                "ALERTA OPERATIVA · $senderWithRank"
+            }
+            val status = card.findViewById<TextView>(R.id.tvDirectedAlertStatus)
+            status.tag = isLifeLine && criticalAlerts.isNotEmpty()
+            status.visibility = if (isLifeLine && criticalAlerts.isNotEmpty()) View.VISIBLE else View.GONE
+            status.text = criticalAlerts.joinToString(" · ") +
+                if (criticalAlerts.isNotEmpty()) " — VERIFICAR DE INMEDIATO" else ""
+            card.findViewById<View>(R.id.directedAlertVitals).tag = isLifeLine
+            card.findViewById<View>(R.id.directedAlertVitals).visibility = if (isLifeLine) View.VISIBLE else View.GONE
+            if (isLifeLine) {
+                card.findViewById<TextView>(R.id.tvAlertVitalHeart).text = "FC: $heartRate"
+                card.findViewById<TextView>(R.id.tvAlertVitalOxygen).text = "SpO2: $oxygen"
+                card.findViewById<TextView>(R.id.tvAlertVitalRespiration).text = "Resp.: $respiration"
+                card.findViewById<TextView>(R.id.tvAlertVitalTemperature).text = "Temp.: $temperature"
+                card.findViewById<TextView>(R.id.tvAlertVitalPressure).text = "PA: $bloodPressure"
+            }
+            expandDirectedAlertCard(card)
+            directedAlertStack.bringToFront()
+        }
+    }
+
+    /** Deja todas las emergencias visibles, pero muestra el detalle de una sola. */
+    private fun expandDirectedAlertCard(expandedCard: View) {
+        activeDirectedAlerts.values.forEach { (_, card) ->
+            val expanded = card === expandedCard
+            val vitals = card.findViewById<View>(R.id.directedAlertVitals)
+            val hasVitals = vitals.tag as? Boolean ?: false
+            vitals.visibility = if (expanded && hasVitals) View.VISIBLE else View.GONE
+            val status = card.findViewById<TextView>(R.id.tvDirectedAlertStatus)
+            val hasCriticalStatus = status.tag as? Boolean ?: false
+            status.visibility = if (expanded && hasCriticalStatus) View.VISIBLE else View.GONE
+        }
+    }
+
+    /** Indicadores de triaje visual; requieren confirmación clínica inmediata. */
+    private fun directedAlertCriticalVitals(
+        heartRate: String,
+        oxygen: String,
+        respiration: String,
+        temperature: String,
+        bloodPressure: String
+    ): List<String> {
+        fun number(value: String): Double? = Regex("-?\\d+(?:[.,]\\d+)?")
+            .find(value)?.value?.replace(',', '.')?.toDoubleOrNull()
+        val alerts = mutableListOf<String>()
+        number(heartRate)?.let { value ->
+            when {
+                value <= 0 -> alerts += "⚠ SIN PULSO DETECTADO (FC $heartRate)"
+                value < 40 || value > 180 -> alerts += "⚠ FC CRÍTICA: $heartRate"
+            }
+        }
+        number(oxygen)?.takeIf { it <= 85 }?.let { alerts += "⚠ OXÍGENO CRÍTICO: $oxygen" }
+        number(respiration)?.let { value ->
+            when {
+                value <= 0 -> alerts += "⚠ SIN RESPIRACIÓN DETECTADA ($respiration)"
+                value < 8 || value > 35 -> alerts += "⚠ RESPIRACIÓN CRÍTICA: $respiration"
+            }
+        }
+        number(temperature)?.takeIf { it < 32 || it >= 41 }?.let {
+            alerts += "⚠ TEMPERATURA CRÍTICA: $temperature"
+        }
+        number(bloodPressure)?.takeIf { it < 70 }?.let { alerts += "⚠ PRESIÓN CRÍTICA: $bloodPressure" }
+        return alerts
+    }
+
+    private fun clearDirectedEmergencyPulse(message: ChatMessage) {
+        if (::cesiumWebController.isInitialized) {
+            cesiumWebController.clearEmergencyPulse(message.idPersonal ?: -1)
         }
     }
 
@@ -4448,9 +4555,6 @@ class MainActivity : AppCompatActivity(),
             geoMessagesById[idPoi] = GeoMsgState(lat, lon, text, userName, false, currentUser.id)
             cesiumWebController.addGeoMsgToMap(idPoi, lat, lon, text, userName, false, currentUser.id)
             chatSocketManager?.emitGeoMsgCreated(idPoi, lat, lon, text, userName, false)
-
-            val chatText = "[GEO-MSG] ($formattedLat, $formattedLon) $text"
-            sendChatMessage(chatText)
 
             Toast.makeText(this, "Mensaje Geo-anclado enviado", Toast.LENGTH_SHORT).show()
         }
@@ -4750,6 +4854,12 @@ class MainActivity : AppCompatActivity(),
         )
     }
 
+    override fun onSocketPersonalDisconnected(idPersonal: Int) {
+        cesiumWebController.evaluate(
+            "if(typeof removeTrackingPersonal === 'function') removeTrackingPersonal($idPersonal)"
+        )
+    }
+
     override fun updateSimulationVehicleOccupants(idVehiculo: Int, occupants: List<PersonalItem>) {
         val occupantsJson = org.json.JSONArray().apply {
             occupants.forEach { occupant ->
@@ -4811,6 +4921,21 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
+    /** Separa un cargo que algunos mensajes antiguos agregan al final del nombre. */
+    private fun alertSenderName(sender: String): String {
+        val parts = sender.split(Regex("\\s*[-·|]\\s*")).filter { it.isNotBlank() }
+        return if (parts.size > 1 && abbreviateRank(parts.last()).isNotBlank()) {
+            parts.dropLast(1).joinToString(" ").trim()
+        } else {
+            sender
+        }
+    }
+
+    private fun alertSenderRank(sender: String): String {
+        val trailingPart = sender.split(Regex("\\s*[-·|]\\s*")).lastOrNull().orEmpty()
+        return abbreviateRank(trailingPart)
+    }
+
     private val simulationVehicleOccupants = mutableMapOf<Int, List<PersonalItem>>()
 
     private fun resolveVehicleOccupants(idVehiculo: Int): List<PersonalItem> {
@@ -4852,6 +4977,7 @@ class MainActivity : AppCompatActivity(),
             type = "VEHICULO",
             destinatarioRol = "CELL,CET",
             destinoTipo = "CELL_LIST",
+            chatId = SedamMovilChatIds.VEHICULO,
             destinoId = idVehiculo.toString(),
             destinoLabel = vehicleName,
             destinoSendId = destinoSendId
@@ -4883,6 +5009,7 @@ class MainActivity : AppCompatActivity(),
             type = type,
             destinatarioRol = destinatarioRol,
             destinoTipo = destinoTipo,
+            chatId = SedamMovilChatIds.idDeChat(type, idPersonal.toString()),
             destinoId = idPersonal.toString(),
             destinoLabel = personName,
             destinoSendId = idPersonal.toString()
@@ -5471,12 +5598,38 @@ class MainActivity : AppCompatActivity(),
                 topMargin = dp(7)
             }
         }
-        signal.addView(TextView(this).apply {
-            text = if (online) "SEÑAL RECIBIDA" else "ESPERANDO SEÑAL"; gravity = Gravity.CENTER
-            setTextColor(Color.WHITE); textSize = 9f; setTypeface(typeface, android.graphics.Typeface.BOLD)
-            background = panelBackground(Color.rgb(8, 29, 42), Color.rgb(77, 127, 153), 7f)
-            layoutParams = FrameLayout.LayoutParams(dp(104), dp(48), Gravity.CENTER)
-        })
+        // Muestra la pista WebRTC que este teléfono ya publica; no abre una
+        // segunda cámara ni interrumpe la transmisión activa.
+        val localVideoTrack = if (isSelf && MediaStreamingService.isRunning) {
+            MediaStreamingService.activeVideoTrack
+        } else {
+            null
+        }
+        val localEglBase = MediaStreamingService.activeEglBase
+        var popupVideoRenderer: SurfaceViewRenderer? = null
+        if (localVideoTrack != null && localEglBase != null) {
+            popupVideoRenderer = SurfaceViewRenderer(this).apply {
+                init(localEglBase.eglBaseContext, null)
+                setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+                setMirror(false)
+                setEnableHardwareScaler(true)
+            }
+            localVideoTrack.addSink(popupVideoRenderer)
+            signal.addView(
+                popupVideoRenderer,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        } else {
+            signal.addView(TextView(this).apply {
+                text = if (online) "SEÑAL RECIBIDA" else "ESPERANDO SEÑAL"; gravity = Gravity.CENTER
+                setTextColor(Color.WHITE); textSize = 9f; setTypeface(typeface, android.graphics.Typeface.BOLD)
+                background = panelBackground(Color.rgb(8, 29, 42), Color.rgb(77, 127, 153), 7f)
+                layoutParams = FrameLayout.LayoutParams(dp(104), dp(48), Gravity.CENTER)
+            })
+        }
         content.addView(signal)
         if (!isSelf) {
             val actionRow = LinearLayout(this).apply {
@@ -5514,7 +5667,15 @@ class MainActivity : AppCompatActivity(),
             isOutsideTouchable = true
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             elevation = dp(10).toFloat()
-            setOnDismissListener { selectedPersonalInfoId = null }
+            setOnDismissListener {
+                // La superficie se libera al cerrar el cuadro, pero el servicio
+                // continúa transmitiendo en segundo plano.
+                popupVideoRenderer?.let { renderer ->
+                    try { localVideoTrack?.removeSink(renderer) } catch (_: Exception) { }
+                    try { renderer.release() } catch (_: Exception) { }
+                }
+                selectedPersonalInfoId = null
+            }
             showAtLocation(webView, Gravity.NO_GRAVITY, initialPopupX, initialPopupY)
         }
     }
@@ -5678,8 +5839,9 @@ class MainActivity : AppCompatActivity(),
             Toast.makeText(this, "No hay personal asignado a $vehicleName.", Toast.LENGTH_SHORT).show()
             return
         }
+        val alertText = alertMessageWithLocation("ALERTA para $vehicleName") ?: return
         chatController.sendMessage(
-            text = "ALERTA para $vehicleName",
+            text = alertText,
             alert = true,
             destinatarioRol = "CELL,CET",
             destinoTipo = "CELL_LIST",
@@ -5791,8 +5953,9 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun sendPersonalAlert(idPersonal: Int, personName: String) {
+        val alertText = alertMessageWithLocation("ALERTA para $personName") ?: return
         chatController.sendMessage(
-            text = "ALERTA para $personName",
+            text = alertText,
             alert = true,
             destinatarioRol = "CELL,CET",
             destinoTipo = "CELL_LIST",
@@ -5801,6 +5964,24 @@ class MainActivity : AppCompatActivity(),
         )
         Toast.makeText(this, "Alerta enviada a $personName.", Toast.LENGTH_SHORT).show()
     }
+
+    /** Cada alerta dirigida lleva la posición del emisor para que el receptor pueda verla y abrirla. */
+    private fun alertMessageWithLocation(prefix: String): String? {
+        val location = validPair(lastKnownLat, lastKnownLon)
+        if (location == null) {
+            locationHelper.requestLocationPermissionOrStart()
+            Toast.makeText(
+                this,
+                "Obteniendo tu ubicación. Envía la alerta nuevamente en unos segundos.",
+                Toast.LENGTH_LONG
+            ).show()
+            return null
+        }
+        return "$prefix\nUBICACION: ${formatAlertCoordinates(location)}"
+    }
+
+    private fun formatAlertCoordinates(location: Pair<Double, Double>): String =
+        String.format(Locale.US, "%.6f, %.6f", location.first, location.second)
 
     private fun goToLogin() {
         if (::currentOperation.isInitialized && ::currentUser.isInitialized) {

@@ -4,19 +4,24 @@ import { dashboardState } from "./dashboard.state.js";
 import { dom } from "./dashboard.dom.js";
 import { getVehicleOccupants } from "./dashboard.tracking.clustering.js";
 import { getCurrentOperation } from "./dashboard.storage.js";
-import { updateSelectionInfo, setRouteInfo, showPersonnelDetail } from "./dashboard.ui.js";
+import { updateSelectionInfo, setRouteInfo, showPersonnelDetail } from "./dashboard.ui.js?v=20260923-draggable-person-popup";
 import {
   handleTacticalPlacement,
   updateTacticalPreview,
   isDraggableEntity,
   createMilSymbol,
   persistDraggedEntity,
-  renderMilSymbolImage
-} from "./dashboard.tactical.js";
+  renderMilSymbolImage,
+  openPointObjectEdit,
+  openGeoMsgEditModal,
+  updateGeoMsg,
+  deleteGeoMsg,
+  setGeoMsgVisibility
+} from "./dashboard.tactical.js?v=20260923-geo-msg-edit-modal";
 import { addAreaVertex, updateAreaPreview } from "./dashboard.area.js";
 import { cartesianToLatLng, autoSaveTacticalData } from "./dashboard.persistence.js";
 import { configureGoogleLikeCamera } from "../map.camera.js?v=20260723-map-data-safe-zoom";
-import { clearEmbeddedCamera, renderEquipmentLiveCamera } from "./dashboard.camera.js";
+import { clearEmbeddedCamera, renderEquipmentLiveCamera } from "./dashboard.camera.js?v=20260922-person-camera-stream";
 import {
   persistRouteDataToCurrentOperation,
   autoCalcRoute,
@@ -26,7 +31,7 @@ import {
   selectRemoteRoute,
   getRouteIdForEntity,
   deleteRemoteRouteById
-} from "./dashboard.routes.js";
+} from "./dashboard.routes.js?v=20260922-route-syntax-fix-2";
 
 const logAlert = (message) => {
   if (message) console.warn(message);
@@ -524,14 +529,58 @@ function showRouteDeletePopup(routeId, clickPosition) {
   const viewer = dashboardState.viewer;
   if (!viewer || !dom.entityPopup) return;
 
+  dom.entityPopup.classList.remove("geoMsgPopup");
+  dom.entityPopup.querySelector(".geoMsgDetails")?.remove();
+
   dashboardState.selectedEntity = null;
   updateSelectionInfo(null);
   dom.personInfoPopup?.classList.add("hidden");
   if (dom.vehicleQuickMenu) dom.vehicleQuickMenu.style.display = "none";
 
+  const route = dashboardState.remoteRouteEntities.get(routeId)?.ruta || {};
   if (dom.entityPopupName) dom.entityPopupName.textContent = getRoutePopupName(routeId);
-  if (dom.entityPopupDelete) dom.entityPopupDelete.textContent = "Eliminar ruta";
-  setEntityPopupCreator("");
+  if (dom.entityPopupDelete) {
+    dom.entityPopupDelete.textContent = "Eliminar ruta";
+    dom.entityPopupDelete.style.display = isRouteOwnedByCurrentUser(route) ? "block" : "none";
+  }
+  const author = [
+    abbreviateRank(route.creador_puesto || route.routeCreatorRank || route.cargo),
+    route.creador_nombre || route.routeCreator || ""
+  ].filter(Boolean).join(" ");
+  setEntityPopupCreator(author);
+  const creator = dom.entityPopup.querySelector(".entityPopupCreator");
+  if (creator?.textContent) creator.textContent = creator.textContent.replace(/^Colocado por:/, "Creada por:");
+
+  let details = dom.entityPopup.querySelector(".routePopupDetails");
+  if (!details) {
+    details = document.createElement("div");
+    details.className = "routePopupDetails";
+    dom.entityPopup.insertBefore(details, dom.entityPopupDelete);
+  }
+  const distance = Number(route.distancia_m || route.distance || 0);
+  const duration = Number(route.duracion_s || route.duration || 0);
+  const lat = Number(route.destino_lat ?? route.destination_lat);
+  const lng = Number(route.destino_lon ?? route.destination_lon);
+  const distanceText = distance > 0 ? `${(distance / 1000).toFixed(2)} km` : "No disponible";
+  const durationMinutes = duration > 0 ? Math.max(1, Math.round(duration / 60)) : null;
+  const durationText = durationMinutes == null
+    ? "No disponible"
+    : durationMinutes >= 60
+      ? `${Math.floor(durationMinutes / 60)} h ${durationMinutes % 60} min`
+      : `${durationMinutes} min`;
+  const destinationText = Number.isFinite(lat) && Number.isFinite(lng)
+    ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+    : "No disponible";
+  details.replaceChildren();
+  [["Destino", destinationText], ["Distancia", distanceText], ["Duración", durationText]].forEach(([label, value]) => {
+    const row = document.createElement("div");
+    const key = document.createElement("span");
+    const content = document.createElement("strong");
+    key.textContent = label;
+    content.textContent = value;
+    row.append(key, content);
+    details.appendChild(row);
+  });
 
   dom.entityPopup.dataset.action = "delete-navigation-route";
   dom.entityPopup.dataset.routeId = String(routeId);
@@ -601,6 +650,63 @@ function setEntityPopupCreator(creatorName) {
   creatorEl.style.display = name ? "block" : "none";
 }
 
+function abbreviateRank(value) {
+  let text = String(value || "").replace(/\s*\([^)]*\)/g, "").trim();
+  const replacements = [
+    [/\bCapit[aá]n\s+de\s+Nav[ií]o\b/gi, "Cap. Nav."],
+    [/\bCapit[aá]n\s+de\s+Fragata\b/gi, "Cap. Frag."],
+    [/\bCapit[aá]n\s+de\s+Corbeta\b/gi, "Cap. Corb."],
+    [/\bCapit[aá]n\s+1(?:\/o|\.º|\.o|er|ro)?\b/gi, "Cap. 1/o"],
+    [/\bCapit[aá]n\s+2(?:\/o|\.º|\.o|do|ndo)?\b/gi, "Cap. 2/o"],
+    [/\bCapit[aá]n\b/gi, "Cap."],
+    [/\bTeniente\s+de\s+Nav[ií]o\b/gi, "Tte. Nav."],
+    [/\bTeniente\s+de\s+Fragata\b/gi, "Tte. Frag."],
+    [/\bTeniente\s+de\s+Corbeta\b/gi, "Tte. Corb."],
+    [/\bSubteniente\b/gi, "Subtte."],
+    [/\bTeniente\b/gi, "Tte."],
+    [/\bSargento\s+1(?:\/o|\.º|\.o|er|ro)?\b/gi, "Sgto. 1/o"],
+    [/\bSargento\s+2(?:\/o|\.º|\.o|do|ndo)?\b/gi, "Sgto. 2/o"],
+    [/\bSargento\b/gi, "Sgto."],
+    [/\bCabo\b/gi, "Cbo."],
+    [/\bMarinero\b/gi, "Mro."],
+    [/\bSoldado\b/gi, "Sld."],
+    [/\bGeneral\s+de\s+Divisi[oó]n\b/gi, "Gral. Div."],
+    [/\bGeneral\s+de\s+Brigada\b/gi, "Gral. Bgda."],
+    [/\bGeneral\s+Brigadier\b/gi, "Gral. Bgda."],
+    [/\bGeneral\b/gi, "Gral."],
+    [/\bVicealmirante\b/gi, "Valm."],
+    [/\bContralmirante\b/gi, "Calm."],
+    [/\bAlmirante\b/gi, "Alm."],
+    [/\bCoronel\b/gi, "Cnel."],
+    [/\bMayor\b/gi, "My."]
+  ];
+  replacements.forEach(([pattern, replacement]) => { text = text.replace(pattern, replacement); });
+  return text.replace(/\b(CET|ADMIN|OPERADOR|USUARIO)\b\s*/gi, "").trim();
+}
+
+function isRouteOwnedByCurrentUser(route = {}) {
+  let stored = {};
+  let tokenPayload = {};
+  try { stored = JSON.parse(localStorage.getItem("userData") || "{}"); } catch { }
+  try {
+    const token = localStorage.getItem("token") || "";
+    tokenPayload = JSON.parse(atob(token.split(".")[1] || ""));
+  } catch { }
+
+  const table = String(tokenPayload.tabla || stored.tabla || "").toLowerCase();
+  const currentPersonalId = tokenPayload.id_personal || stored.id_personal ||
+    (table === "personal" ? tokenPayload.sub : null);
+  const currentUserId = tokenPayload.id_usuario || stored.id_usuario ||
+    (table === "usuario" ? tokenPayload.sub : null);
+  const routePersonalId = route.id_personal ?? route.personal_id;
+  const routeUserId = route.id_usuario ?? route.usuario_id;
+
+  return (currentPersonalId != null && routePersonalId != null &&
+      String(currentPersonalId) === String(routePersonalId)) ||
+    (currentUserId != null && routeUserId != null &&
+      String(currentUserId) === String(routeUserId));
+}
+
 function getEntityPopupName(entity) {
   const tacticalType = String(getEntityProperty(entity, "tacticalType") || "");
   if (tacticalType === "freehand-drawing") return "Dibujo";
@@ -618,9 +724,244 @@ function isDeletePopupEntity(entity) {
   return Boolean(tacticalType && !["planning-area", "planning-area-border", "planning-area-label"].includes(tacticalType));
 }
 
+function isWaypointOrTargetEntity(entity) {
+  const poiId = getEntityProperty(entity, "id_poi");
+  const sidc = String(getEntityProperty(entity, "sidc") || "");
+  const tacticalType = String(getEntityProperty(entity, "tacticalType") || "");
+  return Boolean(poiId && (/^[SG]/.test(sidc) || tacticalType === "mil-dropped" || tacticalType === "poi-heading"));
+}
+
+function isGeoMsgEntity(entity) {
+  return String(getEntityProperty(entity, "tacticalType") || "") === "geomsg";
+}
+
+function isGeoMsgOwnedByCurrentUser(entity) {
+  let user = {};
+  try { user = JSON.parse(localStorage.getItem("userData") || "{}"); } catch { }
+  const ownerIds = [
+    getEntityProperty(entity, "id_personal_autor"),
+    getEntityProperty(entity, "id_usuario_autor")
+  ].filter((value) => value != null);
+  const currentIds = [user.id_personal, user.id_usuario].filter((value) => value != null);
+  return ownerIds.some((ownerId) => currentIds.some((currentId) => String(ownerId) === String(currentId)));
+}
+
+function showGeoMsgPopup(entity, clickPosition) {
+  const viewer = dashboardState.viewer;
+  if (!viewer || !dom.entityPopup) return false;
+  const coords = getEntityLatLng(entity);
+  const id = getEntityProperty(entity, "id_geo_msg");
+  const isOwner = isGeoMsgOwnedByCurrentUser(entity);
+  dom.entityPopup.classList.add("geoMsgPopup");
+  dom.entityPopup.dataset.action = "geo-msg";
+  dom.entityPopup.dataset.geoMsgId = String(id || "");
+  dom.entityPopup.dataset.routeId = "";
+  if (dom.entityPopupName) dom.entityPopupName.textContent = String(getEntityProperty(entity, "author") || "Usuario");
+  setEntityPopupCreator("");
+  dom.entityPopup.querySelector(".poiPopupDetails")?.remove();
+  dom.entityPopup.querySelector(".routePopupDetails")?.remove();
+  dom.entityPopup.querySelector(".geoMsgDetails")?.remove();
+  const details = document.createElement("div");
+  details.className = "geoMsgDetails";
+  const message = document.createElement("div");
+  message.className = "geoMsgText";
+  message.textContent = String(getEntityProperty(entity, "text") || "");
+  const coordinates = document.createElement("div");
+  coordinates.className = "geoMsgCoordinates";
+  coordinates.textContent = `LAT:  ${Number(coords.lat).toFixed(5)}   LON:  ${Number(coords.lng).toFixed(5)}`;
+  details.append(message, coordinates);
+  if (isOwner) {
+    const visibility = document.createElement("label");
+    visibility.className = "geoMsgVisibility";
+    const visibilityLabel = document.createElement("span");
+    const isPublic = String(getEntityProperty(entity, "visibilidad") || "PRIVADO").toUpperCase() === "PUBLICO";
+    visibilityLabel.textContent = isPublic ? "Público" : "Privado";
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.className = "geoMsgVisibilityToggle";
+    toggle.checked = isPublic;
+    toggle.setAttribute("aria-label", "Cambiar privacidad del mensaje");
+    visibility.append(visibilityLabel, toggle);
+    details.append(visibility);
+  }
+  const actions = document.createElement("div");
+  actions.className = "geoMsgActions";
+  actions.innerHTML = '<button type="button" class="geoMsgEditButton" aria-label="Editar mensaje" title="Editar mensaje"><svg viewBox="0 0 24 24"><path d="m4 16.5-.7 4.2 4.2-.7L19 8.5 15.5 5 4 16.5Z"></path><path d="m14.5 6 3.5 3.5"></path></svg></button><button type="button" class="geoMsgDeleteButton" aria-label="Eliminar mensaje" title="Eliminar mensaje"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg></button>';
+  details.append(actions);
+  dom.entityPopup.insertBefore(details, dom.entityPopupDelete);
+  if (dom.entityPopupDelete) dom.entityPopupDelete.style.display = "none";
+  const rect = viewer.canvas.getBoundingClientRect();
+  const x = clickPosition.x + rect.left;
+  const y = clickPosition.y + rect.top;
+  dom.entityPopup.style.left = `${Math.min(Math.max(x - 115, rect.left + 8), window.innerWidth - 250)}px`;
+  dom.entityPopup.style.top = `${Math.max(y - 190, rect.top + 8)}px`;
+  dom.entityPopup.style.display = "block";
+  return true;
+}
+
+function isPoiOwnedByCurrentUser(entity) {
+  let user = {};
+  try { user = JSON.parse(localStorage.getItem("userData") || "{}"); } catch { }
+  const creatorType = String(getEntityProperty(entity, "tipo_creador") || "").toUpperCase();
+  const ownerId = creatorType === "PERSONAL"
+    ? getEntityProperty(entity, "id_personal")
+    : getEntityProperty(entity, "id_usuario");
+  const currentId = creatorType === "PERSONAL" ? user.id_personal : user.id_usuario;
+  return ownerId != null && currentId != null && String(ownerId) === String(currentId);
+}
+
+async function setPoiVisibility(entity, isPublic) {
+  const poiId = Number(getEntityProperty(entity, "id_poi"));
+  const opId = localStorage.getItem("active_operation_id");
+  const token = localStorage.getItem("token");
+  if (!poiId || !opId || !token || !isPoiOwnedByCurrentUser(entity)) return;
+  const apiBase = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
+  const action = isPublic ? "publicar" : "privatizar";
+  // El socket de privatización se entrega a toda la operación. Marcamos el
+  // objeto propio antes de llamar al API para conservarlo en este cliente.
+  if (!isPublic) entity._keepPrivateUntil = Date.now() + 8000;
+  try {
+    const res = await fetch(`${apiBase}/ops/${opId}/pois/${poiId}/${action}`, {
+      method: "PATCH", headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.ok) throw new Error(data?.mensaje || "No se pudo cambiar la visibilidad.");
+    if (entity.properties?.visibilidad?.setValue) entity.properties.visibilidad.setValue(isPublic ? "PUBLICO" : "PRIVADO");
+    else if (entity.properties) entity.properties.visibilidad = isPublic ? "PUBLICO" : "PRIVADO";
+    const label = dom.entityPopup?.querySelector(".poiPopupVisibility > span");
+    if (label) label.textContent = isPublic ? "Público" : "Privado";
+  } catch (err) {
+    delete entity._keepPrivateUntil;
+    alert(err.message || "No se pudo cambiar la visibilidad.");
+  }
+}
+
+async function editPoiName(entity) {
+  const currentName = getEntityPopupName(entity);
+  const name = window.prompt("Nombre del waypoint", currentName);
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed || trimmed === currentName) return;
+  const poiId = Number(getEntityProperty(entity, "id_poi"));
+  const opId = localStorage.getItem("active_operation_id");
+  const token = localStorage.getItem("token");
+  const apiBase = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
+  try {
+    const res = await fetch(`${apiBase}/ops/${opId}/pois/${poiId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ nombre: trimmed })
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.ok) throw new Error(data?.mensaje || "No se pudo editar el waypoint.");
+    entity.name = trimmed;
+    if (entity.label?.text?.setValue) entity.label.text.setValue(trimmed);
+    else if (entity.label) entity.label.text = trimmed;
+    if (dom.entityPopupName) dom.entityPopupName.textContent = trimmed;
+  } catch (err) {
+    alert(err.message || "No se pudo editar el waypoint.");
+  }
+}
+
+function showPoiInfoPopup(entity, clickPosition) {
+  const viewer = dashboardState.viewer;
+  if (!viewer || !dom.entityPopup) return false;
+  dom.entityPopup.classList.remove("geoMsgPopup");
+  dom.entityPopup.querySelector(".geoMsgDetails")?.remove();
+  entity.show = true;
+  const headingArrow = viewer.entities.getById(`${entity.id}_heading`);
+  if (headingArrow) headingArrow.show = true;
+  const isOwner = isPoiOwnedByCurrentUser(entity);
+  const visibility = String(getEntityProperty(entity, "visibilidad") || "PRIVADO").toUpperCase();
+  const coords = getEntityLatLng(entity);
+  const creator = [
+    abbreviateRank(getEntityProperty(entity, "creador_puesto")),
+    getEntityCreatorName(entity)
+  ].filter(Boolean).join(" ");
+
+  dom.entityPopup.dataset.action = "delete-tactical-entity";
+  dom.entityPopup.dataset.routeId = "";
+  dom.entityPopup.dataset.poiId = String(getEntityProperty(entity, "id_poi"));
+  if (dom.entityPopupName) dom.entityPopupName.textContent = getEntityPopupName(entity);
+  setEntityPopupCreator(creator);
+  dom.entityPopup.querySelector(".routePopupDetails")?.remove();
+  let details = dom.entityPopup.querySelector(".poiPopupDetails");
+  if (!details) {
+    details = document.createElement("div");
+    details.className = "poiPopupDetails";
+    dom.entityPopup.insertBefore(details, dom.entityPopupDelete);
+  }
+  details.replaceChildren();
+  const visibilityRow = document.createElement("div");
+  visibilityRow.className = "poiPopupVisibility";
+  const visibilityLabel = document.createElement("span");
+  visibilityLabel.textContent = visibility === "PUBLICO" ? "Público" : "Privado";
+  visibilityRow.append(visibilityLabel);
+  if (isOwner) {
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.className = "poiVisibilityToggle";
+    toggle.checked = visibility === "PUBLICO";
+    toggle.setAttribute("aria-label", "Hacer waypoint público");
+    visibilityRow.append(toggle);
+  }
+  const coordRow = document.createElement("div");
+  coordRow.className = "poiPopupCoordinates";
+  const coordinateText = `${Number(coords.lat).toFixed(5)}, ${Number(coords.lng).toFixed(5)}`;
+  const locationIcon = document.createElement("span");
+  locationIcon.className = "poiCoordinateIcon";
+  locationIcon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z"></path><circle cx="12" cy="9" r="2.3"></circle></svg>';
+  const text = document.createElement("span");
+  text.textContent = coordinateText;
+  const coordinateValue = document.createElement("span");
+  coordinateValue.className = "poiCoordinateValue";
+  coordinateValue.append(locationIcon, text);
+  coordRow.append(coordinateValue);
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "poiCopyCoordinates";
+  copy.title = "Copiar coordenadas";
+  copy.setAttribute("aria-label", "Copiar coordenadas");
+  copy.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="1"></rect><path d="M15 9V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h4"></path></svg>';
+  coordRow.append(copy);
+  details.append(visibilityRow, coordRow);
+  const sidc = String(getEntityProperty(entity, "sidc") || "");
+  if (sidc.startsWith("S")) {
+    const heading = Number(getEntityProperty(entity, "rumbo_grados"));
+    const speed = Number(getEntityProperty(entity, "velocidad_kmh"));
+    const movement = document.createElement("div");
+    movement.className = "poiPopupMovement";
+    const rumbo = document.createElement("span");
+    rumbo.textContent = `Rumbo: ${Number.isFinite(heading) ? `${Math.round(heading)}°` : "—"}`;
+    const velocity = document.createElement("span");
+    velocity.textContent = `Vel.: ${Number.isFinite(speed) ? `${speed.toFixed(1)} km/h` : "—"}`;
+    movement.append(rumbo, velocity);
+    details.append(movement);
+  }
+
+  dom.entityPopup.querySelector(".poiPopupActions")?.remove();
+  if (isOwner) {
+    const actions = document.createElement("div");
+    actions.className = "poiPopupActions";
+    actions.innerHTML = '<button type="button" class="poiEditButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.7 4.2 4.2-.7L19 8.5 15.5 5 4 16.5Z"></path><path d="m14.5 6 3.5 3.5"></path></svg>Editar</button><button type="button" class="poiDeleteButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>Eliminar</button>';
+    dom.entityPopup.insertBefore(actions, dom.entityPopupDelete);
+  }
+  if (dom.entityPopupDelete) dom.entityPopupDelete.style.display = "none";
+
+  const rect = viewer.canvas.getBoundingClientRect();
+  const x = clickPosition.x + rect.left + 15;
+  const y = clickPosition.y + rect.top - 20;
+  dom.entityPopup.style.left = `${Math.min(x, window.innerWidth - 250)}px`;
+  dom.entityPopup.style.top = `${Math.max(y - 70, rect.top + 10)}px`;
+  dom.entityPopup.style.display = "block";
+  return true;
+}
+
 function showEntityDeletePopup(entity, clickPosition) {
   const viewer = dashboardState.viewer;
   if (!viewer || !dom.entityPopup || !entity) return false;
+  dom.entityPopup.classList.remove("geoMsgPopup");
+  dom.entityPopup.querySelector(".geoMsgDetails")?.remove();
 
   dom.personInfoPopup?.classList.add("hidden");
   if (dom.vehicleQuickMenu) dom.vehicleQuickMenu.style.display = "none";
@@ -628,6 +969,9 @@ function showEntityDeletePopup(entity, clickPosition) {
   dom.entityPopup.dataset.action = "delete-tactical-entity";
   dom.entityPopup.dataset.routeId = "";
   if (dom.entityPopupDelete) dom.entityPopupDelete.textContent = "Eliminar";
+  if (dom.entityPopupDelete) dom.entityPopupDelete.style.display = "block";
+  const routeDetails = dom.entityPopup.querySelector(".routePopupDetails");
+  if (routeDetails) routeDetails.remove();
 
   if (dom.entityPopupName) {
     dom.entityPopupName.textContent = getEntityPopupName(entity);
@@ -648,7 +992,19 @@ function handleEntitySelection(clickPosition) {
   const viewer = dashboardState.viewer;
   if (!viewer) return;
 
-  const pickedEntity = getSelectablePickedEntity(clickPosition);
+  const deselectRemoteRoute = () => {
+    const selectedRouteId = dashboardState.selectedRemoteRouteId;
+    if (selectedRouteId != null) selectRemoteRoute(selectedRouteId);
+  };
+
+  let pickedEntity = getSelectablePickedEntity(clickPosition);
+  // La flecha de rumbo es una extensión visual del Blanco: cualquier clic en
+  // ella se resuelve sobre el símbolo principal para que nunca se oculte ni
+  // se comporte como un objeto separado.
+  if (pickedEntity && String(getEntityProperty(pickedEntity, "tacticalType") || "") === "poi-heading") {
+    const poiId = getEntityProperty(pickedEntity, "id_poi");
+    pickedEntity = dashboardState.viewer?.entities.getById(`poi_${poiId}`) || pickedEntity;
+  }
 
   const isDraw = (dashboardState.toolMode === "pencil" || dashboardState.toolMode === "eraser");
   if (isDraw) {
@@ -678,7 +1034,17 @@ function handleEntitySelection(clickPosition) {
       return;
     }
 
+    deselectRemoteRoute();
+
     if (dashboardState.selectedEntity === pickedEntity) {
+      if (isGeoMsgEntity(pickedEntity)) {
+        showGeoMsgPopup(pickedEntity, clickPosition);
+        return;
+      }
+      if (isWaypointOrTargetEntity(pickedEntity)) {
+        showPoiInfoPopup(pickedEntity, clickPosition);
+        return;
+      }
       if (isDeletePopupEntity(pickedEntity)) {
         showEntityDeletePopup(pickedEntity, clickPosition);
         return;
@@ -692,7 +1058,7 @@ function handleEntitySelection(clickPosition) {
       return;
     }
 
-    if (dashboardState.selectedEntity && dashboardState.selectedEntity.label) {
+    if (dashboardState.selectedEntity && dashboardState.selectedEntity.label && !isWaypointOrTargetEntity(dashboardState.selectedEntity)) {
       dashboardState.selectedEntity.label.show = false;
     }
     dashboardState.selectedEntity = pickedEntity;
@@ -717,7 +1083,11 @@ function handleEntitySelection(clickPosition) {
 
     const quickMenuShown = showQuickMenuForEntity(dashboardState.selectedEntity, clickPosition);
 
-    if (!quickMenuShown && isDeletePopupEntity(dashboardState.selectedEntity)) {
+    if (!quickMenuShown && isWaypointOrTargetEntity(dashboardState.selectedEntity)) {
+      showPoiInfoPopup(dashboardState.selectedEntity, clickPosition);
+    } else if (!quickMenuShown && isGeoMsgEntity(dashboardState.selectedEntity)) {
+      showGeoMsgPopup(dashboardState.selectedEntity, clickPosition);
+    } else if (!quickMenuShown && isDeletePopupEntity(dashboardState.selectedEntity)) {
       showEntityDeletePopup(dashboardState.selectedEntity, clickPosition);
     } else if (dom.entityPopup) {
       dom.entityPopup.style.display = "none";
@@ -725,7 +1095,8 @@ function handleEntitySelection(clickPosition) {
     }
 
   } else {
-    if (dashboardState.selectedEntity && dashboardState.selectedEntity.label) {
+    deselectRemoteRoute();
+    if (dashboardState.selectedEntity && dashboardState.selectedEntity.label && !isWaypointOrTargetEntity(dashboardState.selectedEntity)) {
       dashboardState.selectedEntity.label.show = false;
     }
     dashboardState.selectedEntity = null;
@@ -1130,10 +1501,76 @@ function bindMapUiEvents() {
       updateSelectionInfo(null);
       if (dom.entityPopup) {
         dom.entityPopup.style.display = "none";
+        dom.entityPopup.classList.remove("geoMsgPopup");
+        dom.entityPopup.querySelector(".geoMsgDetails")?.remove();
         dom.entityPopup.dataset.action = "";
         dom.entityPopup.dataset.routeId = "";
       }
       if (dom.entityPopupDelete) dom.entityPopupDelete.textContent = "Eliminar";
+    });
+  }
+
+  if (dom.entityPopup) {
+  dom.entityPopup.addEventListener("change", (event) => {
+      const geoToggle = event.target.closest(".geoMsgVisibilityToggle");
+      if (geoToggle && dashboardState.selectedEntity) {
+        const label = geoToggle.parentElement?.querySelector("span");
+        if (label) label.textContent = geoToggle.checked ? "Público" : "Privado";
+        setGeoMsgVisibility(getEntityProperty(dashboardState.selectedEntity, "id_geo_msg"), geoToggle.checked, (ok, visibility) => {
+          if (ok) return;
+          const isPublic = String(visibility).toUpperCase() === "PUBLICO";
+          geoToggle.checked = isPublic;
+          if (label) label.textContent = isPublic ? "Público" : "Privado";
+        });
+        return;
+      }
+      const toggle = event.target.closest(".poiVisibilityToggle");
+      if (!toggle || !dashboardState.selectedEntity) return;
+      void setPoiVisibility(dashboardState.selectedEntity, toggle.checked);
+    });
+    dom.entityPopup.addEventListener("click", (event) => {
+      const copy = event.target.closest(".poiCopyCoordinates");
+      if (copy) {
+        const value = copy.parentElement?.querySelector("span")?.textContent || "";
+        const copied = () => {
+          copy.classList.add("copied");
+          setTimeout(() => copy.classList.remove("copied"), 1200);
+        };
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(value).then(copied).catch(() => { });
+        } else {
+          const input = document.createElement("textarea");
+          input.value = value;
+          input.style.position = "fixed";
+          input.style.opacity = "0";
+          document.body.append(input);
+          input.select();
+          document.execCommand("copy");
+          input.remove();
+          copied();
+        }
+        return;
+      }
+      if (event.target.closest(".poiEditButton") && dashboardState.selectedEntity) {
+        openPointObjectEdit(dashboardState.selectedEntity);
+        return;
+      }
+      if (event.target.closest(".geoMsgEditButton") && dashboardState.selectedEntity) {
+        const entity = dashboardState.selectedEntity;
+        const current = String(getEntityProperty(entity, "text") || "");
+        openGeoMsgEditModal(getEntityProperty(entity, "id_geo_msg"), current);
+        dom.entityPopup.style.display = "none";
+        return;
+      }
+      if (event.target.closest(".geoMsgDeleteButton") && dashboardState.selectedEntity) {
+        const id = getEntityProperty(dashboardState.selectedEntity, "id_geo_msg");
+        deleteGeoMsg(id);
+        dashboardState.selectedEntity = null;
+        updateSelectionInfo(null);
+        dom.entityPopup.style.display = "none";
+        return;
+      }
+      if (event.target.closest(".poiDeleteButton")) dom.entityPopupDelete?.click();
     });
   }
 

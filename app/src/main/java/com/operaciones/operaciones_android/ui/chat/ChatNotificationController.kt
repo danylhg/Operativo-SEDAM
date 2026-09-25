@@ -28,7 +28,9 @@ class ChatNotificationController(context: Context) {
     }
 
     fun showNewMessage(message: ChatMessage, operationName: String) {
-        if (message.isMine || message.type == MessageType.SYSTEM) return
+        // Una alerta tiene su propio tratamiento visual de emergencia; nunca
+        // debe convertirse en una notificaci\u00f3n del chat.
+        if (message.isMine || message.type == MessageType.SYSTEM || message.type == MessageType.ALERT) return
         if (!canPostNotifications()) return
 
         val isEmergency = message.type == MessageType.ALERT

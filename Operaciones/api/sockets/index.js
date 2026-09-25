@@ -3,6 +3,43 @@ import { pool } from "../db.js";
 import { ensureExtendedTrackingSchema, ensurePersonalMotionTrackingSchema } from "../utils/trackingSchema.js";
 import { derivePersonalTrackingFromDevice, getLatestDevicePosition } from "../utils/personalTrackingFromDevices.js";
 
+// Presencia en memoria: una persona está conectada mientras conserve al menos
+// un socket unido a una operación. Se usa para no mostrar personal desconectado
+// en ningún cliente de mapa.
+const connectedPersonalByOperation = new Map();
+
+function presenceKey(idOperacion, idPersonal) {
+  return `${Number(idOperacion)}:${Number(idPersonal)}`;
+}
+
+function addPersonalPresence(idOperacion, idPersonal, socketId) {
+  if (!Number.isFinite(idOperacion) || idOperacion <= 0 || !Number.isFinite(idPersonal) || idPersonal <= 0) return;
+  const key = presenceKey(idOperacion, idPersonal);
+  const sockets = connectedPersonalByOperation.get(key) || new Set();
+  sockets.add(socketId);
+  connectedPersonalByOperation.set(key, sockets);
+}
+
+function removePersonalPresence(idOperacion, idPersonal, socketId) {
+  const key = presenceKey(idOperacion, idPersonal);
+  const sockets = connectedPersonalByOperation.get(key);
+  if (!sockets) return false;
+  sockets.delete(socketId);
+  if (sockets.size > 0) return false;
+  connectedPersonalByOperation.delete(key);
+  return true;
+}
+
+export function getConnectedPersonalIds(idOperacion) {
+  const operationId = Number(idOperacion);
+  const ids = new Set();
+  for (const [key, sockets] of connectedPersonalByOperation.entries()) {
+    const [operation, personal] = key.split(":").map(Number);
+    if (operation === operationId && sockets.size > 0) ids.add(personal);
+  }
+  return ids;
+}
+
 function streamRoomName(idStream) {
   return `media_stream_${idStream}`;
 }
@@ -283,10 +320,14 @@ export function initSocket(server) {
       // Guardar info del usuario para filtrar eventos por rol
       // El Android puede enviar { id_operacion, id_personal, rol }
       const idPersonal = payload?.id_personal ? Number(payload.id_personal) : null;
+      const idUsuario = payload?.id_usuario ? Number(payload.id_usuario) : null;
       const rol        = (payload?.rol || "").toUpperCase();
-      socket.userData  = { id_personal: idPersonal, rol };
+      const author = String(payload?.author || "").trim().slice(0, 160);
+      socket.userData  = { id_personal: idPersonal, id_usuario: idUsuario, rol, author };
       if (Number.isFinite(idPersonal) && idPersonal > 0) {
         socket.join(`op_${idOperacion}_personal_${idPersonal}`);
+        addPersonalPresence(idOperacion, idPersonal, socket.id);
+        socket.personalPresence = { idOperacion, idPersonal };
       }
 
       if (mgrsStateByOperation.has(idOperacion)) {
@@ -327,21 +368,37 @@ export function initSocket(server) {
       const text = String(data.text || "").trim().slice(0, 2000);
       const author = String(data.author || "Usuario").trim().slice(0, 160);
       const ownerId = Number(socket.userData?.id_personal);
+      const ownerUserId = Number(socket.userData?.id_usuario);
 
       if (!opId || !Number.isInteger(idGeoMsg) || idGeoMsg <= 0 || !validCoords(lat, lon) || !text) {
         if (typeof ack === "function") ack({ ok: false, mensaje: "Mensaje Geo-anclado invalido" });
         return;
       }
 
-      const payload = { id_operacion: opId, id_geo_msg: idGeoMsg, lat, lon, text, author, id_personal_autor: Number.isInteger(ownerId) && ownerId > 0 ? ownerId : null, visibilidad: String(data.visibilidad || "PRIVADO").toUpperCase() === "PUBLICO" ? "PUBLICO" : "PRIVADO" };
+      const payload = { id_operacion: opId, id_geo_msg: idGeoMsg, lat, lon, text, author, id_personal_autor: Number.isInteger(ownerId) && ownerId > 0 ? ownerId : null, id_usuario_autor: Number.isInteger(ownerUserId) && ownerUserId > 0 ? ownerUserId : null, visibilidad: String(data.visibilidad || "PRIVADO").toUpperCase() === "PUBLICO" ? "PUBLICO" : "PRIVADO" };
       let geoMessages = geoMessagesByOperation.get(opId);
       if (!geoMessages) {
         geoMessages = new Map();
         geoMessagesByOperation.set(opId, geoMessages);
       }
       geoMessages.set(idGeoMsg, payload);
-      if (payload.visibilidad === "PUBLICO") socket.to(`op_${opId}`).emit("geo_msg_created", payload);
+      if (payload.visibilidad === "PUBLICO") {
+        socket.to(`op_${opId}`).emit("geo_msg_created", payload);
+      } else if (payload.id_personal_autor) {
+        // Otra sesión del mismo autor (Android o web) también debe ver el
+        // mensaje privado, sin divulgarlo al resto de la operación.
+        socket.to(`op_${opId}_personal_${payload.id_personal_autor}`).emit("geo_msg_created", payload);
+      }
       if (typeof ack === "function") ack({ ok: true, ...payload });
+    });
+
+    socket.on("geo_msg_sync", (ack) => {
+      const opId = socket.operationId;
+      const ownerId = Number(socket.userData?.id_personal);
+      const messages = [...(geoMessagesByOperation.get(opId)?.values() || [])]
+        .filter((geoMsg) => geoMsg.visibilidad === "PUBLICO" || geoMsg.id_personal_autor === ownerId);
+      messages.forEach((geoMsg) => socket.emit("geo_msg_created", geoMsg));
+      if (typeof ack === "function") ack({ ok: true, items: messages });
     });
 
     socket.on("geo_msg_deleted", (data = {}, ack) => {
@@ -379,12 +436,23 @@ export function initSocket(server) {
       const opId = socket.operationId;
       const idGeoMsg = Number(data.id_geo_msg ?? data.id);
       const current = geoMessagesByOperation.get(opId)?.get(idGeoMsg);
-      const ownerId = Number(socket.userData?.id_personal);
-      if (!opId || !current || !Number.isInteger(ownerId) || ownerId <= 0 || current.id_personal_autor !== ownerId) { if (typeof ack === "function") ack({ ok: false, mensaje: "Solo el autor puede cambiar la visibilidad" }); return; }
+      const personalId = Number(socket.userData?.id_personal);
+      const userId = Number(socket.userData?.id_usuario);
+      const sessionAuthor = String(socket.userData?.author || "").trim().toLocaleLowerCase();
+      const isAuthor = (Number.isInteger(personalId) && personalId > 0 && current.id_personal_autor === personalId)
+        || (Number.isInteger(userId) && userId > 0 && current.id_usuario_autor === userId)
+        || Boolean(sessionAuthor && String(current.author || "").trim().toLocaleLowerCase() === sessionAuthor);
+      if (!opId || !current || !isAuthor) { if (typeof ack === "function") ack({ ok: false, mensaje: "Solo el autor puede cambiar la visibilidad" }); return; }
       const payload = { ...current, visibilidad: String(data.visibilidad || "PRIVADO").toUpperCase() === "PUBLICO" ? "PUBLICO" : "PRIVADO" };
       geoMessagesByOperation.get(opId).set(idGeoMsg, payload);
-      if (payload.visibilidad === "PUBLICO") socket.to(`op_${opId}`).emit("geo_msg_updated", payload);
-      else socket.to(`op_${opId}`).emit("geo_msg_deleted", { id_operacion: opId, id_geo_msg: idGeoMsg });
+      if (payload.visibilidad === "PUBLICO") {
+        socket.to(`op_${opId}`).emit("geo_msg_updated", payload);
+      } else {
+        socket.to(`op_${opId}`).emit("geo_msg_deleted", { id_operacion: opId, id_geo_msg: idGeoMsg });
+        if (payload.id_personal_autor) {
+          socket.to(`op_${opId}_personal_${payload.id_personal_autor}`).emit("geo_msg_updated", payload);
+        }
+      }
       if (typeof ack === "function") ack({ ok: true, ...payload });
     });
 
@@ -1032,6 +1100,13 @@ export function initSocket(server) {
     });
 
     socket.on("disconnect", async () => {
+      const presence = socket.personalPresence;
+      if (presence && removePersonalPresence(presence.idOperacion, presence.idPersonal, socket.id)) {
+        io.to(`op_${presence.idOperacion}`).emit("personal_desconectado", {
+          id_operacion: presence.idOperacion,
+          id_personal: presence.idPersonal,
+        });
+      }
       const memberships = Array.from(socket.mediaStreamMemberships?.values() || []);
       for (const membership of memberships) {
         try {
@@ -1059,8 +1134,8 @@ export function emitPoiActualizado(io, idOperacion, poi) {
 }
 
 // ── Emit poi_eliminado ────────────────────────────────────────
-export function emitPoiEliminado(io, idOperacion, idPoi) {
-  io.to(`op_${idOperacion}`).emit("poi_eliminado", { id_poi: idPoi });
+export function emitPoiEliminado(io, idOperacion, idPoi, owner = null) {
+  io.to(`op_${idOperacion}`).emit("poi_eliminado", { id_poi: idPoi, owner });
 }
 
 export function emitAreaCreada(io, idOperacion, area) {
