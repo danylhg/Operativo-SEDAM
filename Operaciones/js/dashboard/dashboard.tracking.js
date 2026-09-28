@@ -217,11 +217,35 @@ function stripTrackingIdentityPrefix(value) {
     .trim();
 }
 
+function compactPersonalRank(value) {
+  const rank = String(value || "").trim();
+  const lower = rank.toLowerCase();
+  if (!lower) return "";
+  if (lower.includes("teniente de nav")) return "Tte. Nav.";
+  if (lower.includes("teniente de fragata")) return "Tte. Frag.";
+  if (lower.includes("teniente de corbeta")) return "Tte. Corb.";
+  if (lower.includes("primer teniente") || lower.includes("1er teniente")) return "1er. Tte.";
+  if (lower.includes("segundo teniente") || lower.includes("2do teniente")) return "2do. Tte.";
+  if (lower.includes("teniente") || lower === "tte" || lower === "tte.") return "Tte.";
+  if (lower.includes("subteniente")) return "Subtte.";
+  if (lower.includes("capit")) return "Cap.";
+  if (lower.includes("sargento")) return "Sgto.";
+  if (lower.includes("cabo")) return "Cbo.";
+  if (lower.includes("marinero")) return "Mro.";
+  if (lower.includes("soldado")) return "Sld.";
+  return rank;
+}
+
 function makeTrackingMapLabel(key, label, meta = {}) {
   const kind = meta.tacticalType || (String(key || "").startsWith("E:") ? "equipo" : "");
+  const item = meta.liveData || {};
+  if (kind === "personal") {
+    const surname = String(item.apellido || "").trim() || String(label || "").trim().split(/\s+/).pop();
+    const rank = compactPersonalRank(item.puesto || item.grado || item.rango || item.cargo);
+    return compactTrackingLabel([rank, surname].filter(Boolean).join(" ") || label);
+  }
   if (kind !== "equipo") return compactTrackingLabel(label);
 
-  const item = meta.liveData || {};
   const text = normalizeText([
     item.categoria,
     item.tipo_equipo,

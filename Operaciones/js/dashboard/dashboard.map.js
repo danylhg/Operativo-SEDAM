@@ -1014,7 +1014,16 @@ function handleEntitySelection(clickPosition) {
     return;
   }
 
-  if (pickedEntity) {
+    if (pickedEntity) {
+      // Los anillos de alerta son sólo un indicador visual; no son objetos
+      // tácticos editables ni deben abrir el cuadro de eliminación.
+      if (["emergency-pulse", "ptt-emergency-zone"].includes(String(getEntityProperty(pickedEntity, "tacticalType") || ""))) {
+        dashboardState.selectedEntity = null;
+        updateSelectionInfo(null);
+        if (dom.entityPopup) dom.entityPopup.style.display = "none";
+        return;
+      }
+
     // Si es el radar, no lo seleccionamos para no mostrar el popup "Eliminar" en todo el centro
     if (pickedEntity.name === "Radar Estereográfico") {
       dashboardState.selectedEntity = null;

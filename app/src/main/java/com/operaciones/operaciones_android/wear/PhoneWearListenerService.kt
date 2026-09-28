@@ -3,6 +3,8 @@ package com.operaciones.operaciones_android.wear
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Log
@@ -11,6 +13,7 @@ import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
 import com.operaciones.operaciones_android.auth.AuthManager
 import com.operaciones.operaciones_android.config.ApiConfig
+import com.operaciones.operaciones_android.network.ChatSocketManager
 import com.operaciones.operaciones_android.ui.LoginActivity
 import com.operaciones.operaciones_android.ui.MainActivity
 import com.operaciones.operaciones_android.ui.OperationStatusActivity
@@ -32,6 +35,9 @@ class PhoneWearListenerService : WearableListenerService() {
         private const val PATH_SESSION_REQUEST = "/sedam/session/request"
         private const val PATH_SESSION_SYNC = "/sedam/session/sync"
         private const val PATH_SESSION_ERROR = "/sedam/session/error"
+        const val ACTION_WEAR_ALERT = "com.operaciones.operaciones_android.WEAR_ALERT"
+        const val EXTRA_WEAR_ALERT_SOURCE = "WEAR_ALERT_SOURCE"
+        const val EXTRA_WEAR_ALERT_DEVICE = "WEAR_ALERT_DEVICE"
         const val PATH_VOICE_CALL = "/sedam/voice-call"
         const val PATH_VOICE_CALL_ACTION = "/sedam/voice-call/action"
 
@@ -97,6 +103,11 @@ class PhoneWearListenerService : WearableListenerService() {
     private fun mirrorEmergency(messageEvent: MessageEvent) {
         val payload = parsePayload(messageEvent)
         Log.w(TAG, "SOS recibido desde reloj: $payload")
+        sendBroadcast(Intent(ACTION_WEAR_ALERT).setPackage(packageName).apply {
+            putExtra(EXTRA_WEAR_ALERT_SOURCE, payload.optString("source", "AGITAR_RELOJ"))
+            putExtra(EXTRA_WEAR_ALERT_DEVICE, payload.optString("device_label", "SMARTWATCH"))
+        })
+        relayWearAlertToDashboard(payload)
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 120, 300), -1))
@@ -104,6 +115,36 @@ class PhoneWearListenerService : WearableListenerService() {
             @Suppress("DEPRECATION")
             vibrator.vibrate(longArrayOf(0, 300, 120, 300), -1)
         }
+    }
+
+    private fun relayWearAlertToDashboard(payload: JSONObject) {
+        ApiConfig.load(this)
+        val operationId = payload.optInt("operation_id", -1)
+        val user = AuthManager.getCurrentUser(this)
+        if (operationId <= 0 || user == null) {
+            Log.w(TAG, "No se puede retransmitir alerta Wear: sesión u operación no disponible")
+            return
+        }
+        lateinit var socketManager: ChatSocketManager
+        socketManager = ChatSocketManager(
+            operationId = operationId,
+            onNewMessage = {},
+            onConnected = {
+                // El servidor ya confirmó join_operacion; emitir la alerta del reloj.
+                Handler(Looper.getMainLooper()).postDelayed({
+                    socketManager.emitWearAlert(
+                        senderName = "${user.jerarquia} ${user.nombreCompleto}".trim(),
+                        source = payload.optString("source", "AGITAR_RELOJ"),
+                    deviceLabel = payload.optString("device_label", "SMARTWATCH"),
+                        idPersonal = user.id
+                    )
+                }, 80L)
+                Handler(Looper.getMainLooper()).postDelayed({ socketManager.disconnect() }, 1_600L)
+            },
+            idPersonal = user.id,
+            rol = user.rol.name
+        )
+        socketManager.connect()
     }
 
     private fun issueWearSession(messageEvent: MessageEvent) {

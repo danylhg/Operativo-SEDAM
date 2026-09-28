@@ -63,7 +63,10 @@ class ChatSocketManager(
                 if (rol.isNotEmpty()) put("rol", rol)
             }
             socket?.emit("join_operacion", payload)
-            // Notifica que ya está conectado y unido para que se emita la posición inicial
+        }
+
+        socket?.on("operacion_unida") {
+            // Emitir sólo después de que el servidor confirme la unión.
             onConnected?.invoke()
         }
 
@@ -456,16 +459,46 @@ class ChatSocketManager(
 
     var onPttAlertUpdate: ((JSONObject) -> Unit)? = null
 
-    fun emitPttAlertToggle(active: Boolean, senderName: String, lat: Double? = null, lon: Double? = null, idPersonal: Int? = null) {
+    fun emitPttAlertToggle(active: Boolean, senderName: String, pttLabel: String = "PTT", lat: Double? = null, lon: Double? = null, idPersonal: Int? = null) {
         val payload = JSONObject().apply {
             put("id_operacion", operationId)
             put("active", active)
             put("sender_name", senderName)
+            put("ptt_label", pttLabel)
             if (idPersonal != null) put("id_personal", idPersonal)
             if (lat != null) put("lat", lat)
             if (lon != null) put("lon", lon)
         }
         socket?.emit("ptt_alert_toggle", payload)
+    }
+
+    fun emitShakeAlert(senderName: String, deviceLabel: String, lat: Double? = null, lon: Double? = null, idPersonal: Int? = null): Boolean {
+        if (socket?.connected() != true) return false
+        val payload = JSONObject().apply {
+            put("id_operacion", operationId)
+            put("sender_name", senderName)
+            put("device_label", deviceLabel)
+            if (idPersonal != null) put("id_personal", idPersonal)
+            if (lat != null) put("lat", lat)
+            if (lon != null) put("lon", lon)
+        }
+        socket?.emit("shake_alert_trigger", payload)
+        return true
+    }
+
+    fun emitWearAlert(senderName: String, source: String, deviceLabel: String = "SMARTWATCH", lat: Double? = null, lon: Double? = null, idPersonal: Int? = null): Boolean {
+        if (socket?.connected() != true) return false
+        val payload = JSONObject().apply {
+            put("id_operacion", operationId)
+            put("sender_name", senderName)
+            put("source", source)
+            put("device_label", deviceLabel)
+            if (idPersonal != null) put("id_personal", idPersonal)
+            if (lat != null) put("lat", lat)
+            if (lon != null) put("lon", lon)
+        }
+        socket?.emit("wear_alert_trigger", payload)
+        return true
     }
 
     fun emitGridDeleted() {

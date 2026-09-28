@@ -3,7 +3,9 @@ package com.operaciones.operaciones_android.ui
 import android.app.Dialog
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.ColorStateList
 import android.content.ClipData
 import android.hardware.Camera
@@ -81,6 +83,7 @@ import com.operaciones.operaciones_android.ui.chat.EmergencyVisualAlertControlle
 import com.operaciones.operaciones_android.ui.chat.OperationChatController
 import com.operaciones.operaciones_android.ui.call.VoiceCallManager
 import com.operaciones.operaciones_android.ui.lifecycle.EmergencyServiceController
+import com.operaciones.operaciones_android.emergency.EmergencyMonitorService
 import com.operaciones.operaciones_android.ui.lifecycle.OperationLifecycleMonitor
 import com.operaciones.operaciones_android.ui.map.MapObjectsController
 import com.operaciones.operaciones_android.ui.map.OperationMapDataController
@@ -153,6 +156,50 @@ class MainActivity : AppCompatActivity(),
     private var bluetoothController: BluetoothController? = null
 
     private var chatSocketManager: ChatSocketManager? = null
+    private val shakeAlertReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            if (intent.action == PhoneWearListenerService.ACTION_WEAR_ALERT) {
+                val source = intent.getStringExtra(PhoneWearListenerService.EXTRA_WEAR_ALERT_SOURCE).orEmpty()
+                val device = intent.getStringExtra(PhoneWearListenerService.EXTRA_WEAR_ALERT_DEVICE)
+                    .orEmpty().ifBlank { "SMARTWATCH" }
+                if (source == "AGITAR_RELOJ") {
+                    showDirectedAlertBanner(
+                        ChatMessage(
+                            id = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
+                            idPersonal = if (::currentUser.isInitialized) currentUser.id else null,
+                            user = if (::currentUser.isInitialized) getMapDataCurrentUserLabel() else "Personal operativo",
+                            text = "ALERTA DESDE $device",
+                            type = MessageType.ALERT
+                        )
+                    )
+                    if (::emergencyVisualAlertController.isInitialized) emergencyVisualAlertController.flashScreen()
+                }
+                Toast.makeText(this@MainActivity, "Alerta desde $device enviada", Toast.LENGTH_SHORT).show()
+                return
+            }
+            if (intent.action != EmergencyMonitorService.ACTION_SHAKE_ALERT) return
+            val lat = intent.takeIf { it.hasExtra(EmergencyMonitorService.EXTRA_SHAKE_LAT) }
+                ?.getDoubleExtra(EmergencyMonitorService.EXTRA_SHAKE_LAT, 0.0)
+            val lon = intent.takeIf { it.hasExtra(EmergencyMonitorService.EXTRA_SHAKE_LON) }
+                ?.getDoubleExtra(EmergencyMonitorService.EXTRA_SHAKE_LON, 0.0)
+            val sent = chatSocketManager?.emitShakeAlert(
+                senderName = if (::currentUser.isInitialized) {
+                    getMapDataCurrentUserLabel()
+                } else {
+                    intent.getStringExtra(EmergencyMonitorService.EXTRA_SHAKE_NAME).orEmpty()
+                },
+                deviceLabel = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
+                lat = lat,
+                lon = lon,
+                idPersonal = if (::currentUser.isInitialized) currentUser.id else null
+            ) == true
+            Toast.makeText(
+                this@MainActivity,
+                if (sent) "Alerta por agitación enviada" else "Sin conexión para enviar la alerta",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
     private var isMgrsActive: Boolean = false
     private data class GeoMsgState(val lat: Double, val lon: Double, var text: String, val author: String, var isPublic: Boolean = false, val ownerId: Int = -1)
     private val geoMessagesById = mutableMapOf<Int, GeoMsgState>()
@@ -302,6 +349,15 @@ class MainActivity : AppCompatActivity(),
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ContextCompat.registerReceiver(
+            this,
+            shakeAlertReceiver,
+            IntentFilter().apply {
+                addAction(EmergencyMonitorService.ACTION_SHAKE_ALERT)
+                addAction(PhoneWearListenerService.ACTION_WEAR_ALERT)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
 
         currentUser = AuthManager.getCurrentUser(this) ?: run {
             goToLogin()
@@ -389,6 +445,7 @@ class MainActivity : AppCompatActivity(),
                 chatSocketManager?.emitPttAlertToggle(
                     active = active,
                     senderName = senderName,
+                    pttLabel = bluetoothController?.connectedDeviceName ?: "PTT",
                     lat = lastKnownLat,
                     lon = lastKnownLon,
                     idPersonal = if (::currentUser.isInitialized) currentUser.id else null
@@ -766,6 +823,7 @@ class MainActivity : AppCompatActivity(),
     }
 
     override fun onDestroy() {
+        unregisterReceiver(shakeAlertReceiver)
         PhoneWearListenerService.voiceCallActionHandler = null
         bluetoothController?.destroy()
         finishVoiceCall(notifyPeer = true)

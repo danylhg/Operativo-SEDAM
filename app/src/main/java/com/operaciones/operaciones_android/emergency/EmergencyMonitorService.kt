@@ -20,10 +20,6 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import com.operaciones.operaciones_android.R
-import com.operaciones.operaciones_android.network.ChatRepository
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlin.math.sqrt
 
 class EmergencyMonitorService : Service(), SensorEventListener {
@@ -33,13 +29,17 @@ class EmergencyMonitorService : Service(), SensorEventListener {
         const val EXTRA_TOKEN        = "TOKEN"
         const val EXTRA_UNIT_CODE    = "UNIT_CODE"
         const val EXTRA_USER_NAME    = "USER_NAME"
+        const val ACTION_SHAKE_ALERT  = "com.operaciones.operaciones_android.SHAKE_ALERT"
+        const val EXTRA_SHAKE_LAT     = "SHAKE_LAT"
+        const val EXTRA_SHAKE_LON     = "SHAKE_LON"
+        const val EXTRA_SHAKE_NAME    = "SHAKE_NAME"
 
         private const val CHANNEL_ID       = "sedam_emergency"
         private const val NOTIFICATION_ID  = 1001
 
-        private const val SHAKE_THRESHOLD  = 11f          // m/s² por encima de gravedad (más sensible)
+        private const val SHAKE_THRESHOLD  = 6.5f         // m/s² por encima de gravedad
         private const val SHAKE_RESET_MS   = 1_500L       // ventana para el segundo shake
-        private const val SHAKE_MIN_GAP_MS = 300L         // gap mínimo entre dos eventos
+        private const val SHAKE_MIN_GAP_MS = 180L         // gap mínimo entre dos eventos
 
         private const val TAG = "EMERGENCY_SERVICE"
     }
@@ -66,8 +66,6 @@ class EmergencyMonitorService : Service(), SensorEventListener {
     private var locationListener: LocationListener? = null
 
     // ── Repositorio de chat ───────────────────────────────────────────────────
-    private val chatRepository = ChatRepository()
-
     // ── Bandera anti-flood: evita disparar emergencia dos veces seguidas ──────
     private var emergencyPending = false
 
@@ -229,35 +227,53 @@ class EmergencyMonitorService : Service(), SensorEventListener {
             return
         }
 
-        val timestamp = SimpleDateFormat("HH:mm:ss dd/MM/yyyy", Locale.getDefault())
-            .format(Date())
-
-        val locationStr = if (lastLat != 0.0 || lastLon != 0.0)
-            "%.6f, %.6f".format(lastLat, lastLon)
-        else
-            "ubicación no disponible"
-
-        val contenido = "EMERGENCIA:\n" +
-                "USUARIO: $userName\n" +
-                "UBICACION: $locationStr\n" +
-                "HORA: $timestamp"
-
-        Log.d(TAG, "Enviando emergencia: $contenido")
-
-        chatRepository.sendMessage(
-            operationId = operationId,
-            token       = token,
-            contenido   = contenido,
-            tipoMensaje = "URGENTE",
-            onSuccess   = { item ->
-                Log.d(TAG, "Emergencia enviada OK: ${item.optInt("id_mensaje")}")
-                emergencyPending = false
-            },
-            onError     = { error ->
-                Log.e(TAG, "Error enviando emergencia: $error")
-                emergencyPending = false   // permitir reintento
+        sendBroadcast(Intent(ACTION_SHAKE_ALERT).setPackage(packageName).apply {
+            putExtra(EXTRA_SHAKE_NAME, userName.ifBlank { "Elemento" })
+            if (lastLat != 0.0 || lastLon != 0.0) {
+                putExtra(EXTRA_SHAKE_LAT, lastLat)
+                putExtra(EXTRA_SHAKE_LON, lastLon)
             }
-        )
+        })
+
+        Log.d(TAG, "Gesto de agitacion detectado; alerta entregada a la app")
+        emergencyPending = false
+        /*
+        try {
+            val socket = IO.socket(ApiConfig.BASE_URL)
+            emergencySocket = socket
+            socket.once(Socket.EVENT_CONNECT) {
+                socket.emit("join_operacion", JSONObject().put("id_operacion", operationId))
+                // Esperar a que el servidor termine de unir este socket a la
+                // operación antes de transmitir la alerta al resto de la central.
+                mainHandler.postDelayed({
+                    if (emergencySocket !== socket) return@postDelayed
+                    socket.emit("shake_alert_trigger", payload)
+                    Log.d(TAG, "Alerta por agitacion emitida por canal dedicado")
+                    finishEmergencyDispatch(socket)
+                }, 250L)
+            }
+            socket.once(Socket.EVENT_CONNECT_ERROR) { args ->
+                Log.e(TAG, "No se pudo emitir alerta por agitacion: ${args.firstOrNull()}")
+                finishEmergencyDispatch(socket)
+            }
+            socket.connect()
+        } catch (error: Exception) {
+            Log.e(TAG, "Error preparando alerta por agitacion", error)
+            emergencyPending = false
+        }
+    }
+
+    private fun finishEmergencyDispatch(socket: Socket) {
+        mainHandler.postDelayed({
+            if (emergencySocket === socket) {
+                socket.off()
+                socket.disconnect()
+                emergencySocket = null
+            }
+            emergencyPending = false
+        }, 1_200L)
+    }
+        */
     }
 
     // ─────────────────────────────────────────────────────────────────────────

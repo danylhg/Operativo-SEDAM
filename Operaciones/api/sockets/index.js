@@ -316,6 +316,7 @@ export function initSocket(server) {
 
       socket.join(`op_${idOperacion}`);
       socket.operationId = idOperacion;
+      socket.emit("operacion_unida", { id_operacion: idOperacion });
 
       // Guardar info del usuario para filtrar eventos por rol
       // El Android puede enviar { id_operacion, id_personal, rol }
@@ -471,6 +472,7 @@ export function initSocket(server) {
         id_operacion: opId,
         active: data.active === true,
         sender_name: String(data.sender_name || "Elemento PTT").trim().slice(0, 120),
+          ptt_label: String(data.ptt_label || "PTT").trim().slice(0, 120),
         id_personal: Number.isInteger(idPersonal) && idPersonal > 0 ? idPersonal : null,
         lat: hasCoords ? lat : null,
         lon: hasCoords ? lon : null,
@@ -479,6 +481,59 @@ export function initSocket(server) {
 
       // No devolver la alerta al mismo dispositivo que la genero.
       socket.to(`op_${opId}`).emit("ptt_alert_update", payload);
+      if (typeof ack === "function") ack({ ok: true });
+    });
+
+    // Emergencia generada por agitar el teléfono/tablet. Es un canal distinto
+    // al PTT de la pulsera y no persiste ni retransmite mensajes del chat.
+    socket.on("shake_alert_trigger", (data = {}, ack) => {
+      const opId = socket.operationId;
+      if (!opId) {
+        if (typeof ack === "function") ack({ ok: false, mensaje: "Socket sin operacion" });
+        return;
+      }
+
+      const lat = optionalNumber(data.lat ?? data.latitud);
+      const lon = optionalNumber(data.lon ?? data.lng ?? data.longitud);
+      const idPersonal = Number(data.id_personal);
+      const hasCoords = validCoords(lat, lon);
+      const payload = {
+        id_operacion: opId,
+        sender_name: String(data.sender_name || "Elemento").trim().slice(0, 120),
+        device_label: String(data.device_label || "Dispositivo móvil").trim().slice(0, 120),
+        id_personal: Number.isInteger(idPersonal) && idPersonal > 0 ? idPersonal : null,
+        lat: hasCoords ? lat : null,
+        lon: hasCoords ? lon : null,
+        timestamp: new Date().toISOString(),
+      };
+
+      socket.to(`op_${opId}`).emit("shake_alert_update", payload);
+      if (typeof ack === "function") ack({ ok: true });
+    });
+
+    // Alertas del smartwatch: agitación y línea de vida, sin crear mensajes de chat.
+    socket.on("wear_alert_trigger", (data = {}, ack) => {
+      const opId = socket.operationId;
+      if (!opId) {
+        if (typeof ack === "function") ack({ ok: false, mensaje: "Socket sin operacion" });
+        return;
+      }
+      const lat = optionalNumber(data.lat ?? data.latitud);
+      const lon = optionalNumber(data.lon ?? data.lng ?? data.longitud);
+      const idPersonal = Number(data.id_personal);
+      const hasCoords = validCoords(lat, lon);
+      const source = String(data.source || "AGITAR_RELOJ").trim().toUpperCase();
+      const payload = {
+        id_operacion: opId,
+        sender_name: String(data.sender_name || "Personal operativo").trim().slice(0, 120),
+        device_label: String(data.device_label || "SMARTWATCH").trim().slice(0, 120),
+        source: source === "LINEA_DE_VIDA" ? "LINEA_DE_VIDA" : "AGITAR_RELOJ",
+        id_personal: Number.isInteger(idPersonal) && idPersonal > 0 ? idPersonal : null,
+        lat: hasCoords ? lat : null,
+        lon: hasCoords ? lon : null,
+        timestamp: new Date().toISOString(),
+      };
+      socket.to(`op_${opId}`).emit("wear_alert_update", payload);
       if (typeof ack === "function") ack({ ok: true });
     });
 

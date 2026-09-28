@@ -1439,16 +1439,10 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             return
         }
         vibrateEmergency()
-        phoneBridge.mirrorEmergency(operation.id, source)
         setStatus("enviando SOS")
-        api.sendMessage(
-            operationId = operation.id,
-            token = token,
-            contenido = emergencyContent(user, source),
-            tipoMensaje = "URGENTE",
-            onSuccess = { runOnUiThread { setStatus("SOS enviado"); refreshChat() } },
-            onError = { error -> runOnUiThread { setStatus(error) } }
-        )
+        phoneBridge.mirrorEmergency(operation.id, source) { sent ->
+            runOnUiThread { setStatus(if (sent) "SOS enviado al panel" else "No se encontró el teléfono") }
+        }
     }
 
     /** Sends a clearly labelled global test without altering the real vital-sign detector. */
@@ -1462,20 +1456,12 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
         }
 
         setStatus("enviando prueba")
-        api.sendMessage(
-            operationId = operation.id,
-            token = token,
-            contenido = lifeLineTestContent(user),
-            tipoMensaje = "URGENTE",
-            destinatarioRol = "GLOBAL",
-            onSuccess = {
-                runOnUiThread {
-                    setStatus("prueba enviada a todos")
-                    toast("Prueba de linea de vida enviada")
-                }
-            },
-            onError = { error -> runOnUiThread { setStatus(error) } }
-        )
+        phoneBridge.mirrorEmergency(operation.id, "LINEA_DE_VIDA") { sent ->
+            runOnUiThread {
+                setStatus(if (sent) "prueba enviada al panel" else "No se encontró el teléfono")
+                if (sent) toast("Prueba de linea de vida enviada")
+            }
+        }
     }
 
     private fun emergencyContent(user: WearUser, source: String): String {

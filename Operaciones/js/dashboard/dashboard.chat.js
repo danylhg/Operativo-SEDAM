@@ -9,7 +9,7 @@ import {
   focusEmergencyForChatMessage,
   getEmergencyCoordsForChatMessage,
   pulseEmergencyForChatMessage
-} from "./dashboard.emergency.js";
+} from "./dashboard.emergency.js?v=20260928-pulse-follow-person";
 
 const API_BASE = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
 
@@ -1253,13 +1253,16 @@ function showEmergencyTopBanner(msg) {
     ["Temp.", temperature || "no disponible"],
     ["PA", bloodPressure || "no disponible"]
   ];
+  const isShakeAlert = msg?.alert_source === "SHAKE";
 
   const find = (selector) => card.querySelector(selector);
   const name = find("#emergencyTopBannerName");
   if (name) {
     name.textContent = isLifeLine
       ? `LINEA DE VIDA - ${reportedUser.toUpperCase()}`
-      : `ALERTA DE ${author}`;
+      : isShakeAlert
+        ? `ALERTA DESDE ${String(msg?.device_label || "DISPOSITIVO MOVIL").toUpperCase()}`
+        : `ALERTA DE ${author}`;
   }
   const time = find("#emergencyTopBannerTime");
   if (time) time.textContent = timestamp;
@@ -1277,7 +1280,7 @@ function showEmergencyTopBanner(msg) {
         metric.append(metricLabel, metricValue);
         vitals.append(metric);
       });
-    } else {
+    } else if (!isShakeAlert) {
       const status = document.createElement("strong");
       status.textContent = "EMERGENCIA OPERATIVA";
       vitals.append(status);
@@ -1285,8 +1288,10 @@ function showEmergencyTopBanner(msg) {
   }
   const status = find("#emergencyTopBannerStatus");
   if (status) {
-    status.hidden = !isLifeLine || !criticalAlerts.length;
-    status.textContent = criticalAlerts.length
+    status.hidden = !isShakeAlert && (!isLifeLine || !criticalAlerts.length);
+    status.textContent = isShakeAlert
+      ? reportedUser
+      : criticalAlerts.length
       ? `⚠ ${criticalAlerts.join(" · ")} — VERIFICAR DE INMEDIATO`
       : "";
   }
@@ -1408,12 +1413,9 @@ function appendMessage(msg) {
   _allMsgs.push(msg);
 
   if (shouldHideChatMessage(msg)) return true;
-  // Las alertas se reciben por el mismo canal en tiempo real, pero se muestran
-  // exclusivamente en el aviso superior, no dentro de la conversación.
+  // Los mensajes marcados como alerta no se convierten en notificaciones del
+  // panel. Las alertas operativas se reciben solo por su canal dedicado PTT.
   if (isEmergencyMessage(msg)) {
-    // También se conserva la alerta enviada por la cuenta actual; todas las
-    // emergencias activas deben permanecer visibles en la central.
-    showEmergencyTopBanner(msg);
     return true;
   }
   if (!isVisibleInTab(msg)) return true;
@@ -1657,13 +1659,57 @@ export function initChat(opId, socket) {
   armWebAlertAudio();
 
   socket.on("chat_message", (msg) => {
-    if (!isMine(msg)) {
+    const isChatAlert = isEmergencyMessage(msg);
+    if (!isMine(msg) && !isChatAlert) {
       playWebAlertSound(msg);
       registerUnreadMessage(msg);
     }
-    if (appendMessage(msg) && !isMine(msg)) {
+    if (appendMessage(msg) && !isMine(msg) && !isChatAlert) {
       pulseEmergencyForChatMessage(msg);
     }
+  });
+
+  socket.off("shake_alert_update");
+  socket.on("shake_alert_update", (data = {}) => {
+    const lat = Number(data.lat ?? data.latitud);
+    const lon = Number(data.lon ?? data.lng ?? data.longitud);
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
+    const shakeAlert = {
+      id: `SHAKE:${data.timestamp || Date.now()}:${data.id_personal || ""}`,
+      tipo_mensaje: "URGENTE",
+      alert_source: "SHAKE",
+      autor_nombre: String(data.sender_name || "PERSONAL OPERATIVO"),
+      device_label: String(data.device_label || "DISPOSITIVO MOVIL"),
+      id_personal: data.id_personal,
+      fecha_envio: data.timestamp || new Date().toISOString(),
+      contenido: hasCoords
+        ? `ALERTA DESDE EL DISPOSITIVO\nUBICACION: ${lat}, ${lon}`
+        : "ALERTA DESDE EL DISPOSITIVO"
+    };
+    showEmergencyTopBanner(shakeAlert);
+    pulseEmergencyForChatMessage(shakeAlert);
+  });
+
+  socket.off("wear_alert_update");
+  socket.on("wear_alert_update", (data = {}) => {
+    const lat = Number(data.lat ?? data.latitud);
+    const lon = Number(data.lon ?? data.lng ?? data.longitud);
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
+    const isLifeLine = String(data.source || "").toUpperCase() === "LINEA_DE_VIDA";
+    const wearAlert = {
+      id: `WEAR:${data.timestamp || Date.now()}:${data.id_personal || ""}:${data.source || ""}`,
+      tipo_mensaje: "URGENTE",
+      alert_source: isLifeLine ? "LIFELINE" : "SHAKE",
+      autor_nombre: String(data.sender_name || "PERSONAL OPERATIVO"),
+      device_label: String(data.device_label || "SMARTWATCH"),
+      id_personal: data.id_personal,
+      fecha_envio: data.timestamp || new Date().toISOString(),
+      contenido: isLifeLine
+        ? `ALERTA LINEA DE VIDA\n${hasCoords ? `UBICACION: ${lat}, ${lon}` : "UBICACION NO DISPONIBLE"}`
+        : (hasCoords ? `ALERTA DESDE SMARTWATCH\nUBICACION: ${lat}, ${lon}` : "ALERTA DESDE SMARTWATCH")
+    };
+    showEmergencyTopBanner(wearAlert);
+    pulseEmergencyForChatMessage(wearAlert);
   });
 
   loadChatDirectory();

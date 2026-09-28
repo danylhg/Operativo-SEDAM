@@ -428,50 +428,12 @@ class WearEmergencyService : Service(), SensorEventListener {
 
         emergencyPending = true
         vibrateEmergency()
-        phoneBridge.mirrorEmergency(operation.id, source)
-
-        val timestamp = SimpleDateFormat("HH:mm:ss dd/MM/yyyy", Locale.getDefault()).format(Date())
-        val lat = lastLat
-        val lon = lastLon
-        val location = if (lat != null && lon != null) {
-            "%.6f, %.6f".format(lat, lon)
-        } else {
-            "ubicacion no disponible"
-        }
-        val alertTitle = if (source == "LINEA_DE_VIDA") {
-            "ALERTA LINEA DE VIDA: PULSO CRITICAMENTE BAJO"
-        } else {
-            "EMERGENCIA RELOJ"
-        }
-        val vitalSigns = if (source == "LINEA_DE_VIDA") {
-            "SIGNOS VITALES:\n" +
-                "FRECUENCIA CARDIACA: " + (heartRateBpm?.let { "%.0f bpm".format(it) } ?: "no disponible") + "\n" +
-                "OXIGENO EN SANGRE: no disponible\n" +
-                "FRECUENCIA RESPIRATORIA: no disponible\n" +
-                "TEMPERATURA CORPORAL: no disponible\n" +
-                "PRESION ARTERIAL: no disponible\n"
-        } else {
-            heartRateBpm?.let { "PULSO: %.0f bpm\n".format(it) }.orEmpty()
-        }
-        val content = "$alertTitle:\n" +
-            "USUARIO: ${user.nombreCompleto}\n" +
-            "ORIGEN: $source\n" +
-            vitalSigns +
-            "UBICACION: $location\n" +
-            "HORA: $timestamp\n" +
-            "REQUIERE VERIFICACION INMEDIATA"
-
-        api.sendMessage(
-            operationId = operation.id,
-            token = token,
-            contenido = content,
-            tipoMensaje = "URGENTE",
-            onSuccess = { emergencyPending = false },
-            onError = {
-                Log.e(TAG, it)
-                emergencyPending = false
-            }
-        )
+        // El teléfono la retransmite al panel por socket dedicado, sin chat.
+        phoneBridge.mirrorEmergency(
+            operation.id,
+            source,
+            "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+        ) { emergencyPending = false }
     }
 
     private fun vibrateEmergency() {

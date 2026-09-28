@@ -86,13 +86,19 @@ function removeEmergencyPulse(key) {
   emergencyPulseEntities.delete(key);
 }
 
-function drawEmergencyPulse(key, coords, name, persistent = true) {
+function drawEmergencyPulse(key, coords, name, persistent = true, idPersonal = "") {
   const viewer = dashboardState.viewer;
   if (!viewer || !key || !coords) return;
 
   removeEmergencyPulse(key);
 
-  const position = Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat);
+  const fallbackPosition = Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat);
+  // Mantener los anillos de agitación sobre el marcador vivo del elemento.
+  const position = new Cesium.CallbackProperty(() => {
+    const entity = idPersonal ? dashboardState.trackingEntities?.get(`P:${idPersonal}`) : null;
+    const currentPosition = entity?.position?.getValue?.(viewer.clock.currentTime) || entity?.position;
+    return currentPosition || fallbackPosition;
+  }, false);
   const startedAt = Date.now();
   const durationMs = 4200;
   const pulseEntities = EMERGENCY_PULSE_COLOR_HEX.map((colorHex, index) => {
@@ -109,8 +115,8 @@ function drawEmergencyPulse(key, coords, name, persistent = true) {
       name: name || "Emergencia",
       position,
       ellipse: {
-        semiMajorAxis: new Cesium.CallbackProperty(() => 35 + progress() * 360, false),
-        semiMinorAxis: new Cesium.CallbackProperty(() => 35 + progress() * 360, false),
+        semiMajorAxis: new Cesium.CallbackProperty(() => 18 + progress() * 105, false),
+        semiMinorAxis: new Cesium.CallbackProperty(() => 18 + progress() * 105, false),
         material: new Cesium.ColorMaterialProperty(
           new Cesium.CallbackProperty(() => {
             const amount = progress();
@@ -120,7 +126,7 @@ function drawEmergencyPulse(key, coords, name, persistent = true) {
         ),
         outline: true,
         outlineColor: color.withAlpha(0.95),
-        outlineWidth: 4,
+        outlineWidth: 2,
         height: 0,
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
       },
@@ -157,7 +163,9 @@ export function pulseEmergencyForChatMessage(msg) {
   if (!coords) return false;
 
   const author = String(msg?.autor_nombre || "").trim();
-  drawEmergencyPulse(emergencyKeyForMessage(msg), coords, author ? `Emergencia - ${author}` : "Emergencia");
+  drawEmergencyPulse(
+    emergencyKeyForMessage(msg), coords, author ? `Emergencia - ${author}` : "Emergencia", true, senderPersonalId(msg)
+  );
   return true;
 }
 
@@ -186,6 +194,8 @@ export function focusEmergencyForChatMessage(msg) {
   });
 
   const author = String(msg?.autor_nombre || "").trim();
-  drawEmergencyPulse(emergencyKeyForMessage(msg), coords, author ? `Emergencia - ${author}` : "Emergencia");
+  drawEmergencyPulse(
+    emergencyKeyForMessage(msg), coords, author ? `Emergencia - ${author}` : "Emergencia", true, senderPersonalId(msg)
+  );
   return true;
 }

@@ -13,7 +13,7 @@ import {
   openPanel
 } from "./dashboard.ui.js?v=20260923-draggable-person-popup";
 import { bindDashboardEvents } from "./dashboard.events.js";
-import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20260924-emergency-ranks";
+import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20260928-wear-alerts";
 import {
   setTacticalUI,
   bindTacticalEvents,
@@ -26,7 +26,7 @@ import {
   restoreGridFromBackend,
   restoreTacticalLayersFromMapaData
 } from "./dashboard.tactical.js?v=20260923-geo-msg-edit-modal";
-import { initCesium, centerMapOnOperationZone } from "./dashboard.map.js?v=20260923-route-deselect";
+import { initCesium, centerMapOnOperationZone } from "./dashboard.map.js?v=20260928-readonly-ptt-pulse";
 import { bindAreaEvents } from "./dashboard.area.js";
 import { restoreTacticalData } from "./dashboard.persistence.js";
 import {
@@ -34,10 +34,10 @@ import {
   loadRouteForSelectedVehicle,
   initRoutes
 } from "./dashboard.routes.js?v=20260922-route-syntax-fix-2";
-import { loadTrackingFromBackend, loadTrackingFromMapaData, initTrackingSocket, startTrackingPolling } from "./dashboard.tracking.js";
+import { loadTrackingFromBackend, loadTrackingFromMapaData, initTrackingSocket, startTrackingPolling } from "./dashboard.tracking.js?v=20260928-rank-surname-label";
 import { bindDrawingEvents, loadDrawingsFromBackend, initDrawingSocket } from "./dashboard.drawing.js";
 import { initCameraFeeds } from "./dashboard.camera.js?v=20260922-person-camera-stream";
-import { initPttAlerts } from "./dashboard.ptt.js";
+import { initPttAlerts } from "./dashboard.ptt.js?v=20260928-pulse-follow-person";
 
 const API_BASE = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
 const CONNECTION_LOST_MESSAGE = "Se perdio la conexion con el servidor.";
