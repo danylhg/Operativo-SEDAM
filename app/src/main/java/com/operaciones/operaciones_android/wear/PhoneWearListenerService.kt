@@ -107,6 +107,9 @@ class PhoneWearListenerService : WearableListenerService() {
             putExtra(EXTRA_WEAR_ALERT_SOURCE, payload.optString("source", "AGITAR_RELOJ"))
             putExtra(EXTRA_WEAR_ALERT_DEVICE, payload.optString("device_label", "SMARTWATCH"))
         })
+        // El dashboard ya usa shake_alert_update para mostrar el aviso lateral.
+        // Retransmitimos la alerta del reloj por ese canal compatible, con una
+        // etiqueta de smartwatch, en vez de depender de un evento exclusivo.
         relayWearAlertToDashboard(payload)
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -132,10 +135,11 @@ class PhoneWearListenerService : WearableListenerService() {
             onConnected = {
                 // El servidor ya confirmó join_operacion; emitir la alerta del reloj.
                 Handler(Looper.getMainLooper()).postDelayed({
-                    socketManager.emitWearAlert(
+                    socketManager.emitShakeAlert(
                         senderName = "${user.jerarquia} ${user.nombreCompleto}".trim(),
-                        source = payload.optString("source", "AGITAR_RELOJ"),
-                    deviceLabel = payload.optString("device_label", "SMARTWATCH"),
+                        deviceLabel = payload.optString("device_label", "SMARTWATCH"),
+                        lat = payload.optionalCoordinate("lat", "latitud"),
+                        lon = payload.optionalCoordinate("lon", "lng", "longitud"),
                         idPersonal = user.id
                     )
                 }, 80L)
@@ -230,4 +234,13 @@ class PhoneWearListenerService : WearableListenerService() {
     private fun parsePayload(messageEvent: MessageEvent): JSONObject =
         runCatching { JSONObject(String(messageEvent.data, Charsets.UTF_8)) }
             .getOrElse { JSONObject() }
+
+    private fun JSONObject.optionalCoordinate(vararg keys: String): Double? {
+        for (key in keys) {
+            if (!has(key) || isNull(key)) continue
+            val value = optDouble(key, Double.NaN)
+            if (value.isFinite()) return value
+        }
+        return null
+    }
 }

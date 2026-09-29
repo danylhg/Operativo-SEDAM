@@ -12,6 +12,9 @@ import android.hardware.Camera
 import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Rect
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.media.MediaRecorder
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
@@ -61,6 +64,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import com.operaciones.operaciones_android.R
@@ -145,6 +151,11 @@ class MainActivity : AppCompatActivity(),
     private lateinit var btnNavDispositivos: LinearLayout
     private lateinit var btnMyLocation: ImageButton
     private lateinit var btnStreamMedia: ImageButton
+    private lateinit var emergencyInboxContainer: FrameLayout
+    private lateinit var btnEmergencyInbox: ImageButton
+    private lateinit var emergencyInboxBadge: TextView
+    private val emergencyInbox = mutableListOf<ChatMessage>()
+    private var emergencyUnreadCount = 0
     private lateinit var btnBluetoothMedia: ImageButton
     private lateinit var btnDeleteSelectedObject: Button
     private lateinit var btnDeleteSelectedMeasurement: ImageButton
@@ -429,6 +440,10 @@ class MainActivity : AppCompatActivity(),
         btnNavDispositivos = findViewById(R.id.btnNavDispositivos)
         btnMyLocation = findViewById(R.id.btnMyLocation)
         btnStreamMedia = findViewById(R.id.btnStreamMedia)
+        emergencyInboxContainer = findViewById(R.id.emergencyInboxContainer)
+        btnEmergencyInbox = findViewById(R.id.btnEmergencyInbox)
+        emergencyInboxBadge = findViewById(R.id.emergencyInboxBadge)
+        btnEmergencyInbox.setOnClickListener { showEmergencyInboxDialog() }
         btnBluetoothMedia = findViewById(R.id.btnBluetoothMedia)
         btnDeleteSelectedObject = findViewById(R.id.btnDeleteSelectedObject)
         btnDeleteSelectedMeasurement = findViewById(R.id.btnDeleteSelectedMeasurement)
@@ -1530,6 +1545,352 @@ class MainActivity : AppCompatActivity(),
 
     override fun onSocketDisconnected() {
         setServerConnectionBanner(true)
+    }
+
+    override fun onSocketEmergencyAlert(event: String, data: JSONObject) {
+        val senderId = data.optInt("id_personal", -1)
+        if (::currentUser.isInitialized && senderId > 0 && senderId == currentUser.id) return
+
+        val source = data.optString("source", "AGITAR_RELOJ").uppercase()
+        val isLifeLine = event == "wear_alert_update" && source.contains("LINEA_DE_VIDA")
+        val sender = data.optString("sender_name", "Personal operativo").trim()
+            .ifBlank { "Personal operativo" }
+        val deviceLabel = data.optString("device_label", "SMARTWATCH").trim()
+            .ifBlank { "SMARTWATCH" }
+        val lat = data.optDouble("lat", Double.NaN)
+        val lon = data.optDouble("lon", Double.NaN)
+        val locationLine = if (lat.isFinite() && lon.isFinite()) "\nUBICACION: $lat, $lon" else ""
+        val heartRate = data.optDouble("heart_rate_bpm", Double.NaN)
+        val text = if (isLifeLine) {
+            buildString {
+                append("EMERGENCIA LINEA DE VIDA")
+                if (heartRate.isFinite()) append("\nFRECUENCIA CARDIACA: ${heartRate.toInt()} bpm")
+                append(locationLine)
+            }
+        } else {
+            "ALERTA DESDE ${deviceLabel.uppercase()}" + locationLine
+        }
+        val timestamp = data.optString("timestamp", "")
+        val message = ChatMessage(
+            id = (timestamp.ifBlank { System.currentTimeMillis().toString() } + senderId + event).hashCode(),
+            idPersonal = senderId.takeIf { it > 0 },
+            user = sender,
+            text = text,
+            type = MessageType.ALERT,
+            isMine = false,
+            sentAtLabel = formatEmergencyAlertTime(timestamp)
+        )
+
+        emergencyInbox.add(0, message)
+        if (emergencyInbox.size > 100) emergencyInbox.removeAt(emergencyInbox.lastIndex)
+        emergencyUnreadCount++
+        updateEmergencyInboxBadge()
+        showDirectedAlertBanner(message)
+        if (::emergencyVisualAlertController.isInitialized) emergencyVisualAlertController.flashScreen()
+        if (::chatNotificationController.isInitialized && ::currentOperation.isInitialized) {
+            chatNotificationController.showNewMessage(message, currentOperation.nombre)
+        }
+        Handler(Looper.getMainLooper()).postDelayed({ archiveDirectedAlert(message) }, 7_000L)
+    }
+
+    private fun updateEmergencyInboxBadge() {
+        if (!::emergencyInboxBadge.isInitialized) return
+        val hasUnreadEmergencies = emergencyUnreadCount > 0
+        emergencyInboxBadge.visibility = if (hasUnreadEmergencies) View.VISIBLE else View.GONE
+        emergencyInboxBadge.text = if (emergencyUnreadCount > 99) "99+" else emergencyUnreadCount.toString()
+        if (::btnEmergencyInbox.isInitialized) {
+            btnEmergencyInbox.backgroundTintList = if (hasUnreadEmergencies) {
+                ColorStateList.valueOf(Color.parseColor("#B3D90429"))
+            } else {
+                null
+            }
+        }
+    }
+
+    private fun formatEmergencyAlertTime(timestamp: String): String {
+        val date = if (timestamp.isBlank()) {
+            java.util.Date()
+        } else {
+            trackingTimestampFormats.firstNotNullOfOrNull { format ->
+                runCatching { format.parse(timestamp) }.getOrNull()
+            } ?: java.util.Date()
+        }
+        val locale = Locale("es", "MX")
+        return SimpleDateFormat("hh:mm a", locale)
+            .format(date)
+            .lowercase(locale)
+            .replace("a. m.", "a.m.")
+            .replace("p. m.", "p.m.")
+    }
+
+    private fun archiveDirectedAlert(message: ChatMessage) {
+        if (!::directedAlertStack.isInitialized) return
+        val key = message.id?.toString()
+            ?: "${message.idPersonal ?: message.user}-${message.text.hashCode()}"
+        activeDirectedAlerts.remove(key)?.let { (_, card) -> directedAlertStack.removeView(card) }
+    }
+
+    private fun showEmergencyInboxDialog() {
+        emergencyUnreadCount = 0
+        updateEmergencyInboxBadge()
+        lateinit var dialog: AlertDialog
+
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(18), dp(18), dp(14))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(Color.parseColor("#D9141B2A"))
+                setStroke(dp(1), Color.parseColor("#66FFFFFF"))
+            }
+        }
+
+        panel.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.ic_emergency_alert)
+                contentDescription = null
+            }, LinearLayout.LayoutParams(dp(20), dp(20)).apply {
+                marginEnd = dp(8)
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "Alertas recibidas"
+                setTextColor(Color.WHITE)
+                textSize = 20f
+                typeface = Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(TextView(this@MainActivity).apply {
+                text = "×"
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                textSize = 25f
+                typeface = Typeface.DEFAULT_BOLD
+                contentDescription = "Cerrar alertas"
+                isClickable = true
+                isFocusable = true
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#26FFFFFF"))
+                    setStroke(dp(1), Color.parseColor("#55FFFFFF"))
+                }
+                setOnClickListener { dialog.dismiss() }
+            }, LinearLayout.LayoutParams(dp(36), dp(36)))
+        })
+        panel.addView(TextView(this).apply {
+            text = "Desliza una alerta a la izquierda para eliminarla"
+            setTextColor(Color.parseColor("#BFD4E4"))
+            textSize = 11f
+            setPadding(0, dp(4), 0, dp(14))
+        })
+
+        val emptyView = TextView(this).apply {
+            text = "No hay alertas recibidas."
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#D7E3F4"))
+            textSize = 14f
+            setPadding(dp(8), dp(48), dp(8), dp(48))
+            visibility = if (emergencyInbox.isEmpty()) View.VISIBLE else View.GONE
+        }
+
+        val recycler = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            setPadding(0, 0, 0, dp(4))
+            clipToPadding = false
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(430)
+            )
+        }
+
+        val adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+                val card = LinearLayout(parent.context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(12), dp(12), dp(10), dp(12))
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(13).toFloat()
+                        setColor(Color.parseColor("#A6C30D3C"))
+                        setStroke(dp(1), Color.parseColor("#B3FB7185"))
+                    }
+                    layoutParams = RecyclerView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(10) }
+
+                    addView(ImageView(parent.context).apply {
+                        setImageResource(R.drawable.ic_alert_dot)
+                        contentDescription = null
+                    }, LinearLayout.LayoutParams(dp(24), dp(24)).apply {
+                        marginEnd = dp(10)
+                    })
+
+                    addView(TextView(parent.context).apply {
+                        setTextColor(Color.WHITE)
+                        textSize = 12f
+                        setLineSpacing(dp(2).toFloat(), 1f)
+                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+                    addView(ImageButton(parent.context).apply {
+                        setImageResource(R.drawable.ic_location_pin_alert)
+                        background = ContextCompat.getDrawable(parent.context, R.drawable.bg_alert_location_button)
+                        contentDescription = "Ver ubicacion de la alerta"
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE
+                        setPadding(dp(9), dp(9), dp(9), dp(9))
+                    }, LinearLayout.LayoutParams(dp(38), dp(38)).apply {
+                        marginStart = dp(8)
+                    })
+                }
+                return object : RecyclerView.ViewHolder(card) {}
+            }
+
+            override fun getItemCount(): Int = emergencyInbox.size
+
+            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+                val alert = emergencyInbox[position]
+                val card = holder.itemView as LinearLayout
+                val isLifeLine = Regex("LINEA\\s+DE\\s+VIDA", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(alert.text)
+                (card.getChildAt(0) as ImageView).setImageResource(
+                    if (isLifeLine) R.drawable.ic_lifeline_alert else R.drawable.ic_alert_dot
+                )
+                (card.getChildAt(1) as TextView).text = emergencyInboxSummary(alert)
+                val locationButton = card.getChildAt(2) as ImageButton
+                val location = emergencyLocationFromText(alert.text)
+                locationButton.visibility = if (location != null) View.VISIBLE else View.INVISIBLE
+                locationButton.setOnClickListener {
+                    if (location != null && ::cesiumWebController.isInitialized) {
+                        cesiumWebController.centerOnLocation(location.first, location.second, zoom = 1_200)
+                        cesiumWebController.pulseEmergencyAtLocation(
+                            alert.idPersonal ?: -1,
+                            location.first,
+                            location.second
+                        )
+                        dialog.dismiss()
+                    }
+                }
+                card.apply {
+                    setOnClickListener {
+                        showDirectedAlertBanner(alert)
+                        Handler(Looper.getMainLooper()).postDelayed({ archiveDirectedAlert(alert) }, 7_000L)
+                    }
+                }
+            }
+        }
+        recycler.adapter = adapter
+
+        ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
+            private val deletePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                textSize = dp(12).toFloat()
+                typeface = Typeface.DEFAULT_BOLD
+                textAlign = Paint.Align.RIGHT
+            }
+            private val deleteBackground = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#E6DC2626")
+            }
+
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean = false
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val position = viewHolder.bindingAdapterPosition
+                if (position !in emergencyInbox.indices) return
+                val removed = emergencyInbox.removeAt(position)
+                archiveDirectedAlert(removed)
+                clearDirectedEmergencyPulse(removed)
+                adapter.notifyItemRemoved(position)
+                emptyView.visibility = if (emergencyInbox.isEmpty()) View.VISIBLE else View.GONE
+            }
+
+            override fun onChildDraw(
+                canvas: Canvas,
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                dX: Float,
+                dY: Float,
+                actionState: Int,
+                isCurrentlyActive: Boolean
+            ) {
+                val item = viewHolder.itemView
+                if (dX < 0f) {
+                    canvas.drawRoundRect(
+                        item.right.toFloat() + dX,
+                        item.top.toFloat(),
+                        item.right.toFloat(),
+                        item.bottom.toFloat(),
+                        dp(13).toFloat(),
+                        dp(13).toFloat(),
+                        deleteBackground
+                    )
+                    val baseline = item.top + (item.height - (deletePaint.descent() + deletePaint.ascent())) / 2f
+                    canvas.drawText("ELIMINAR", item.right - dp(16).toFloat(), baseline, deletePaint)
+                }
+                super.onChildDraw(canvas, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
+            }
+        }).attachToRecyclerView(recycler)
+
+        panel.addView(FrameLayout(this).apply {
+            addView(recycler)
+            addView(emptyView, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ))
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(430)
+        ))
+
+        dialog = AlertDialog.Builder(this)
+            .setView(panel)
+            .create()
+        dialog.setOnShowListener {
+            dialog.window?.apply {
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                setDimAmount(0.45f)
+                addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+        }
+        dialog.show()
+    }
+
+    private fun emergencyInboxSummary(alert: ChatMessage): String {
+        val content = alert.text
+        val isLifeLine = Regex("LINEA\\s+DE\\s+VIDA", RegexOption.IGNORE_CASE).containsMatchIn(content)
+        val device = Regex(
+            "^ALERTA\\s+DESDE\\s+(.+)$",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)
+        ).find(content)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+        fun vital(label: String): String = Regex(
+            "^${Regex.escape(label)}\\s*:\\s*(.+)$",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)
+        ).find(content)?.groupValues?.getOrNull(1)?.trim().orEmpty().ifBlank { "--" }
+        val heartRate = vital("FRECUENCIA CARDIACA")
+        val oxygen = vital("OXIGENO EN SANGRE")
+        val respiration = vital("FRECUENCIA RESPIRATORIA")
+        val temperature = vital("TEMPERATURA CORPORAL")
+        val bloodPressure = vital("PRESION ARTERIAL")
+        val location = emergencyLocationFromText(content)
+        return buildString {
+            append(if (isLifeLine) "EMERGENCIA" else "ALERTA")
+            alert.sentAtLabel?.takeIf { it.isNotBlank() }?.let { append("   ·   $it") }
+            if (!isLifeLine && device.isNotBlank()) append("\n$device")
+            append("\n${alert.user.uppercase()}")
+            if (isLifeLine) {
+                append("\nFC: $heartRate   ·   SpO2: $oxygen   ·   Resp.: $respiration")
+                append("\nTemp.: $temperature   ·   PA: $bloodPressure")
+            }
+            location?.let {
+                append("\nCoordenadas: ")
+                append(String.format(Locale.US, "%.6f, %.6f", it.first, it.second))
+            }
+        }
     }
 
     override fun addMessage(msg: ChatMessage) {
@@ -4430,6 +4791,9 @@ class MainActivity : AppCompatActivity(),
         val respiration = field("FRECUENCIA RESPIRATORIA")
         val temperature = field("TEMPERATURA CORPORAL")
         val bloodPressure = field("PRESION ARTERIAL")
+        val deviceLabel = field("DISPOSITIVO").takeUnless { it == "no disponible" }
+            ?: Regex("^ALERTA\\s+DESDE\\s+(.+)$", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE))
+                .find(content)?.groupValues?.getOrNull(1)?.trim().orEmpty()
         val criticalAlerts = directedAlertCriticalVitals(
             heartRate, oxygen, respiration, temperature, bloodPressure
         )
@@ -4441,7 +4805,8 @@ class MainActivity : AppCompatActivity(),
                 .inflate(R.layout.view_directed_alert, directedAlertStack, false)
                 .also { newCard ->
                     activeDirectedAlerts[key] = message to newCard
-                    directedAlertStack.addView(newCard)
+                    // La alerta mas reciente siempre queda arriba de las anteriores.
+                    directedAlertStack.addView(newCard, 0)
                     newCard.findViewById<View>(R.id.btnDismissDirectedAlert).setOnClickListener {
                         activeDirectedAlerts.remove(key)?.let { (alert, view) ->
                             clearDirectedEmergencyPulse(alert)
@@ -4460,11 +4825,18 @@ class MainActivity : AppCompatActivity(),
                     }
                     newCard.setOnClickListener { expandDirectedAlertCard(newCard) }
                 }
-            card.findViewById<TextView>(R.id.tvDirectedAlertMessage).text = if (isLifeLine) {
-                "LINEA DE VIDA · $senderWithRank"
-            } else {
-                "ALERTA OPERATIVA · $senderWithRank"
+            card.findViewById<ImageView>(R.id.directedAlertIcon).setImageResource(
+                if (isLifeLine) R.drawable.ic_lifeline_alert else R.drawable.ic_alert_dot
+            )
+            card.findViewById<TextView>(R.id.tvDirectedAlertMessage).text =
+                if (isLifeLine) "EMERGENCIA" else "ALERTA"
+            card.findViewById<TextView>(R.id.tvDirectedAlertTime).text =
+                message.sentAtLabel ?: formatEmergencyAlertTime("")
+            card.findViewById<TextView>(R.id.tvDirectedAlertDevice).apply {
+                text = deviceLabel.uppercase()
+                visibility = if (!isLifeLine && deviceLabel.isNotBlank()) View.VISIBLE else View.GONE
             }
+            card.findViewById<TextView>(R.id.tvDirectedAlertSender).text = senderWithRank.uppercase()
             val status = card.findViewById<TextView>(R.id.tvDirectedAlertStatus)
             status.tag = isLifeLine && criticalAlerts.isNotEmpty()
             status.visibility = if (isLifeLine && criticalAlerts.isNotEmpty()) View.VISIBLE else View.GONE
@@ -4480,7 +4852,12 @@ class MainActivity : AppCompatActivity(),
                 card.findViewById<TextView>(R.id.tvAlertVitalPressure).text = "PA: $bloodPressure"
             }
             expandDirectedAlertCard(card)
+            directedAlertStack.elevation = dp(100).toFloat()
+            directedAlertStack.translationZ = dp(100).toFloat()
             directedAlertStack.bringToFront()
+            directedAlertStack.parent?.let { parent ->
+                (parent as? View)?.invalidate()
+            }
         }
     }
 
@@ -4896,6 +5273,9 @@ class MainActivity : AppCompatActivity(),
     override fun onPanelChanged(panel: PanelNavigationController.Panel) {
         val chatExpanded = ::panelNavigationController.isInitialized &&
             panelNavigationController.activePanel == Panel.CHAT
+        if (::emergencyInboxContainer.isInitialized) {
+            emergencyInboxContainer.visibility = if (panel == Panel.NONE) View.VISIBLE else View.GONE
+        }
         applyPanelContentSize(expanded = chatExpanded)
         if (!chatExpanded && ::chatController.isInitialized) {
             chatContactsVisible = false

@@ -13,7 +13,7 @@ import {
   openPanel
 } from "./dashboard.ui.js?v=20260923-draggable-person-popup";
 import { bindDashboardEvents } from "./dashboard.events.js";
-import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20260928-wear-alerts";
+import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20260929-life-line-location-glass";
 import {
   setTacticalUI,
   bindTacticalEvents,

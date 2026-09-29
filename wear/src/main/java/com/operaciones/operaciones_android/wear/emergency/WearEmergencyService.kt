@@ -53,9 +53,9 @@ class WearEmergencyService : Service(), SensorEventListener {
         private const val TAG = "WearEmergency"
         private const val CHANNEL_ID = "sedam_wear_emergency"
         private const val NOTIFICATION_ID = 2101
-        private const val SHAKE_THRESHOLD = 13f
+        private const val SHAKE_THRESHOLD = 6.5f
         private const val SHAKE_RESET_MS = 1_500L
-        private const val SHAKE_MIN_GAP_MS = 300L
+        private const val SHAKE_MIN_GAP_MS = 180L
         private const val MIN_TRACKING_UPLOAD_MS = 15_000L
         private const val MIN_LOCATION_INTERVAL_MS = 10_000L
         private const val MIN_LOCATION_DISTANCE_M = 0f
@@ -428,11 +428,38 @@ class WearEmergencyService : Service(), SensorEventListener {
 
         emergencyPending = true
         vibrateEmergency()
+        val deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+        val sentDirectly = if (source == "LINEA_DE_VIDA") {
+            voiceSocket?.emitWearAlert(
+                senderName = user.nombreCompleto,
+                source = source,
+                deviceLabel = "SMARTWATCH",
+                deviceModel = deviceModel,
+                heartRateBpm = heartRateBpm,
+                lat = lastLat,
+                lon = lastLon
+            ) == true
+        } else {
+            voiceSocket?.emitShakeAlert(
+                senderName = user.nombreCompleto,
+                deviceLabel = "SMARTWATCH|$deviceModel",
+                deviceModel = deviceModel,
+                lat = lastLat,
+                lon = lastLon
+            ) == true
+        }
+        if (sentDirectly) {
+            Log.i(TAG, "Alerta $source enviada directamente al panel")
+            emergencyPending = false
+            return
+        }
         // El teléfono la retransmite al panel por socket dedicado, sin chat.
         phoneBridge.mirrorEmergency(
             operation.id,
             source,
-            "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+            "SMARTWATCH",
+            lastLat,
+            lastLon
         ) { emergencyPending = false }
     }
 

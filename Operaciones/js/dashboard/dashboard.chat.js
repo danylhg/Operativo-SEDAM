@@ -1235,6 +1235,7 @@ function showEmergencyTopBanner(msg) {
   const timestamp = formatTime(msg?.fecha_envio);
   const content = String(msg?.contenido || "");
   const isLifeLine = /LINEA\s+DE\s+VIDA/i.test(content);
+  const isLifeLineTest = /^PRUEBA\s*-/i.test(content);
   // La identidad del emisor se normaliza con su grado, igual que el resto de alertas.
   const reportedUser = author;
   const heartRate = alertField(content, "FRECUENCIA CARDIACA") ||
@@ -1256,10 +1257,21 @@ function showEmergencyTopBanner(msg) {
   const isShakeAlert = msg?.alert_source === "SHAKE";
 
   const find = (selector) => card.querySelector(selector);
+  const indicator = find(".emergencyTopBannerIndicator");
+  if (indicator) {
+    indicator.classList.toggle("life-line", isLifeLine);
+    indicator.innerHTML = isLifeLine
+      ? `<svg class="lifeLineAlertIcon" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M16 27.5 5.9 17.4C1 12.5 3 4.5 9.2 4.5c3.1 0 5.3 1.8 6.8 4.3 1.5-2.5 3.7-4.3 6.8-4.3 6.2 0 8.2 8 3.3 12.9L16 27.5Z"/>
+          <path d="M5.3 15.5h5.3l2-4.1 3.2 8 3.1-6h7.8"/>
+          <path d="M22.3 20.8 27.6 30H17l5.3-9.2Z"/><path d="M22.3 23.2v3.1M22.3 28.1v.1"/>
+        </svg>`
+      : "";
+  }
   const name = find("#emergencyTopBannerName");
   if (name) {
     name.textContent = isLifeLine
-      ? `LINEA DE VIDA - ${reportedUser.toUpperCase()}`
+      ? "EMERGENCIA"
       : isShakeAlert
         ? `ALERTA DESDE ${String(msg?.device_label || "DISPOSITIVO MOVIL").toUpperCase()}`
         : `ALERTA DE ${author}`;
@@ -1270,7 +1282,10 @@ function showEmergencyTopBanner(msg) {
   if (vitals) {
     vitals.replaceChildren();
     if (isLifeLine) {
-      allVitalsSummary.forEach(([label, value]) => {
+      allVitalsSummary.map(([label, value]) => [
+        label,
+        value === "no disponible" ? "--" : value
+      ]).forEach(([label, value]) => {
         const metric = document.createElement("span");
         metric.className = "emergencyVitalMetric";
         const metricLabel = document.createElement("small");
@@ -1288,14 +1303,25 @@ function showEmergencyTopBanner(msg) {
   }
   const status = find("#emergencyTopBannerStatus");
   if (status) {
-    status.hidden = !isShakeAlert && (!isLifeLine || !criticalAlerts.length);
+    const deviceModel = String(msg?.device_model || "").trim().toUpperCase();
+    status.hidden = isShakeAlert
+      ? !deviceModel
+      : !isLifeLine && !criticalAlerts.length;
     status.textContent = isShakeAlert
-      ? reportedUser
+      ? deviceModel
+      : isLifeLine
+      ? `${reportedUser}${criticalAlerts.length ? ` — ⚠ ${criticalAlerts.join(" · ")}` : ""}`
       : criticalAlerts.length
       ? `⚠ ${criticalAlerts.join(" · ")} — VERIFICAR DE INMEDIATO`
       : "";
   }
+  const sender = find("#emergencyTopBannerSender");
+  if (sender) {
+    sender.hidden = !isShakeAlert;
+    sender.textContent = isShakeAlert ? reportedUser : "";
+  }
   card.classList.toggle("critical-vitals", criticalAlerts.length > 0);
+  card.classList.toggle("life-line-alert", isLifeLine);
   const coordsLabel = find("#emergencyTopBannerCoords");
   if (coordsLabel) {
     // La ubicación se abre con el botón; no repetimos coordenadas técnicas en
@@ -1674,12 +1700,14 @@ export function initChat(opId, socket) {
     const lat = Number(data.lat ?? data.latitud);
     const lon = Number(data.lon ?? data.lng ?? data.longitud);
     const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
+    const deviceParts = String(data.device_label || "DISPOSITIVO MOVIL").split("|");
     const shakeAlert = {
       id: `SHAKE:${data.timestamp || Date.now()}:${data.id_personal || ""}`,
       tipo_mensaje: "URGENTE",
       alert_source: "SHAKE",
       autor_nombre: String(data.sender_name || "PERSONAL OPERATIVO"),
-      device_label: String(data.device_label || "DISPOSITIVO MOVIL"),
+      device_label: deviceParts[0].trim() || "DISPOSITIVO MOVIL",
+      device_model: String(data.device_model || deviceParts.slice(1).join("|")).trim(),
       id_personal: data.id_personal,
       fecha_envio: data.timestamp || new Date().toISOString(),
       contenido: hasCoords
@@ -1695,17 +1723,20 @@ export function initChat(opId, socket) {
     const lat = Number(data.lat ?? data.latitud);
     const lon = Number(data.lon ?? data.lng ?? data.longitud);
     const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
-    const isLifeLine = String(data.source || "").toUpperCase() === "LINEA_DE_VIDA";
+    const lifeLineSource = String(data.source || "").toUpperCase();
+    const isLifeLine = lifeLineSource.includes("LINEA_DE_VIDA");
+    const isLifeLineTest = lifeLineSource === "PRUEBA_LINEA_DE_VIDA";
     const wearAlert = {
       id: `WEAR:${data.timestamp || Date.now()}:${data.id_personal || ""}:${data.source || ""}`,
       tipo_mensaje: "URGENTE",
       alert_source: isLifeLine ? "LIFELINE" : "SHAKE",
       autor_nombre: String(data.sender_name || "PERSONAL OPERATIVO"),
       device_label: String(data.device_label || "SMARTWATCH"),
+      device_model: String(data.device_model || ""),
       id_personal: data.id_personal,
       fecha_envio: data.timestamp || new Date().toISOString(),
       contenido: isLifeLine
-        ? `ALERTA LINEA DE VIDA\n${hasCoords ? `UBICACION: ${lat}, ${lon}` : "UBICACION NO DISPONIBLE"}`
+        ? `${isLifeLineTest ? "PRUEBA - " : "ALERTA "}LINEA DE VIDA\n${data.heart_rate_bpm != null ? `FRECUENCIA CARDIACA: ${data.heart_rate_bpm} bpm\n` : ""}${hasCoords ? `UBICACION: ${lat}, ${lon}` : "UBICACION NO DISPONIBLE"}`
         : (hasCoords ? `ALERTA DESDE SMARTWATCH\nUBICACION: ${lat}, ${lon}` : "ALERTA DESDE SMARTWATCH")
     };
     showEmergencyTopBanner(wearAlert);

@@ -134,6 +134,50 @@ class WearSocketManager(
         return true
     }
 
+    fun emitShakeAlert(
+        senderName: String,
+        deviceLabel: String,
+        deviceModel: String,
+        lat: Double? = null,
+        lon: Double? = null
+    ): Boolean {
+        if (socket?.connected() != true) return false
+        socket?.emit("shake_alert_trigger", JSONObject().apply {
+            put("id_operacion", operationId)
+            put("id_personal", idPersonal)
+            put("sender_name", senderName)
+            put("device_label", deviceLabel)
+            put("device_model", deviceModel)
+            if (lat != null) put("lat", lat)
+            if (lon != null) put("lon", lon)
+        })
+        return true
+    }
+
+    fun emitWearAlert(
+        senderName: String,
+        source: String,
+        deviceLabel: String,
+        deviceModel: String,
+        heartRateBpm: Double? = null,
+        lat: Double? = null,
+        lon: Double? = null
+    ): Boolean {
+        if (socket?.connected() != true) return false
+        socket?.emit("wear_alert_trigger", JSONObject().apply {
+            put("id_operacion", operationId)
+            put("id_personal", idPersonal)
+            put("sender_name", senderName)
+            put("source", source)
+            put("device_label", deviceLabel)
+            put("device_model", deviceModel)
+            if (heartRateBpm != null) put("heart_rate_bpm", heartRateBpm)
+            if (lat != null) put("lat", lat)
+            if (lon != null) put("lon", lon)
+        })
+        return true
+    }
+
     fun disconnect() {
         socket?.disconnect()
         socket?.off()

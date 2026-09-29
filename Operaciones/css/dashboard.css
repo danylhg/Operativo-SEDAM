@@ -734,6 +734,94 @@ body::after {
   box-shadow: 0 0 0 4px rgba(254, 205, 211, .2);
 }
 
+.emergencyTopBannerIndicator.life-line {
+  width: 24px;
+  height: 24px;
+  margin: -6px 0 -6px -4px;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.lifeLineAlertIcon {
+  width: 24px;
+  height: 24px;
+  overflow: visible;
+  fill: none;
+  stroke: #fff7ed;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 1px rgba(86, 7, 18, .7));
+}
+
+.emergencyTopBanner.life-line-alert {
+  padding-top: 13px;
+  padding-bottom: 13px;
+  border-color: #ff2d55;
+  background: linear-gradient(135deg, #b2072b 0%, #e11142 100%);
+  box-shadow: 0 0 0 2px rgba(255, 45, 85, .45), 0 0 26px rgba(255, 10, 55, .95);
+  animation: lifeLineEmergencyPulse 1.25s ease-in-out infinite;
+}
+
+.emergencyTopBanner.life-line-alert .emergencyTopBannerTitle {
+  margin-bottom: 9px;
+}
+
+.emergencyTopBanner.life-line-alert .emergencyTopBannerBody {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.emergencyTopBanner.life-line-alert .emergencyTopBannerStatus {
+  margin-bottom: 7px;
+}
+
+.emergencyTopBanner.life-line-alert .emergencyLocationButton {
+  width: 38px;
+  min-width: 38px;
+  height: 34px;
+  padding: 0;
+  justify-content: center;
+  margin-top: 5px;
+  background: rgba(80, 5, 24, .38);
+  border-color: rgba(255, 255, 255, .82);
+  color: #fff1f3;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.emergencyTopBanner.life-line-alert .emergencyLocationButton:hover {
+  background: rgba(255, 255, 255, .2);
+}
+
+.emergencyTopBanner.life-line-alert .emergencyLocationButton span {
+  display: none;
+}
+
+.emergencyTopBanner.life-line-alert .emergencyLocationIcon {
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  color: #fff1f3;
+  stroke: currentColor;
+  stroke-width: 2.3;
+}
+
+.emergencyTopBanner.life-line-alert .emergencyVitalsGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 9px;
+}
+
+.emergencyTopBanner.life-line-alert .emergencyVitalMetric {
+  font-size: 10px;
+}
+
+@keyframes lifeLineEmergencyPulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255, 45, 85, .35), 0 0 18px rgba(255, 10, 55, .8); }
+  50% { box-shadow: 0 0 0 3px rgba(255, 132, 153, .9), 0 0 32px rgba(255, 10, 55, 1); }
+}
+
 .pttAlertWarning {
   width: 23px;
   height: 23px;
@@ -783,6 +871,14 @@ circle.pttAlertWarningMark {
 
 .emergencyTopBannerStatus {
   color: #fff7ed;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.emergencyTopBannerSender {
+  color: #ffffff;
   font-size: 10px;
   font-weight: 900;
   line-height: 1.2;

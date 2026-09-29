@@ -489,6 +489,12 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             ""
         ))
         container.addView(gpsBlock())
+        container.addView(proButton(
+            "PROBAR LINEA DE VIDA",
+            contentWidthDp(),
+            C_TEXT,
+            C_ALERT_BG
+        ) { sendLifeLineTest() })
         container.addView(proButton("CERRAR SESION", contentWidthDp(), C_LOGOUT_TEXT, C_LOGOUT_BG) { logout() })
     }
 
@@ -1456,7 +1462,21 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
         }
 
         setStatus("enviando prueba")
-        phoneBridge.mirrorEmergency(operation.id, "LINEA_DE_VIDA") { sent ->
+        val sentDirectly = wearSocketManager?.emitWearAlert(
+            senderName = user.nombreCompleto,
+            source = "PRUEBA_LINEA_DE_VIDA",
+            deviceLabel = "SMARTWATCH",
+            deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
+            heartRateBpm = lastHeartRate,
+            lat = lastLat,
+            lon = lastLon
+        ) == true
+        if (sentDirectly) {
+            setStatus("prueba enviada al panel")
+            toast("Prueba de linea de vida enviada")
+            return
+        }
+        phoneBridge.mirrorEmergency(operation.id, "PRUEBA_LINEA_DE_VIDA") { sent ->
             runOnUiThread {
                 setStatus(if (sent) "prueba enviada al panel" else "No se encontró el teléfono")
                 if (sent) toast("Prueba de linea de vida enviada")

@@ -499,6 +499,7 @@ export function initSocket(server) {
       const hasCoords = validCoords(lat, lon);
       const payload = {
         id_operacion: opId,
+        device_model: String(data.device_model || "").trim().slice(0, 120),
         sender_name: String(data.sender_name || "Elemento").trim().slice(0, 120),
         device_label: String(data.device_label || "Dispositivo móvil").trim().slice(0, 120),
         id_personal: Number.isInteger(idPersonal) && idPersonal > 0 ? idPersonal : null,
@@ -525,9 +526,13 @@ export function initSocket(server) {
       const source = String(data.source || "AGITAR_RELOJ").trim().toUpperCase();
       const payload = {
         id_operacion: opId,
+        device_model: String(data.device_model || "").trim().slice(0, 120),
+        heart_rate_bpm: optionalNumber(data.heart_rate_bpm),
         sender_name: String(data.sender_name || "Personal operativo").trim().slice(0, 120),
         device_label: String(data.device_label || "SMARTWATCH").trim().slice(0, 120),
-        source: source === "LINEA_DE_VIDA" ? "LINEA_DE_VIDA" : "AGITAR_RELOJ",
+        source: ["LINEA_DE_VIDA", "PRUEBA_LINEA_DE_VIDA"].includes(source)
+          ? source
+          : "AGITAR_RELOJ",
         id_personal: Number.isInteger(idPersonal) && idPersonal > 0 ? idPersonal : null,
         lat: hasCoords ? lat : null,
         lon: hasCoords ? lon : null,

@@ -32,6 +32,7 @@ class ChatSocketManager(
     private val onDisconnected: ((String) -> Unit)? = null,
     private val onConnectionError: ((String) -> Unit)? = null,
     private val onVoiceCallEvent: ((String, JSONObject) -> Unit)? = null,
+    private val onEmergencyAlert: ((String, JSONObject) -> Unit)? = null,
     private val idPersonal: Int = -1,
     private val rol: String = ""
 ) {
@@ -85,6 +86,13 @@ class ChatSocketManager(
             val item = args.firstOrNull() as? JSONObject ?: return@on
             Log.d("ChatSocket", "Mensaje recibido id=${item.optInt("id_mensaje", -1)}")
             onNewMessage(item)
+        }
+
+        listOf("shake_alert_update", "wear_alert_update").forEach { event ->
+            socket?.on(event) { args ->
+                val data = args.firstOrNull() as? JSONObject ?: return@on
+                onEmergencyAlert?.invoke(event, data)
+            }
         }
 
         listOf(

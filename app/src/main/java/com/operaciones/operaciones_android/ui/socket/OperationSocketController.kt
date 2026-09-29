@@ -101,6 +101,7 @@ class OperationSocketController(
         fun onSocketConnected()
         fun onSocketDisconnected()
         fun onSocketVoiceCallEvent(event: String, data: JSONObject)
+        fun onSocketEmergencyAlert(event: String, data: JSONObject)
     }
 
     fun create(): ChatSocketManager? {
@@ -114,6 +115,9 @@ class OperationSocketController(
             rol = host.getSocketUserRole(),
             onNewMessage = { item ->
                 host.runSocketOnUi { host.onSocketNewMessage(item) }
+            },
+            onEmergencyAlert = { event, data ->
+                host.runSocketOnUi { host.onSocketEmergencyAlert(event, data) }
             },
             onSignosVitalesPersonal = { data ->
                 host.runSocketOnUi {

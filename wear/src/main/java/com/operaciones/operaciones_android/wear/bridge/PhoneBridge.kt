@@ -41,11 +41,22 @@ class PhoneBridge(private val context: Context) {
         }, executor)
     }
 
-    fun mirrorEmergency(operationId: Int, source: String, deviceLabel: String = "SMARTWATCH", onDone: (Boolean) -> Unit = {}) {
+    fun mirrorEmergency(
+        operationId: Int,
+        source: String,
+        deviceLabel: String = "SMARTWATCH",
+        latitude: Double? = null,
+        longitude: Double? = null,
+        onDone: (Boolean) -> Unit = {}
+    ) {
         val payload = JSONObject().apply {
             put("operation_id", operationId)
             put("source", source)
             put("device_label", deviceLabel)
+            if (latitude != null && longitude != null) {
+                put("lat", latitude)
+                put("lon", longitude)
+            }
             put("timestamp", System.currentTimeMillis())
         }
         sendMessage(PATH_EMERGENCY, payload, onDone)

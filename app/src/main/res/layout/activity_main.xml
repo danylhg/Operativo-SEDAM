@@ -311,23 +311,59 @@
             android:tint="#F8FAFC" />
 
         <LinearLayout
-            android:layout_width="44dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <ImageButton
-                android:id="@+id/btnStreamMedia"
-                android:layout_width="44dp"
+            <LinearLayout
+                android:layout_width="wrap_content"
                 android:layout_height="44dp"
-                android:background="@drawable/bg_bluetooth_button"
-                android:clickable="true"
-                android:contentDescription="Transmitir camara y microfono"
-                android:elevation="16dp"
-                android:focusable="true"
-                android:padding="10dp"
-                android:scaleType="centerInside"
-                android:src="@drawable/ic_stream_camera_on"
-                android:tint="#F8FAFC" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/btnStreamMedia"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_bluetooth_button"
+                    android:clickable="true"
+                    android:contentDescription="Transmitir camara y microfono"
+                    android:elevation="16dp"
+                    android:focusable="true"
+                    android:padding="10dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_stream_camera_on"
+                    android:tint="#F8FAFC" />
+
+                <FrameLayout
+                    android:id="@+id/emergencyInboxContainer"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="8dp">
+
+                    <ImageButton
+                        android:id="@+id/btnEmergencyInbox"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_bluetooth_button"
+                        android:contentDescription="Alertas recibidas"
+                        android:padding="10dp"
+                        android:src="@drawable/ic_emergency_inbox_small" />
+
+                    <TextView
+                        android:id="@+id/emergencyInboxBadge"
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_gravity="top|end"
+                        android:background="@drawable/bg_chat_unread_badge"
+                        android:gravity="center"
+                        android:text="0"
+                        android:textColor="#FFFFFF"
+                        android:textSize="9sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+                </FrameLayout>
+            </LinearLayout>
 
             <ImageButton
                 android:id="@+id/btnDeleteSelectedMeasurement"
@@ -747,6 +783,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="top"
         android:layout_marginTop="14dp"
+        android:elevation="100dp"
         android:orientation="vertical" />
 
     <LinearLayout
