@@ -29,6 +29,30 @@ import {
 // Crea instancia de router
 const router = Router();
 
+// asignado_por referencia usuario, no personal. Para una sesión de personal
+// registramos al administrador activo que respalda la asignación.
+async function resolveAsignadoPor(req, requestedId = null, db = pool) {
+  const candidateId = Number(requestedId || req.user?.sub);
+
+  if (req.user?.tabla !== "personal" && isInt(candidateId)) {
+    const { rows } = await db.query(
+      `SELECT id_usuario FROM usuario
+       WHERE id_usuario = $1 AND activo = TRUE
+       LIMIT 1`,
+      [candidateId]
+    );
+    if (rows[0]?.id_usuario) return rows[0].id_usuario;
+  }
+
+  const { rows } = await db.query(
+    `SELECT id_usuario FROM usuario
+     WHERE rol = 'ADMIN' AND activo = TRUE
+     ORDER BY id_usuario ASC
+     LIMIT 1`
+  );
+  return rows[0]?.id_usuario ?? null;
+}
+
 
 // ===============================
 // PERSONAL
@@ -468,7 +492,13 @@ router.post("/ops/:id/equipos", requireAuth, async (req, res) => {
     const { asignado_por, items } = req.body ?? {};
 
     // Usa asignado_por explícito o usuario autenticado
-    const who = Number(asignado_por || req.user.sub);
+    const who = await resolveAsignadoPor(req, asignado_por);
+    if (!who) {
+      return res.status(409).json({
+        ok: false,
+        mensaje: "No hay un administrador activo para registrar la asignación."
+      });
+    }
 
     // items debe ser arreglo
     if (!Array.isArray(items)) {

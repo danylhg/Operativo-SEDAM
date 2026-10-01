@@ -1,4 +1,6 @@
 *.iml
+.env.docker
+Operaciones/docker/*.sql
 .gradle
 **/.idea/
 /local.properties

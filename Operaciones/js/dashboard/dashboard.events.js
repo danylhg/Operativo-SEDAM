@@ -1,12 +1,12 @@
 // js/dashboard/dashboard.events.js
 
-import { dom } from "./dashboard.dom.js";
+import { dom } from "./dashboard.dom.js?v=20261001-route-panel-tabs";
 import {
   getCurrentOperation,
   saveCurrentOperation,
   isOperationActive
 } from "./dashboard.storage.js";
-import { togglePanel, closeAllPanels, showPersonnelDetail } from "./dashboard.ui.js?v=20260923-draggable-person-popup";
+import { togglePanel, closeAllPanels, showPersonnelDetail } from "./dashboard.ui.js?v=20261001-route-panel-tabs";
 import { saveTacticalData } from "./dashboard.persistence.js";
 import { clearPersonnelLiveCamera, refreshCameraPanelLayout } from "./dashboard.camera.js?v=20260922-person-camera-stream";
 import { dashboardState } from "./dashboard.state.js";
@@ -27,6 +27,20 @@ function bindPanelEvents() {
       togglePanel(dom.routePanel, dom.toggleRoutePanel);
     });
   }
+
+  const setRoutePanelSection = (section) => {
+    document.querySelectorAll("[data-route-panel-tab]").forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.routePanelTab === section);
+    });
+    document.querySelectorAll("[data-route-panel-section]").forEach((panelSection) => {
+      panelSection.classList.toggle("active", panelSection.dataset.routePanelSection === section);
+    });
+    if (dom.routePanel) dom.routePanel.scrollTop = 0;
+  };
+
+  document.querySelectorAll("[data-route-panel-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => setRoutePanelSection(tab.dataset.routePanelTab));
+  });
 
   if (dom.toggleTacticalPanel) {
     dom.toggleTacticalPanel.addEventListener("click", () => {

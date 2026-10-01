@@ -28,7 +28,7 @@ function getPersonDetails(key) {
 }
 
 function abbreviatePuesto(puesto = "") {
-  const normalized = puesto.trim().toLowerCase();
+  const normalized = puesto.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const abbreviations = {
     "sargento primero": "Sgto. 1/o",
     "sargento segundo": "Sgto. 2/o",
@@ -43,8 +43,15 @@ function abbreviatePuesto(puesto = "") {
     "capitan segundo": "Cap. 2/o",
     "capitan": "Cap.",
     "mayor": "May.",
+    "teniente coronel": "Tte. Cor.",
     "coronel": "Cor.",
-    "comandante": "Cmdte."
+    "comandante": "Cmdte.",
+    "general brigadier": "Gral. Brig.",
+    "general de brigada": "Gral. Bda.",
+    "general de division": "Gral. Div.",
+    "contraalmirante": "Contraalm.",
+    "vicealmirante": "Vicealm.",
+    "almirante": "Alm."
   };
   return abbreviations[normalized] || puesto;
 }

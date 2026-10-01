@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Panorama táctico</title>
 
-  <link rel="stylesheet" href="css/dashboard.css?v=20260928-emergency-stack-right" />
+  <link rel="stylesheet" href="css/dashboard.css?v=20261001-route-panel-tabs" />
   <script src="js/api_config.js?v=20260921-api-fix"></script>
   <script src="js/auth_check.js"></script>
 
@@ -152,6 +152,7 @@
       </div>
       <div class="emergencyTopBannerBody">
         <div class="emergencyTopBannerDetails">
+          <span id="emergencyTopBannerDevice" class="emergencyTopBannerDevice" hidden></span>
           <span id="emergencyTopBannerStatus" class="emergencyTopBannerStatus" hidden></span>
           <span id="emergencyTopBannerSender" class="emergencyTopBannerSender" hidden></span>
           <div id="emergencyTopBannerVitals" class="emergencyVitalsGrid"></div>
@@ -288,14 +289,25 @@
   </main>
 
   <aside id="infoPanel" class="glassPanel open">
-    <h2 class="panelTitle">Información de operación</h2>
+    <div class="infoPanelHeading">
+      <h2 id="infoPanelTitle" class="panelTitle">Información de operación</h2>
+      <div id="infoPanelEditAction"></div>
+    </div>
+    <nav id="infoPanelTabs" class="infoPanelTabs" aria-label="Secciones de información de operación"></nav>
     <div id="infoPanelContent" class="infoPanelContent"></div>
   </aside>
 
   <aside id="routePanel" class="glassPanel routeCreatePanel">
-    <h2 class="panelTitle">Crear ruta</h2>
+    <nav class="infoPanelTabs routePanelTabs" aria-label="Herramientas de ruta">
+      <button type="button" class="infoPanelTab active" data-route-panel-tab="zone" aria-label="Zona de operación" title="Zona de operación">
+        <span class="infoPanelTabIcon"><svg class="zoneTabIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V3.5"></path><path d="M6 5.5c3.7-1.8 7.2-1.6 10.7-.2 1.1.4 2.2.4 3.3 0v7.2c-1.1.4-2.2.4-3.3 0-3.5-1.4-7-1.6-10.7.2"></path></svg></span>
+      </button>
+      <button type="button" class="infoPanelTab routePanelTabRoute" data-route-panel-tab="route" aria-label="Crear ruta" title="Crear ruta">
+        <span class="infoPanelTabIcon"><svg class="routeTabIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.1 7-12A7 7 0 0 0 5 9c0 5.9 7 12 7 12Z"></path><circle cx="12" cy="9" r="2.2"></circle></svg></span>
+      </button>
+    </nav>
 
-    <div class="routeSectionCard zoneCard" id="operationZoneControls">
+    <div class="routeSectionCard routePanelSection active zoneCard" id="operationZoneControls" data-route-panel-section="zone">
       <div class="groupTitle">Zona de operación</div>
       <div class="btnGrid" id="zoneEditActions">
         <button id="markZoneBtn" class="btnBeige">Marcar zona</button>
@@ -309,11 +321,10 @@
         </div>
         <div id="zoneCoordinatesSummary" class="zoneCoordinatesSummary" aria-live="polite">Sin coordenadas guardadas.</div>
       </div>
-      <div id="zoneStyleControls" class="styleGrid" style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+      <div id="zoneStyleControls" class="styleGrid">
         <div>
           <label class="fieldLabel">Color</label>
-          <select id="zoneColorSelect"
-            style="width: 100%; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.2);">
+          <select id="zoneColorSelect">
             <option value="blue">Azul</option>
             <option value="red">Rojo</option>
             <option value="green">Verde</option>
@@ -330,7 +341,7 @@
       </div>
     </div>
 
-    <div class="routeSectionCard routeCard routeCreateCard">
+    <div id="routeCreateCard" class="routeSectionCard routePanelSection routeCard routeCreateCard" data-route-panel-section="route">
       <div class="routeCreateTitle">CREAR RUTA</div>
       <div class="routeCreateHint">Selecciona el origen y el destino directamente en el mapa.</div>
       <label class="routeCreateLabel" for="routeVehicleSelect">VEHICULO</label>
@@ -758,7 +769,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/dashboard/dashboard.js?v=20260929-life-line-location-glass"></script>
+  <script type="module" src="js/dashboard/dashboard.js?v=20261001-route-panel-tabs"></script>
 
 </body>
 

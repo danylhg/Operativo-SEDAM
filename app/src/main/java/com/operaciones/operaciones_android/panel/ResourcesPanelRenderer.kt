@@ -27,7 +27,9 @@ internal class ResourcesPanelRenderer(
         BLANCOS("Blancos")
     }
 
-    private val livePersonalLocations = mutableMapOf<Int, Pair<Double, Double>>()
+    private data class LivePersonalLocation(val lat: Double, val lon: Double, val receivedAt: Long)
+
+    private val livePersonalLocations = mutableMapOf<Int, LivePersonalLocation>()
     private val liveVehiculoLocations = mutableMapOf<Int, Pair<Double, Double>>()
     private val liveEquipoLocations = mutableMapOf<Int, Pair<Double, Double>>()
     private val liveDispositivoLocations = mutableMapOf<Int, Pair<Double, Double>>()
@@ -63,7 +65,8 @@ internal class ResourcesPanelRenderer(
     }
 
     fun updatePersonalLocation(id: Int, lat: Double, lon: Double) {
-        livePersonalLocations[id] = lat to lon
+        val receivedAt = System.currentTimeMillis()
+        livePersonalLocations[id] = LivePersonalLocation(lat, lon, receivedAt)
         personalRows[id]?.let { row ->
             row.findViewById<View>(R.id.personalStatus).setBackgroundColor(Color.parseColor("#22c55e"))
             setSelectableForeground(row)
@@ -73,6 +76,13 @@ internal class ResourcesPanelRenderer(
                 host.selectPersonalOnMap(id, lat, lon, label)
             }
             applyPersonalStyle(row, id)
+            row.postDelayed({
+                val stillCurrent = livePersonalLocations[id]?.receivedAt == receivedAt
+                if (stillCurrent && personalRows[id] === row) {
+                    row.findViewById<View>(R.id.personalStatus)
+                        .setBackgroundColor(Color.parseColor("#475569"))
+                }
+            }, ONLINE_STALE_MS)
         }
     }
 
@@ -178,7 +188,7 @@ internal class ResourcesPanelRenderer(
 
         when (tab) {
             ResourceTab.PERSONAL -> {
-                addSectionHeader(list, "Personal asignado")
+                addPersonalSectionHeader(list)
                 if (personalList.isEmpty()) addEmptyState(list, "Cargando personal...")
                 else personalList.sortedBy(::personalHierarchyKey).forEach { addPersonalRow(list, it) }
             }
@@ -226,21 +236,22 @@ internal class ResourcesPanelRenderer(
 
     private fun addPersonalRow(list: LinearLayout, person: PersonalItem) {
         val row = host.getLayoutInflater().inflate(R.layout.item_personal, list, false)
-        val rowLabel = displayName(person)
+        val rowLabel = displayNameWithRank(person)
 
         row.findViewById<TextView>(R.id.personalAvatar).text = person.nombre.firstOrNull()?.toString() ?: "?"
         row.findViewById<TextView>(R.id.personalNombre).text = rowLabel
         row.findViewById<TextView>(R.id.personalRol).text = buildString {
             append(person.rol.ifBlank { "Personal" })
-            if (person.puesto.isNotBlank()) append(" - ${person.puesto}")
+            if (person.puesto.isNotBlank()) append(" - ${abbreviateRank(person.puesto)}")
         }
 
         val live = livePersonalLocations[person.idPersonal]
-        val lat = live?.first ?: person.lat
-        val lon = live?.second ?: person.lon
+        val lat = live?.lat ?: person.lat
+        val lon = live?.lon ?: person.lon
         val hasLocation = lat != null && lon != null
+        val isOnline = live?.let { System.currentTimeMillis() - it.receivedAt <= ONLINE_STALE_MS } == true
         row.findViewById<View>(R.id.personalStatus).setBackgroundColor(
-            Color.parseColor(if (hasLocation) "#22c55e" else "#475569")
+            Color.parseColor(if (isOnline) "#22c55e" else "#475569")
         )
 
         if (lat != null && lon != null) {
@@ -406,6 +417,30 @@ internal class ResourcesPanelRenderer(
         })
     }
 
+    private fun addPersonalSectionHeader(list: LinearLayout) {
+        list.addView(LinearLayout(list.context).apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, dp(list, 10f), 0, dp(list, 8f))
+
+            addView(TextView(context).apply {
+                text = "PERSONAL ASIGNADO"
+                setTextColor(Color.parseColor("#a0c4ff"))
+                textSize = 12f
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(TextView(context).apply {
+                text = "●"
+                setTextColor(Color.parseColor("#22c55e"))
+                textSize = 13f
+            })
+            addView(TextView(context).apply {
+                text = " EN LÍNEA"
+                setTextColor(Color.parseColor("#94a3b8"))
+                textSize = 10f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+        })
+    }
+
     private fun addEmptyState(list: LinearLayout, textValue: String) {
         list.addView(TextView(list.context).apply {
             text = textValue
@@ -418,22 +453,22 @@ internal class ResourcesPanelRenderer(
     private fun applyPersonalStyle(row: View, idPersonal: Int) {
         val selected = selectedPersonalId == idPersonal
         val highlighted = selected || currentUserId == idPersonal
-        row.setBackgroundColor(Color.parseColor(if (highlighted) "#0d1f3c" else "#0d1526"))
+        row.background = roundedBackground(row, if (highlighted) "#0d1f3c" else "#0d1526", 14f)
         row.findViewById<TextView>(R.id.personalNombre).setTextColor(
             Color.parseColor(if (highlighted) "#3b82f6" else "#e2e8f0")
         )
-        row.findViewById<TextView>(R.id.personalAvatar).setBackgroundColor(
-            Color.parseColor(if (selected) "#2563eb" else "#1e3a5f")
+        row.findViewById<TextView>(R.id.personalAvatar).background = roundedBackground(
+            row, if (selected) "#2563eb" else "#1e3a5f", 10f
         )
     }
 
     private fun applyResourceStyle(row: View, selected: Boolean, hasLocation: Boolean) {
-        row.setBackgroundColor(Color.parseColor(if (selected) "#0d1f3c" else "#0d1526"))
+        row.background = roundedBackground(row, if (selected) "#0d1f3c" else "#0d1526", 14f)
         row.findViewById<TextView>(R.id.equipoNombre).setTextColor(
             Color.parseColor(if (selected) "#3b82f6" else "#e2e8f0")
         )
-        row.findViewById<TextView>(R.id.equipoIcon).setBackgroundColor(
-            Color.parseColor(if (selected) "#2563eb" else "#0f172a")
+        row.findViewById<TextView>(R.id.equipoIcon).background = roundedBackground(
+            row, if (selected) "#2563eb" else "#0f172a", 10f
         )
         row.findViewById<TextView>(R.id.equipoTipo).setTextColor(
             Color.parseColor(if (hasLocation) "#22c55e" else "#64748b")
@@ -443,6 +478,42 @@ internal class ResourcesPanelRenderer(
     private fun displayName(person: PersonalItem): String {
         val fullName = "${person.nombre} ${person.apellido}".trim()
         return fullName.ifBlank { person.apodo }.ifBlank { "Personal" }
+    }
+
+    private fun displayNameWithRank(person: PersonalItem): String {
+        val rank = abbreviateRank(person.puesto).ifBlank {
+            person.puesto.trim().ifBlank { person.rol.trim() }
+        }
+        return listOf(rank, displayName(person)).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    private fun abbreviateRank(value: String): String {
+        val rank = value.trim().lowercase()
+        return when {
+            rank.contains("capitán de navío") || rank.contains("capitan de navio") -> "Cap. Nav."
+            rank.contains("capitán de fragata") || rank.contains("capitan de fragata") -> "Cap. Frag."
+            rank.contains("capitán de corbeta") || rank.contains("capitan de corbeta") -> "Cap. Corb."
+            rank.contains("capitán") || rank.contains("capitan") -> "Cap."
+            rank.contains("teniente de navío") || rank.contains("teniente de navio") -> "Tte. Nav."
+            rank.contains("teniente de fragata") -> "Tte. Frag."
+            rank.contains("teniente de corbeta") -> "Tte. Corb."
+            rank.contains("teniente") -> "Tte."
+            rank.contains("sargento") -> "Sgto."
+            rank.contains("cabo") -> "Cbo."
+            rank.contains("marinero") -> "Mro."
+            rank.contains("soldado") -> "Sld."
+            else -> ""
+        }
+    }
+
+    private fun roundedBackground(view: View, color: String, radiusDp: Float) =
+        android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = dp(view, radiusDp).toFloat()
+            setColor(Color.parseColor(color))
+        }
+
+    private companion object {
+        const val ONLINE_STALE_MS = 30_000L
     }
 
     private fun personalHierarchyKey(person: PersonalItem): String {

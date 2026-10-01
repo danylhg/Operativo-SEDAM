@@ -1,7 +1,7 @@
 // js/dashboard/dashboard.js
 
 import { dashboardState } from "./dashboard.state.js";
-import { dom } from "./dashboard.dom.js?v=20260728-web-alert-sound-4";
+import { dom } from "./dashboard.dom.js?v=20261001-route-panel-tabs";
 import {
   getCurrentOperation,
   getOperationDateTime,
@@ -11,8 +11,8 @@ import {
   renderInfoPanel,
   updateChatAvailability,
   openPanel
-} from "./dashboard.ui.js?v=20260923-draggable-person-popup";
-import { bindDashboardEvents } from "./dashboard.events.js";
+} from "./dashboard.ui.js?v=20261001-route-panel-tabs";
+import { bindDashboardEvents } from "./dashboard.events.js?v=20261001-route-panel-tabs";
 import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20260929-life-line-location-glass";
 import {
   setTacticalUI,
@@ -237,7 +237,6 @@ function handleClosedOperation(operacion) {
   if (!["cerrada", "cancelada"].includes(estado)) return false;
 
   operationClosedHandled = true;
-  alert(`La operacion "${operacion.nombre || operacion.titulo || "actual"}" ya fue ${estado}.`);
   window.location.href = "menu_inicial.html";
   return true;
 }

@@ -251,17 +251,42 @@ function renderEquipmentList(items = []) {
 }
 
 function fullPersonName(person) {
-  return [person.puesto, person.nombre, person.apellido].filter(Boolean).join(" ").trim();
+  return [abbreviateRank(person.puesto), person.nombre, person.apellido].filter(Boolean).join(" ").trim();
 }
 
 function vehiclePersonName(vehicle) {
   const name = [
-    vehicle.personal_puesto,
+    abbreviateRank(vehicle.personal_puesto),
     vehicle.personal_nombre || vehicle.asignado_a_nombre,
     vehicle.personal_apellido || vehicle.asignado_a_apellido
   ].filter(Boolean).join(" ").trim();
 
   return [formatRole(vehicle.personal_rol), name || vehicle.asignado_a_apodo].filter(Boolean).join(" ").trim();
+}
+
+function abbreviateRank(value) {
+  const rank = String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (rank.includes("general de division")) return "Gral. Div.";
+  if (rank.includes("general de brigada") || rank.includes("general brigadier")) return "Gral. Brig.";
+  if (rank.includes("teniente coronel")) return "Tte. Cor.";
+  if (rank.includes("capitan primero")) return "Cap. 1/o.";
+  if (rank.includes("sargento primero")) return "Sgto. 1/o.";
+  if (rank.includes("sargento segundo")) return "Sgto. 2/o.";
+  if (rank.includes("subteniente")) return "Subtte.";
+  if (rank.includes("teniente")) return "Tte.";
+  if (rank.includes("coronel")) return "Cor.";
+  if (rank.includes("capitan")) return "Cap.";
+  if (rank.includes("mayor")) return "My.";
+  if (rank.includes("cabo")) return "Cbo.";
+  if (rank.includes("soldado") && rank.includes("marinero")) return "Sldo./Mro.";
+  if (rank.includes("soldado")) return "Sold.";
+  if (rank.includes("marinero")) return "Mar.";
+  return String(value || "").trim();
 }
 
 function equipmentDestination(equipment) {

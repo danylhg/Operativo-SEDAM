@@ -234,7 +234,9 @@ async function init() {
   //   "edit"    → viene del botón "Editar" del dashboard
   // Cualquier otra entrada es inválida y se redirige.
   const entry = sessionStorage.getItem("asignacion_entry");
+  const editSection = sessionStorage.getItem("asignacion_edit_section");
   sessionStorage.removeItem("asignacion_entry");
+  sessionStorage.removeItem("asignacion_edit_section");
 
   if (!entry) {
     const hasActiveOp = !!localStorage.getItem("active_operation_id");
@@ -327,6 +329,41 @@ async function init() {
   }
 
   renderHome();
+
+  if (entry === "edit" && editSection) {
+    if (editSection === "operacion") {
+      opNombreEl?.focus();
+      opNombreEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (editSection === "personal") {
+      state.categoria = "personal";
+      state.pasoPersonal = "cut";
+      const { renderCUT } = await import("./modules/personal/personal.views.js");
+      renderCUT();
+    } else if (editSection === "vehiculos") {
+      state.categoria = "vehiculos";
+      const { renderVehiculos } = await import("./modules/vehiculos/vehiculos.view.js");
+      renderVehiculos();
+    } else if (editSection === "equipos") {
+      state.categoria = "equipo";
+      state.equipoCategoria = "comunicacion";
+      state.equipoDestino = "personal";
+      state.equipoSelectedItems = [];
+      state.equipoSelectedResource = null;
+      state.equipoSelectedCet = state.cetSeleccionados[0] || null;
+      state.equipoSelectedGrupo = null;
+      const { renderEquipoAsignacion } = await import("./modules/equipos/equipos.view.js");
+      renderEquipoAsignacion();
+    } else if (editSection === "dispositivos") {
+      state.categoria = "dispositivos";
+      state.dispositivoSelectedItems = [];
+      state.dispositivoSelectedResource = null;
+      state.dispositivoSelectedCet = state.cetSeleccionados[0] || null;
+      state.dispositivoSelectedGrupo = null;
+      const { renderDispositivoAsignacion } = await import("./modules/dispositivos/dispositivos.view.js");
+      renderDispositivoAsignacion();
+    }
+  }
+
   bindNavigation();
   bindFormEvents();
   bindUserMenu();

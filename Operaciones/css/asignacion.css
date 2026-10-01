@@ -1218,7 +1218,7 @@ body.resourceWideMode .rightCard > .rightFooter .btnPrimary {
   display: grid;
   grid-template-rows: 98px 1fr;
   gap: 10px;
-  text-align: left;
+  text-align: center;
   overflow: hidden;
 }
 
@@ -1276,7 +1276,7 @@ body.resourceWideMode .rightCard > .rightFooter .btnPrimary {
   font-size: 14px !important;
   font-weight: 900 !important;
   line-height: 1.25;
-  text-align: left;
+  text-align: center;
   overflow-wrap: anywhere;
 }
 
@@ -1471,6 +1471,7 @@ body.resourceWideMode .rightCard > .rightFooter .btnPrimary {
 .equipmentVehicleTargetCard {
   display: grid !important;
   grid-template-columns: 78px minmax(0, 1fr);
+  flex: 0 0 auto;
   align-items: start !important;
   justify-content: initial !important;
   gap: 14px !important;

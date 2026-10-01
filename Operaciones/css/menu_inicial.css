@@ -496,6 +496,59 @@ body{
   border-color: #ef4444;
 }
 
+.deleteOperationModal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.deleteOperationModal.hidden { display: none; }
+
+.deleteOperationBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 10, 23, .66);
+}
+
+.deleteOperationCard {
+  position: relative;
+  width: min(100%, 390px);
+  border: 1px solid rgba(148, 163, 184, .36);
+  border-radius: 16px;
+  padding: 22px;
+  background: #0d1d35;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .42);
+}
+
+.deleteOperationCard h2 {
+  margin: 0;
+  color: #edf5ff;
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.deleteOperationActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.deleteOperationActions button {
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 15px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#deleteOperationCancel { background: rgba(148, 163, 184, .2); color: #e2e8f0; }
+#deleteOperationConfirm { background: #dc2626; color: #fff; }
+
 /* ===== Control Submenu Grid ===== */
 .controlGrid{
   display: grid;

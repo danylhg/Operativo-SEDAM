@@ -34,8 +34,44 @@ const searchOpName = document.getElementById("searchOpName");
 const searchOpDate = document.getElementById("searchOpDate");
 const searchOpState = document.getElementById("searchOpState");
 const searchOpAssignment = document.getElementById("searchOpAssignment");
+const deleteOperationModal = document.getElementById("deleteOperationModal");
+const deleteOperationConfirm = document.getElementById("deleteOperationConfirm");
+const deleteOperationCancel = document.getElementById("deleteOperationCancel");
 
 let allOps = [];
+
+function confirmOperationDeletion() {
+  return new Promise((resolve) => {
+    if (!deleteOperationModal || !deleteOperationConfirm || !deleteOperationCancel) {
+      resolve(false);
+      return;
+    }
+
+    const close = (confirmed) => {
+      deleteOperationModal.classList.add("hidden");
+      deleteOperationConfirm.removeEventListener("click", confirm);
+      deleteOperationCancel.removeEventListener("click", cancel);
+      deleteOperationModal.removeEventListener("click", onBackdropClick);
+      document.removeEventListener("keydown", onKeyDown);
+      resolve(confirmed);
+    };
+    const confirm = () => close(true);
+    const cancel = () => close(false);
+    const onBackdropClick = (event) => {
+      if (event.target.matches("[data-delete-operation-cancel]")) cancel();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") cancel();
+    };
+
+    deleteOperationModal.classList.remove("hidden");
+    deleteOperationConfirm.addEventListener("click", confirm);
+    deleteOperationCancel.addEventListener("click", cancel);
+    deleteOperationModal.addEventListener("click", onBackdropClick);
+    document.addEventListener("keydown", onKeyDown);
+    deleteOperationCancel.focus();
+  });
+}
 
 async function init() {
   const token = getToken();
@@ -199,7 +235,7 @@ function renderOps(ops) {
         e.stopPropagation();
 
         const confirmMsg = `¿Seguro que quieres eliminar permanentemente la operación "${op.nombre}"?\n\nEsta acción no se puede deshacer y borrará TODO el historial relacionado.`;
-        if (!confirm(confirmMsg)) return;
+        if (!(await confirmOperationDeletion())) return;
 
         try {
           const res = await apiFetch(`/ops/${op.id_operacion}/remove`, { method: "DELETE" });

@@ -29,9 +29,25 @@ function getPersonDetails(key) {
   return state.personalDetails?.[key] || { apodo: key };
 }
 
+function abbreviatePuesto(puesto = "") {
+  const normalized = puesto.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const abbreviations = {
+    "soldado / marinero": "Sldo./Mro.",
+    "soldado": "Sldo.", "marinero": "Mro.", "cabo": "Cbo.",
+    "sargento segundo": "Sgto. 2/o", "sargento primero": "Sgto. 1/o",
+    "subteniente": "Subtte.", "teniente": "Tte.",
+    "capitan primero": "Cap. 1/o", "capitan segundo": "Cap. 2/o", "capitan": "Cap.",
+    "mayor": "May.", "teniente coronel": "Tte. Cor.", "coronel": "Cor.",
+    "general brigadier": "Gral. Brig.", "general de brigada": "Gral. Bda.",
+    "general de division": "Gral. Div.", "contraalmirante": "Contraalm.",
+    "vicealmirante": "Vicealm.", "almirante": "Alm."
+  };
+  return abbreviations[normalized] || puesto;
+}
+
 function getPersonDisplayName(key) {
   const person = getPersonDetails(key);
-  return [person.puesto, person.nombre, person.apellido].filter(Boolean).join(" ").trim() || key;
+  return [abbreviatePuesto(person.puesto), person.nombre, person.apellido].filter(Boolean).join(" ").trim() || key;
 }
 
 function getPersonSearchText(key) {

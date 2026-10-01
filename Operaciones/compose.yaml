@@ -1,0 +1,51 @@
+name: operaciones
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bdsedam}
+      POSTGRES_USER: ${POSTGRES_USER:-operaciones}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD in .env.docker}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      PORT: 3001
+      PGHOST: db
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER:-operaciones}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD in .env.docker}
+      PGDATABASE: ${POSTGRES_DB:-bdsedam}
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET in .env.docker}
+      CESIUM_TOKEN: ${CESIUM_TOKEN:?Define CESIUM_TOKEN in .env.docker}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-10}
+      DEFAULT_PASSWORD: ${DEFAULT_PASSWORD:-1234}
+      WEBRTC_ICE_SERVERS: ${WEBRTC_ICE_SERVERS:-stun:stun.l.google.com:19302}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-3001}:3001"
+    volumes:
+      - api_storage:/app/api/storage
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  api_storage:

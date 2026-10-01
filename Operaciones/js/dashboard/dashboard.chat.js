@@ -1255,6 +1255,15 @@ function showEmergencyTopBanner(msg) {
     ["PA", bloodPressure || "no disponible"]
   ];
   const isShakeAlert = msg?.alert_source === "SHAKE";
+  const rawDeviceLabel = String(msg?.device_label || "").trim();
+  const rawDeviceModel = String(msg?.device_model || "").trim();
+  const labelParts = rawDeviceLabel.split("|").map((part) => part.trim()).filter(Boolean);
+  const usesExplicitDeviceType = labelParts.length > 1 || /^(SMARTWATCH|WEAR|WEARABLE)$/i.test(labelParts[0] || "");
+  const deviceType = usesExplicitDeviceType ? (labelParts.shift() || "") : "";
+  const deviceNameParts = [...labelParts, rawDeviceModel]
+    .filter((part, index, parts) => part && parts.findIndex((item) => item.toUpperCase() === part.toUpperCase()) === index);
+  if (!usesExplicitDeviceType && rawDeviceLabel) deviceNameParts.unshift(rawDeviceLabel);
+  const deviceName = deviceNameParts.join(" ").trim();
 
   const find = (selector) => card.querySelector(selector);
   const indicator = find(".emergencyTopBannerIndicator");
@@ -1272,9 +1281,11 @@ function showEmergencyTopBanner(msg) {
   if (name) {
     name.textContent = isLifeLine
       ? "EMERGENCIA"
-      : isShakeAlert
-        ? `ALERTA DESDE ${String(msg?.device_label || "DISPOSITIVO MOVIL").toUpperCase()}`
-        : `ALERTA DE ${author}`;
+      : deviceType
+        ? `ALERTA DESDE ${deviceType.toUpperCase()}`
+        : isShakeAlert
+          ? "ALERTA POR AGITACION"
+          : "ALERTA OPERATIVA";
   }
   const time = find("#emergencyTopBannerTime");
   if (time) time.textContent = timestamp;
@@ -1301,9 +1312,14 @@ function showEmergencyTopBanner(msg) {
       vitals.append(status);
     }
   }
+  const device = find("#emergencyTopBannerDevice");
+  if (device) {
+    device.hidden = !deviceName;
+    device.textContent = deviceName.toUpperCase();
+  }
   const status = find("#emergencyTopBannerStatus");
   if (status) {
-    const deviceModel = String(msg?.device_model || "").trim().toUpperCase();
+    const deviceModel = "";
     status.hidden = isShakeAlert
       ? !deviceModel
       : !isLifeLine && !criticalAlerts.length;
@@ -1317,8 +1333,8 @@ function showEmergencyTopBanner(msg) {
   }
   const sender = find("#emergencyTopBannerSender");
   if (sender) {
-    sender.hidden = !isShakeAlert;
-    sender.textContent = isShakeAlert ? reportedUser : "";
+    sender.hidden = !reportedUser;
+    sender.textContent = reportedUser;
   }
   card.classList.toggle("critical-vitals", criticalAlerts.length > 0);
   card.classList.toggle("life-line-alert", isLifeLine);

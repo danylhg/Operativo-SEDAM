@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+api/.env
+api/node_modules
+api/storage
+api/*.log
+**/node_modules
+**/.idea
+**/.git
+**/.gradle
+**/build
+docker/postgres-data
+docker/db-backup

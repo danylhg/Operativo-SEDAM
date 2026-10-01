@@ -1,6 +1,6 @@
 // js/dashboard/dashboard.ui.js
 
-import { dom } from "./dashboard.dom.js";
+import { dom } from "./dashboard.dom.js?v=20261001-route-panel-tabs";
 import {
   escapeHtml,
   getCurrentOperation,
@@ -142,6 +142,7 @@ function normalizePersonal(personal) {
     return {
       cargo: p.rol_en_operacion,
       nombre,
+      puesto: p.puesto || p.personal_puesto || "",
       grupo: tieneSubgrupo ? grupoDirecto : "",
       flotilla: tieneSubgrupo ? grupoPadre : (grupoDirecto || grupoPadre || ""),
       id_personal: p.id_personal ?? null,
@@ -167,6 +168,56 @@ function formatRoleLabel(value) {
 function formatPersonWithRole(nombre, rol) {
   const roleLabel = formatRoleLabel(rol);
   return [roleLabel, String(nombre || "").trim()].filter(Boolean).join(" ");
+}
+
+function abbreviateRank(puesto) {
+  const normalized = String(puesto || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (normalized.includes("general de division")) return "Gral. Div.";
+  if (normalized.includes("general de brigada") || normalized.includes("general brigadier")) return "Gral. Brig.";
+  if (normalized.includes("teniente coronel")) return "Tte. Cor.";
+  if (normalized.includes("capitan primero")) return "Cap. 1/o.";
+  if (normalized.includes("sargento primero")) return "Sgto. 1/o.";
+  if (normalized.includes("sargento segundo")) return "Sgto. 2/o.";
+  if (normalized.includes("subteniente")) return "Subtte.";
+  if (normalized.includes("teniente")) return "Tte.";
+  if (normalized.includes("coronel")) return "Cor.";
+  if (normalized.includes("capitan")) return "Cap.";
+  if (normalized.includes("mayor")) return "My.";
+  if (normalized.includes("cabo")) return "Cbo.";
+  if (normalized.includes("soldado") && normalized.includes("marinero")) return "Sldo./Mro.";
+  if (normalized.includes("soldado")) return "Sold.";
+  if (normalized.includes("marinero")) return "Mar.";
+
+  return String(puesto || "").trim();
+}
+
+function formatPersonWithRank(person) {
+  const rank = abbreviateRank(person?.puesto);
+  return [rank, person?.nombre || person?.name].filter(Boolean).join(" ").trim();
+}
+
+function abbreviateRankInName(value) {
+  return String(value || "")
+    .replace(/\bgeneral\s+de\s+division\b/gi, "Gral. Div.")
+    .replace(/\bgeneral\s+(?:de\s+brigada|brigadier)\b/gi, "Gral. Brig.")
+    .replace(/\bteniente\s+coronel\b/gi, "Tte. Cor.")
+    .replace(/\bcapit[aá]n\s+primero\b/gi, "Cap. 1/o.")
+    .replace(/\bsargento\s+primero\b/gi, "Sgto. 1/o.")
+    .replace(/\bsargento\s+segundo\b/gi, "Sgto. 2/o.")
+    .replace(/\bsoldado\s*\/\s*marinero\b/gi, "Sldo./Mro.")
+    .replace(/\bsubteniente\b/gi, "Subtte.")
+    .replace(/\bteniente\b/gi, "Tte.")
+    .replace(/\bcoronel\b/gi, "Cor.")
+    .replace(/\bcapit[aá]n\b/gi, "Cap.")
+    .replace(/\bmayor\b/gi, "My.")
+    .replace(/\bcabo\b/gi, "Cbo.")
+    .replace(/\bsoldado\b/gi, "Sold.")
+    .replace(/\bmarinero\b/gi, "Mar.");
 }
 
 function makeTrackingKey(kind, id) {
@@ -445,7 +496,7 @@ function renderPersonalHtml(personalNorm) {
   cuts.forEach((cut) => {
     html += `
       <div class="miniCard" style="border-left: 3px solid #10b981;">
-        <p><strong>CUT:</strong> ${personSpan(cut.nombre || cut.name, cut.id_personal, cut.lat, cut.lon, cut)}</p>
+        <p><strong>CUT:</strong> ${personSpan(formatPersonWithRank(cut), cut.id_personal, cut.lat, cut.lon, cut)}</p>
       </div>
     `;
   });
@@ -458,7 +509,7 @@ function renderPersonalHtml(personalNorm) {
     cells.forEach((cell) => {
       if (cell.flotilla !== flotillaNombre) return;
 
-      const nameHtml = personSpan(formatPersonWithRole(cell.nombre, cell.cargo), cell.id_personal, cell.lat, cell.lon, cell);
+      const nameHtml = personSpan(formatPersonWithRole(formatPersonWithRank(cell), cell.cargo), cell.id_personal, cell.lat, cell.lon, cell);
       if (cell.grupo) {
         if (!grupos.has(cell.grupo)) grupos.set(cell.grupo, []);
         grupos.get(cell.grupo).push(nameHtml);
@@ -469,7 +520,7 @@ function renderPersonalHtml(personalNorm) {
 
     html += `
       <div class="miniCard" style="border-left: 3px solid #3b82f6; margin-top:8px;">
-        <p><strong>(CET)</strong> ${personSpan(cet.nombre, cet.id_personal, cet.lat, cet.lon, cet)}</p>
+        <p><strong>(CET)</strong> ${personSpan(formatPersonWithRank(cet), cet.id_personal, cet.lat, cet.lon, cet)}</p>
         <p style="margin-top:8px;"><strong>${escapeHtml(labelConPrefijo("Flotilla", flotillaNombre))}</strong></p>
     `;
 
@@ -531,7 +582,7 @@ function getVehiculoPersonalNombre(row) {
 
   if (nombreCompleto) {
     const baseName = row.personal_puesto
-      ? `${row.personal_puesto} ${nombreCompleto}`.trim()
+      ? `${abbreviateRank(row.personal_puesto)} ${nombreCompleto}`.trim()
       : nombreCompleto;
     return formatPersonWithRole(baseName, row.personal_rol);
   }
@@ -551,7 +602,7 @@ function renderVehiculosHierarchyHtml(vehiculos) {
       : (veh.codigo_interno || veh.alias || "Vehiculo");
 
     const nombreHtml = trackingLabel(nombre, "V", veh.id_vehiculo, veh.latitud, veh.longitud, veh);
-    html += `<div class="miniCard"><p>${nombreHtml}</p>`;
+    html += `<article class="miniCard vehicleCard"><p class="vehicleCardName">${nombreHtml}</p>`;
 
     // flotilla_nombre → { directos: [], grupos: Map<string, []> }
     const cets = new Map();
@@ -625,7 +676,7 @@ function renderVehiculosHierarchyHtml(vehiculos) {
       html += `<p style="padding-left:12px; margin:2px 0; font-size:12px;">-- ${escapeHtml(p)}</p>`;
     });
 
-    html += "</div>";
+    html += "</article>";
   }
 
   return html;
@@ -690,7 +741,7 @@ function normalizeEquipos(equipos) {
         tipo_destino: tipoDestino,
         id_personal_asignado: firstValue(e.ueo_id_personal, e.id_personal_asignado, e.id_personal, e.personal_id),
         id_vehiculo_asignado: firstValue(e.id_vehiculo_contexto, e.id_vehiculo_asignado, e.id_vehiculo, e.vehiculo_id),
-        asignadoA: e.asignado_a_personal || "",
+        asignadoA: abbreviateRankInName(e.asignado_a_personal),
         personalRol: e.personal_rol || "",
         vehiculo: tipoDestino === "VEHICULO"
           ? [e.asignado_a_vehiculo, e.vehiculo_alias].filter(Boolean).join(" - ")
@@ -702,7 +753,10 @@ function normalizeEquipos(equipos) {
         flotillas: flotillasNorm
       };
     }
-    return e;
+    return {
+      ...e,
+      asignadoA: abbreviateRankInName(e.asignadoA || e.asignado_a_personal || "")
+    };
   });
 }
 
@@ -735,8 +789,8 @@ function renderEquiposGroupedHtml(equiposNorm) {
     const destinoFinal = contexto.has(String(destinoBase).trim().toLowerCase()) ? "" : destinoRaw;
 
     return `
-      <div class="miniCard">
-        <p><strong>Nombre de equipo:</strong> ${trackingLabel(e.nombre || "Equipo", "E", e.id_equipo, e.latitud ?? e.lat, e.longitud ?? e.lng ?? e.lon, e)}</p>
+      <div class="miniCard assetCard">
+        <p class="assetCardName">${trackingLabel(e.nombre || "Equipo", "E", e.id_equipo, e.latitud ?? e.lat, e.longitud ?? e.lng ?? e.lon, e)}</p>
         <p><strong>Identificador:</strong> ${escapeHtml(e.numero || "Sin numero")}</p>
         ${flotillas.length ? `<p style="margin-top:8px;"><strong>Flotilla:</strong> ${escapeHtml(flotillas.join(", "))}</p>` : ""}
         ${grupos.length ? `<p style="margin-top:8px;"><strong>Grupo:</strong> ${escapeHtml(grupos.join(", "))}</p>` : ""}
@@ -757,7 +811,7 @@ function normalizeDispositivos(dispositivos) {
   return dispositivos.map((d) => {
     const tipo = String(d.tipo || "").toUpperCase();
     const asignadoA = [
-      d.personal_puesto,
+      abbreviateRank(d.personal_puesto),
       d.personal_nombre,
       d.personal_apellido
     ].filter(Boolean).join(" ").trim() ||
@@ -907,8 +961,8 @@ function renderDispositivosGroupedHtml(dispositivosNorm) {
     const ubicacion = normalizeTrackingCoords(d.latitud, d.longitud);
 
     return `
-      <div class="miniCard">
-        <p><strong>Dispositivo:</strong> ${trackingLabel(nombre, "D", d.id_dispositivo, d.latitud, d.longitud, d)}</p>
+      <div class="miniCard assetCard">
+        <p class="assetCardName">${trackingLabel(nombre, "D", d.id_dispositivo, d.latitud, d.longitud, d)}</p>
         <p><strong>Identificador:</strong> ${escapeHtml(codigo)}</p>
         ${d.sistema_operativo ? `<p><strong>Sistema:</strong> ${escapeHtml(d.sistema_operativo)}</p>` : ""}
         ${d.asignadoA ? `<p><strong>Custodio:</strong> ${escapeHtml(d.asignadoA)}</p>` : ""}
@@ -926,9 +980,12 @@ function renderDispositivosGroupedHtml(dispositivosNorm) {
   `).join("");
 }
 
+let infoPanelActiveTab = "operacion";
+
 export function renderInfoPanel(bdData = null) {
   const container = document.getElementById("infoPanelContent");
-  if (!container) return;
+  const tabsContainer = document.getElementById("infoPanelTabs");
+  if (!container || !tabsContainer) return;
 
   const operacion = bdData?.operacion ?? getCurrentOperation() ?? {};
 
@@ -957,7 +1014,8 @@ export function renderInfoPanel(bdData = null) {
       : (Array.isArray(operacion.dispositivos) ? operacion.dispositivos : []);
   }
 
-  const esActiva = (operacion.phase || operacion.estado?.toLowerCase?.()) === "activa";
+  const faseOperacion = String(operacion.phase || operacion.estado || "planificada").toLowerCase();
+  const esPlanificada = faseOperacion === "planificada";
 
   const titulo = operacion.nombre || operacion.title || operacion.titulo || operacion.name || "Sin titulo";
   const descripcion = operacion.descripcion || operacion.description || operacion.desc || "Sin descripcion";
@@ -1006,49 +1064,78 @@ export function renderInfoPanel(bdData = null) {
   const equiposHtml = renderEquiposGroupedHtml(equiposNorm);
   const dispositivosHtml = renderDispositivosGroupedHtml(dispositivosNorm);
 
-  container.innerHTML = `
+  const infoTabs = [
+    ["operacion", "Operación", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M9 3h6v4H9zM8.5 11h7M8.5 15h7"></path></svg>`],
+    ["personal", "Personal", `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.2"></circle><path d="M5.5 20c.5-4 2.8-6 6.5-6s6 2 6.5 6"></path></svg>`],
+    ["vehiculos", "Vehículos", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11h16l-1.4-4H5.4z"></path><path d="M3 11v6h18v-6M6.5 17v2M17.5 17v2"></path><circle cx="7" cy="14" r="1"></circle><circle cx="17" cy="14" r="1"></circle></svg>`],
+    ["equipos", "Equipos", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16v11H4z"></path><path d="M9 8V5h6v3M4 13h16M10 13h4"></path></svg>`],
+    ["dispositivos", "Dispositivos", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2"></rect><path d="M10 5h4M11 18.5h2"></path></svg>`]
+  ];
+  if (!infoTabs.some(([key]) => key === infoPanelActiveTab)) infoPanelActiveTab = "operacion";
+
+  const sectionTitles = {
+    operacion: "Información de operación",
+    personal: "Personal asignado",
+    vehiculos: "Vehículos asignados",
+    equipos: "Equipos asignados",
+    dispositivos: "Dispositivos asignados"
+  };
+
+  const editButton = (section, label) => esPlanificada ? `
+    <button type="button" class="infoSectionEditBtn" data-edit-section="${section}" aria-label="Editar ${label}" title="Editar ${label}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l11-11-4-4L4 16v4z"></path><path d="M13.5 6.5l4 4"></path></svg>
+    </button>` : "";
+
+  const tabContents = {
+    operacion: `
     <div class="infoBlock">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-        <h3 style="margin:0;">Operacion</h3>
-        ${!esActiva ? `<button id="editOpInfoBtn" style="padding:4px 12px; font-size:12px; font-weight:700; border-radius:8px; border:1px solid #38bdf8; background:rgba(56,189,248,0.12); color:#38bdf8; cursor:pointer;">Editar</button>` : ""}
-      </div>
       <p><strong>Titulo:</strong> ${escapeHtml(titulo)}</p>
       <p><strong>Descripcion:</strong> ${escapeHtml(descripcion)}</p>
       <p><strong>Fecha programada:</strong> ${escapeHtml(fechaP)}</p>
       <p><strong>Hora programada:</strong> ${escapeHtml(horaP)}</p>
       <p><strong>Creada:</strong> ${escapeHtml(fecha)}</p>
-    </div>
+    </div>`,
+    personal: `<div class="infoBlock">${personalHtml}</div>`,
+    vehiculos: `<div class="infoBlock">${vehiculosHtml}</div>`,
+    equipos: `<div class="infoBlock">${equiposHtml}</div>`,
+    dispositivos: `<div class="infoBlock">${dispositivosHtml}</div>`
+  };
 
-    <div class="infoBlock">
-      <h3>Personal asignado</h3>
-      ${personalHtml}
-    </div>
+  const activeTitle = sectionTitles[infoPanelActiveTab] || sectionTitles.operacion;
+  const panelTitle = document.getElementById("infoPanelTitle");
+  const panelEditAction = document.getElementById("infoPanelEditAction");
+  if (panelTitle) panelTitle.textContent = activeTitle;
+  if (panelEditAction) panelEditAction.innerHTML = editButton(infoPanelActiveTab, activeTitle.toLowerCase());
 
-    <div class="infoBlock">
-      <h3>Vehiculos asignados</h3>
-      ${vehiculosHtml}
-    </div>
+  tabsContainer.innerHTML = infoTabs.map(([key, label, icon]) => `
+    <button type="button" class="infoPanelTab${key === infoPanelActiveTab ? " active" : ""}" data-info-tab="${key}" aria-label="${label}" title="${label}">
+      <span class="infoPanelTabIcon">${icon}</span>
+    </button>
+  `).join("");
+  container.innerHTML = `<div class="infoPanelTabContent">${tabContents[infoPanelActiveTab]}</div>`;
 
-    <div class="infoBlock">
-      <h3>Equipos asignados</h3>
-      ${equiposHtml}
-    </div>
+  tabsContainer.querySelectorAll("[data-info-tab]").forEach((tab) => {
+    tab.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const nextTab = tab.dataset.infoTab;
+      if (!nextTab || nextTab === infoPanelActiveTab) return;
+      infoPanelActiveTab = nextTab;
+      renderInfoPanel(bdData);
+      dom.infoPanel?.classList.add("open");
+      dom.toggleInfoPanel?.classList.add("active");
+    });
+  });
 
-    <div class="infoBlock">
-      <h3>Dispositivos asignados</h3>
-      ${dispositivosHtml}
-    </div>
-  `;
-
-  const editBtn = document.getElementById("editOpInfoBtn");
-  if (editBtn) {
-    editBtn.addEventListener("click", () => {
+  document.querySelectorAll("#infoPanel [data-edit-section]").forEach((editBtn) => {
+    editBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
       const op = getCurrentOperation();
       if (op?.id) localStorage.setItem("active_operation_id", op.id);
       sessionStorage.setItem("asignacion_entry", "edit");
+      sessionStorage.setItem("asignacion_edit_section", editBtn.dataset.editSection || "operacion");
       window.location.href = "asignacion.html";
     });
-  }
+  });
 
   container.onclick = (e) => {
     if (e.target.closest(".person-link")) return;

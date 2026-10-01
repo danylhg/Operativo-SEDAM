@@ -140,6 +140,17 @@
     </section>
   </main>
 
+  <div id="deleteOperationModal" class="deleteOperationModal hidden" role="dialog" aria-modal="true" aria-labelledby="deleteOperationTitle">
+    <div class="deleteOperationBackdrop" data-delete-operation-cancel></div>
+    <div class="deleteOperationCard">
+      <h2 id="deleteOperationTitle">¿Seguro que quieres eliminar esta operación?</h2>
+      <div class="deleteOperationActions">
+        <button id="deleteOperationCancel" type="button">Cancelar</button>
+        <button id="deleteOperationConfirm" type="button">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/menu_inicial.js"></script>
 </body>
 

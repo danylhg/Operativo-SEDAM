@@ -178,6 +178,7 @@
                     android:stateListAnimator="@null"
                     android:layout_gravity="center_horizontal"
                     android:layout_marginTop="8dp"/>
+
             </LinearLayout>
 
             <!-- Spacer bottom -->
@@ -189,21 +190,20 @@
         </LinearLayout>
     </ScrollView>
 
-    <!-- Botón dirección API (esquina superior derecha) -->
     <Button
         android:id="@+id/btnApiAddress"
         android:layout_width="wrap_content"
-        android:layout_height="36dp"
+        android:layout_height="44dp"
         android:layout_gravity="top|end"
-        android:layout_margin="12dp"
-        android:minWidth="0dp"
-        android:minHeight="0dp"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="0dp"
-        android:text="DIRECCIÓN"
-        android:textColor="#a8b6cf"
-        android:textSize="10sp"
-        android:textStyle="bold"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
         android:backgroundTint="#17345e"
-        android:alpha="0.7"/>
+        android:minWidth="0dp"
+        android:paddingHorizontal="16dp"
+        android:text="DIRECCIONES"
+        android:textColor="#dbeafe"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <!-- Botón dirección API (esquina superior derecha) -->
 </FrameLayout>

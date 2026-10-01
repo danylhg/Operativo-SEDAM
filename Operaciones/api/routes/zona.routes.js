@@ -54,7 +54,7 @@ router.post("/ops/:id/zona", requireAuth, async (req, res) => {
   const id_operacion = Number(req.params.id);
   if (!isInt(id_operacion)) return res.status(400).json({ ok: false, mensaje: "id invalido" });
 
-  if (!["ADMIN", "CUT"].includes(req.user.rol))
+  if (!["ADMIN", "CUT"].includes(String(req.user?.rol || "").toUpperCase()))
     return res.status(403).json({ ok: false, mensaje: "Solo ADMIN o CUT pueden definir la zona" });
 
   const { nombre, geometria, color } = req.body ?? {};
@@ -66,9 +66,33 @@ router.post("/ops/:id/zona", requireAuth, async (req, res) => {
     return res.status(400).json({ ok: false, mensaje: "No se pudo calcular el centroide" });
 
   const zoom = 1000;
+  // zona_operacion.creado_por referencia usuario(id_usuario). Un CUT puede
+  // autenticarse desde personal, por lo que su id_personal no debe insertarse
+  // en esa columna (causaba una violacion de llave foranea al guardar).
+  let creadoPorUsuario = String(req.user?.tabla || "").toLowerCase() === "usuario"
+    ? Number(req.user.sub)
+    : null;
 
   try {
     if (!(await requirePlannedOperation(id_operacion, res))) return;
+
+    // La columna es obligatoria. Para una zona definida por personal se usa
+    // el usuario web que creo la operacion, que es una referencia valida.
+    if (!creadoPorUsuario) {
+      const { rows: operationRows } = await pool.query(
+        `SELECT creada_por FROM operacion WHERE id_operacion = $1 LIMIT 1`,
+        [id_operacion]
+      );
+      creadoPorUsuario = Number(operationRows[0]?.creada_por) || null;
+    }
+
+    if (!creadoPorUsuario) {
+      return res.status(422).json({
+        ok: false,
+        mensaje: "La operacion no tiene un usuario creador valido para guardar la zona"
+      });
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO zona_operacion
          (id_operacion, nombre, geometria, centroide_lat, centroide_lon, zoom_inicial, color, creado_por)
@@ -84,7 +108,7 @@ router.post("/ops/:id/zona", requireAuth, async (req, res) => {
          fecha_creacion = NOW()
        RETURNING *`,
       [id_operacion, nombre || "Zona principal", JSON.stringify(geometria),
-        centroide.lat, centroide.lon, zoom, color || "#3b82f6", req.user.sub]
+        centroide.lat, centroide.lon, zoom, color || "#3b82f6", creadoPorUsuario]
     );
     res.json({ ok: true, zona: rows[0] });
   } catch (err) {

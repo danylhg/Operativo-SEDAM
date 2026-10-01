@@ -1,5 +1,6 @@
 import { state } from "../../core/state.js";
 import { saveAsignacionActual } from "../asignacion/asignacion.service.js";
+import { getPersonDisplayName } from "../personal/personal.helpers.js";
 
 // BACKEND: asignarEquipo() se vuelve async con POST /ops/:id/equipos
 // Recibe id_equipo, tipo_destino ('personal' o 'vehiculo'), id_personal o id_vehiculo, categoria
@@ -69,20 +70,20 @@ export function getDestinoFormateado(asignacion) {
     if (!personaNombre) return "Personal desconocido";
 
     // Si la persona es CUT
-    if (state.cutSeleccionado === personaNombre) return personaNombre;
+    if (state.cutSeleccionado === personaNombre) return getPersonDisplayName(personaNombre);
 
     // Si la persona es un CET
-    if (state.cetSeleccionados.includes(personaNombre)) return personaNombre;
+    if (state.cetSeleccionados.includes(personaNombre)) return getPersonDisplayName(personaNombre);
 
     // Buscar el CET responsable de esa célula
     for (const cet of state.cetSeleccionados) {
       const celulas = state.asignacionCelulas[cet] || [];
       if (celulas.includes(personaNombre)) {
-        return personaNombre;
+        return getPersonDisplayName(personaNombre);
       }
     }
 
-    return personaNombre;
+    return getPersonDisplayName(personaNombre);
 
   } else if (asignacion.tipo_destino === 'vehiculo') {
     const veh = state.vehiclesList.find(v => v.id === asignacion.id_vehiculo);

@@ -1613,7 +1613,15 @@ async function saveOperationZoneToBackend(points, nombre, colorName) {
   const API_BASE = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
   const token = localStorage.getItem("token");
   const opId = localStorage.getItem("active_operation_id");
-  if (!token || !opId) return null;
+  if (!token || !opId) {
+    const mensaje = !token
+      ? "No se guardo la zona: la sesion no es valida. Inicia sesion nuevamente."
+      : "No se guardo la zona: no hay una operacion activa seleccionada.";
+    console.error("[ZONA]", mensaje);
+    if (dom.tbHint) dom.tbHint.textContent = mensaje;
+    alert(mensaje);
+    return null;
+  }
 
   const coordinates = pointsToPolygonCoordinates(points);
   if (!coordinates) {
@@ -1643,15 +1651,19 @@ async function saveOperationZoneToBackend(points, nombre, colorName) {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) {
-      const mensaje = data?.mensaje || "No se pudo guardar la zona.";
+      const mensaje = data?.mensaje || `No se pudo guardar la zona (HTTP ${res.status}).`;
+      console.error("[ZONA] El servidor rechazo el guardado:", { status: res.status, data });
       if (dom.tbHint) dom.tbHint.textContent = mensaje;
+      alert(mensaje);
       return null;
     }
 
     return data.zona || null;
   } catch (err) {
     console.warn("[ZONA] Error guardando zona de operación:", err);
-    if (dom.tbHint) dom.tbHint.textContent = "Sin conexión — zona creada localmente.";
+    const mensaje = "No se pudo conectar al servidor. La zona no se guardo.";
+    if (dom.tbHint) dom.tbHint.textContent = mensaje;
+    alert(mensaje);
     return null;
   }
 }
@@ -2718,29 +2730,13 @@ async function finishOperationZonePerimeter() {
     colorName
   );
 
-  // Fallback local: si el backend falla, construimos la zona localmente
+  // La zona solo se considera creada cuando el servidor confirma el guardado.
+  // Antes se dibujaba una copia local tras un error y se mostraba como guardada;
+  // al recargar desaparecia y ocultaba la causa real.
   if (!zona) {
-    const coordinates = pointsToPolygonCoordinates(dashboardState.drawingPoints);
-    if (!coordinates) return;
-
-    const center = calculateCentroid(dashboardState.drawingPoints);
-    zona = {
-      id_zona: `local_${Date.now()}`,
-      nombre: label || "Zona de operacion",
-      color: COLOR_HEX_MAP[colorName] || COLOR_HEX_MAP.blue,
-      geometria: {
-        type: "Polygon",
-        coordinates,
-        meta: {
-          outline_width: getLineWidth()
-        }
-      },
-      centroide_lat: center?.lat,
-      centroide_lon: center?.lng,
-      zoom_inicial: 1000
-    };
-
-    console.warn("[ZONA] Backend no disponible, zona creada localmente.");
+    if (dom.tbHint) dom.tbHint.textContent = "La zona no se guardo. Corrige el error mostrado e intentalo de nuevo.";
+    setTacticalUI();
+    return;
   }
 
   buildOperationZoneEntity(zona);
@@ -3773,7 +3769,14 @@ function getGridNamesFromInputs() {
 async function saveGridToBackend() {
   const token = localStorage.getItem("token");
   const opId = localStorage.getItem("active_operation_id");
-  if (!token || !opId || !dom.gridSizeSelect) return null;
+  if (!token || !opId || !dom.gridSizeSelect) {
+    const mensaje = !token
+      ? "No se guardo la cuadricula: la sesion no es valida. Inicia sesion nuevamente."
+      : "No se guardo la cuadricula: no hay una operacion activa seleccionada.";
+    console.error("[GRID]", mensaje);
+    setRouteInfo(mensaje);
+    return null;
+  }
 
   const API_BASE = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
   const payload = {
@@ -3797,10 +3800,11 @@ async function saveGridToBackend() {
       throw new Error(data?.mensaje || "No se pudo guardar la cuadricula.");
     }
 
+    setRouteInfo("Cuadricula guardada en el servidor.");
     return data.grid || data.cuadricula || null;
   } catch (err) {
     console.error("[GRID] Error guardando cuadricula:", err);
-    setRouteInfo("No se pudo guardar la cuadricula en el servidor.");
+    setRouteInfo(`No se pudo guardar la cuadricula: ${err.message || "error de conexion"}`);
     return null;
   }
 }

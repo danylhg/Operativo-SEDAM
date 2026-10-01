@@ -1604,7 +1604,9 @@ export function initCesium() {
     homeButton: true,
     fullscreenButton: false,
     selectionIndicator: false,
-    infoBox: false
+    infoBox: false,
+    // La interfaz ya incorpora sus propios créditos y no muestra la marca del visor.
+    creditContainer: document.createElement("div")
   });
 
   dashboardState.viewer = viewer;

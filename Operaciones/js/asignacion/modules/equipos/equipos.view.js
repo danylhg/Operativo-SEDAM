@@ -1,6 +1,6 @@
 import { panel, btnAccion, vehiculosLeftEl } from "../../core/dom.js";
 import { state } from "../../core/state.js";
-import { getGrupoDeCelula } from "../personal/personal.helpers.js";
+import { getGrupoDeCelula, getPersonDisplayName } from "../personal/personal.helpers.js";
 import { saveAsignacionActual } from "../asignacion/asignacion.service.js";
 import {
   clearPanel,
@@ -19,7 +19,6 @@ import {
 } from "./equipos.helpers.js";
 import { asignarEquipo, removerAsignacionEquipo } from "./equipos.service.js";
 import {
-  getResumenVehiculoDetallado,
   getVehiclesUsedInAssignments
 } from "../vehiculos/vehiculos.helpers.js";
 import { saveOperacionActual, syncOperacionCompleta } from "../operacion/operacion.service.js";
@@ -46,35 +45,21 @@ function getNombrePersonalById(idPersonal) {
   return null;
 }
 
-function getPersonDetails(key) {
-  return state.personalDetails?.[key] || { apodo: key };
-}
+function getNombresEquiposAsignadosAVehiculo(idVehiculo) {
+  const equipos = [
+    ...state.communicationEquipmentList,
+    ...state.tacticalEquipmentList
+  ];
 
-function abbreviatePuesto(puesto = "") {
-  const normalized = puesto.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const abbreviations = {
-    "sargento primero": "Sgto. 1/o",
-    "sargento segundo": "Sgto. 2/o",
-    "sargento": "Sgto.",
-    "cabo": "Cbo.",
-    "soldado": "Sldo.",
-    "marinero": "Mro.",
-    "soldado / marinero": "Sldo./Mro.",
-    "teniente": "Tte.",
-    "subteniente": "Subtte.",
-    "capitan primero": "Cap. 1/o",
-    "capitan segundo": "Cap. 2/o",
-    "capitan": "Cap.",
-    "mayor": "May.",
-    "coronel": "Cor.",
-    "comandante": "Cmdte."
-  };
-  return abbreviations[normalized] || puesto;
-}
-
-function getPersonDisplayName(key) {
-  const person = getPersonDetails(key);
-  return [abbreviatePuesto(person.puesto), person.nombre, person.apellido].filter(Boolean).join(" ").trim() || key;
+  return state.asignacionEquipos
+    .filter(asignacion =>
+      asignacion.tipo_destino === "vehiculo" &&
+      String(asignacion.id_vehiculo) === String(idVehiculo)
+    )
+    .map(asignacion => {
+      const equipo = equipos.find(item => String(item.id) === String(asignacion.id_equipo));
+      return equipo?.nombre || `Equipo ${asignacion.id_equipo}`;
+    });
 }
 
 function enfocarDestinoAsignado(asignacion) {
@@ -765,7 +750,7 @@ export function renderEquipoLeftVehiculo() {
   }
 
   usados.forEach(v => {
-    const resumen = getResumenVehiculoDetallado(v.id);
+    const equiposAsignados = getNombresEquiposAsignadosAVehiculo(v.id);
 
     const card = document.createElement("div");
     card.className = "item equipmentVehicleTargetCard" + (state.equipoSelectedResource === v.name ? " selected" : "");
@@ -802,40 +787,17 @@ export function renderEquipoLeftVehiculo() {
     sub.className = "equipmentVehicleTargetMeta";
     sub.style.fontSize = "12px";
     sub.style.opacity = "0.8";
-    sub.textContent = [
-      v.serialNumber ? `Código: ${v.serialNumber}` : "",
-      v.status ? `Estado: ${v.status}` : ""
-    ].filter(Boolean).join(" | ");
+    sub.textContent = v.serialNumber ? `Código: ${v.serialNumber}` : "";
 
-    const info1 = document.createElement("div");
-    info1.className = "equipmentVehicleTargetDetail";
-    info1.textContent = `Flotilla: ${resumen.flotilla}`;
-
-    const info2 = document.createElement("div");
-    info2.className = "equipmentVehicleTargetDetail";
-    info2.textContent = `Grupo: ${resumen.grupo}`;
-
-    const info3 = document.createElement("div");
-    info3.className = "equipmentVehicleTargetDetail";
-    info3.textContent = `Personas: ${resumen.personas}`;
-
-    const estadoAsignado = document.createElement("div");
-    estadoAsignado.className = "equipmentVehicleTargetBadge";
-    estadoAsignado.textContent = "Asignado";
-    estadoAsignado.style.width = "max-content";
-    estadoAsignado.style.padding = "3px 8px";
-    estadoAsignado.style.borderRadius = "999px";
-    estadoAsignado.style.background = "#e9f8ee";
-    estadoAsignado.style.color = "#1f7a3f";
-    estadoAsignado.style.fontSize = "12px";
-    estadoAsignado.style.fontWeight = "800";
+    const equipmentInfo = document.createElement("div");
+    equipmentInfo.className = "equipmentVehicleTargetDetail";
+    equipmentInfo.textContent = equiposAsignados.length
+      ? `${equiposAsignados.length === 1 ? "Equipo" : "Equipos"}: ${equiposAsignados.join(", ")}`
+      : "Sin equipo asignado";
 
     content.appendChild(title);
-    content.appendChild(sub);
-    content.appendChild(estadoAsignado);
-    content.appendChild(info1);
-    content.appendChild(info2);
-    content.appendChild(info3);
+    if (sub.textContent) content.appendChild(sub);
+    content.appendChild(equipmentInfo);
 
     card.appendChild(content);
 

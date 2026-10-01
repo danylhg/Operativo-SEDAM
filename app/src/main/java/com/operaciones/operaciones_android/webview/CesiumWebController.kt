@@ -351,6 +351,25 @@ class CesiumWebController(
         }
     }
 
+    /** Pulso compacto para distinguir el origen de una alerta entrante sin cubrir el mapa. */
+    fun pulseIncomingEmergencyAtLocation(idPersonal: Int, latitude: Double, longitude: Double) {
+        webView.post {
+            webView.evaluateJavascript(
+                "(function(){ if(typeof pulseIncomingEmergencyAtLocation==='function') pulseIncomingEmergencyAtLocation($idPersonal, $latitude, $longitude); })();",
+                null
+            )
+        }
+    }
+
+    fun pulseIncomingEmergencyPersonal(idPersonal: Int) {
+        webView.post {
+            webView.evaluateJavascript(
+                "(function(){ if(typeof pulseIncomingEmergencyPersonal==='function') pulseIncomingEmergencyPersonal($idPersonal); })();",
+                null
+            )
+        }
+    }
+
     fun clearEmergencyPulse(idPersonal: Int) {
         webView.post {
             webView.evaluateJavascript(

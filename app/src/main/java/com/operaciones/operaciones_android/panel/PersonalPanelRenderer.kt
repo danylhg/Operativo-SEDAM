@@ -150,14 +150,16 @@ internal class PersonalPanelRenderer(
     private fun addPersonRow(list: LinearLayout, person: PersonalItem) {
         val row = host.getLayoutInflater().inflate(R.layout.item_personal, list, false)
         val fullName = "${person.nombre} ${person.apellido}".trim()
-        val rowLabel = fullName.ifBlank { person.apodo }
+        val rowLabel = listOf(abbreviateRank(person.puesto), fullName.ifBlank { person.apodo })
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
 
         row.findViewById<TextView>(R.id.personalAvatar).text =
             person.nombre.firstOrNull()?.toString() ?: "?"
         row.findViewById<TextView>(R.id.personalNombre).text = rowLabel
         row.findViewById<TextView>(R.id.personalRol).text = buildString {
             if (person.rol.isNotBlank()) append(person.rol)
-            if (person.puesto.isNotBlank()) append(" - ${person.puesto}")
+            if (person.puesto.isNotBlank()) append(" - ${abbreviateRank(person.puesto)}")
         }
 
         val live = liveLocations[person.idPersonal]
@@ -223,6 +225,27 @@ internal class PersonalPanelRenderer(
     private fun displayName(person: PersonalItem): String {
         val fullName = "${person.nombre} ${person.apellido}".trim()
         return fullName.ifBlank { person.apodo }
+    }
+
+    private fun abbreviateRank(value: String): String {
+        val rank = value.trim().lowercase()
+        return when {
+            rank.contains("general de division") -> "Gral. Div."
+            rank.contains("general de brigada") || rank.contains("general brigadier") -> "Gral. Brig."
+            rank.contains("teniente coronel") -> "Tte. Cor."
+            rank.contains("sargento primero") -> "Sgto. 1/o."
+            rank.contains("sargento segundo") -> "Sgto. 2/o."
+            rank.contains("subteniente") -> "Subtte."
+            rank.contains("teniente") -> "Tte."
+            rank.contains("coronel") -> "Cor."
+            rank.contains("capitan") || rank.contains("capitán") -> "Cap."
+            rank.contains("mayor") -> "My."
+            rank.contains("cabo") -> "Cbo."
+            rank.contains("soldado") && rank.contains("marinero") -> "Sldo./Mro."
+            rank.contains("soldado") -> "Sold."
+            rank.contains("marinero") -> "Mar."
+            else -> value.trim()
+        }
     }
 
     private fun normalize(value: String): String = value.trim().lowercase()

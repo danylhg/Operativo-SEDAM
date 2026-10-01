@@ -1,11 +1,12 @@
 FROM node:20-alpine
 
-WORKDIR /app
+WORKDIR /app/api
 
-COPY package*.json ./
-RUN npm install
+COPY api/package*.json ./
+RUN npm ci --omit=dev
 
-COPY . .
+COPY . /app
 
-EXPOSE 3000
-CMD ["node", "seed-runner.js"]
+EXPOSE 3001
+
+CMD ["node", "server.js"]

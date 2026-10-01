@@ -171,8 +171,10 @@ class MainActivity : AppCompatActivity(),
         override fun onReceive(context: android.content.Context, intent: Intent) {
             if (intent.action == PhoneWearListenerService.ACTION_WEAR_ALERT) {
                 val source = intent.getStringExtra(PhoneWearListenerService.EXTRA_WEAR_ALERT_SOURCE).orEmpty()
-                val device = intent.getStringExtra(PhoneWearListenerService.EXTRA_WEAR_ALERT_DEVICE)
-                    .orEmpty().ifBlank { "SMARTWATCH" }
+                val device = formatEmergencyDeviceLabel(
+                    intent.getStringExtra(PhoneWearListenerService.EXTRA_WEAR_ALERT_DEVICE)
+                        .orEmpty().ifBlank { "SMARTWATCH" }
+                )
                 if (source == "AGITAR_RELOJ") {
                     showDirectedAlertBanner(
                         ChatMessage(
@@ -727,12 +729,18 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun configurePanelContentSize() {
-        val chatExpanded = ::panelNavigationController.isInitialized &&
-            panelNavigationController.activePanel == Panel.CHAT
-        applyPanelContentSize(expanded = chatExpanded)
+        val activePanel = if (::panelNavigationController.isInitialized) {
+            panelNavigationController.activePanel
+        } else {
+            Panel.NONE
+        }
+        applyPanelContentSize(
+            expanded = activePanel == Panel.CHAT || activePanel == Panel.PERSONAL,
+            keepNavigation = activePanel == Panel.PERSONAL
+        )
     }
 
-    private fun applyPanelContentSize(expanded: Boolean) {
+    private fun applyPanelContentSize(expanded: Boolean, keepNavigation: Boolean = false) {
         panelContent.post {
             val params = panelContent.layoutParams
             val parentView = panelContent.parent as? View
@@ -767,7 +775,7 @@ class MainActivity : AppCompatActivity(),
                 menuDrawerBtn?.visibility = View.GONE
                 toolsContainer?.visibility = View.GONE
                 myLocationBtn?.visibility = View.GONE
-                navBar?.visibility = View.GONE
+                navBar?.visibility = if (keepNavigation) View.VISIBLE else View.GONE
             } else if (activePanel == Panel.NONE) {
                 params.height = 0
                 (params as? LinearLayout.LayoutParams)?.weight = 0f
@@ -785,7 +793,7 @@ class MainActivity : AppCompatActivity(),
                     (params as? LinearLayout.LayoutParams)?.weight = 1f
                     parentParams?.height = ViewGroup.LayoutParams.MATCH_PARENT
                     parentView?.layoutParams = parentParams
-                    streamBtn?.visibility = View.VISIBLE
+                    streamBtn?.visibility = View.GONE
                     bluetoothBtn?.visibility = View.GONE
                     menuDrawerBtn?.visibility = View.GONE
                     toolsContainer?.visibility = View.VISIBLE
@@ -796,7 +804,7 @@ class MainActivity : AppCompatActivity(),
                     (params as? LinearLayout.LayoutParams)?.weight = 0f
                     parentParams?.height = ViewGroup.LayoutParams.WRAP_CONTENT
                     parentView?.layoutParams = parentParams
-                    streamBtn?.visibility = View.VISIBLE
+                    streamBtn?.visibility = View.GONE
                     bluetoothBtn?.visibility = View.GONE
                     menuDrawerBtn?.visibility = View.GONE
                     toolsContainer?.visibility = View.VISIBLE
@@ -1059,7 +1067,7 @@ class MainActivity : AppCompatActivity(),
 
     override fun shouldHideMediaControls(): Boolean {
         return ::panelNavigationController.isInitialized &&
-            panelNavigationController.activePanel == Panel.CHAT
+            panelNavigationController.activePanel != Panel.NONE
     }
 
     override fun getMapOperationId(): Int = currentOperation.id
@@ -1555,8 +1563,9 @@ class MainActivity : AppCompatActivity(),
         val isLifeLine = event == "wear_alert_update" && source.contains("LINEA_DE_VIDA")
         val sender = data.optString("sender_name", "Personal operativo").trim()
             .ifBlank { "Personal operativo" }
-        val deviceLabel = data.optString("device_label", "SMARTWATCH").trim()
-            .ifBlank { "SMARTWATCH" }
+        val deviceLabel = formatEmergencyDeviceLabel(
+            data.optString("device_label", "SMARTWATCH").trim().ifBlank { "SMARTWATCH" }
+        )
         val lat = data.optDouble("lat", Double.NaN)
         val lon = data.optDouble("lon", Double.NaN)
         val locationLine = if (lat.isFinite() && lon.isFinite()) "\nUBICACION: $lat, $lon" else ""
@@ -1587,6 +1596,13 @@ class MainActivity : AppCompatActivity(),
         updateEmergencyInboxBadge()
         showDirectedAlertBanner(message)
         if (::emergencyVisualAlertController.isInitialized) emergencyVisualAlertController.flashScreen()
+        if (::cesiumWebController.isInitialized) {
+            if (lat.isFinite() && lon.isFinite()) {
+                cesiumWebController.pulseIncomingEmergencyAtLocation(senderId, lat, lon)
+            } else if (senderId > 0) {
+                cesiumWebController.pulseIncomingEmergencyPersonal(senderId)
+            }
+        }
         if (::chatNotificationController.isInitialized && ::currentOperation.isInitialized) {
             chatNotificationController.showNewMessage(message, currentOperation.nombre)
         }
@@ -1727,10 +1743,48 @@ class MainActivity : AppCompatActivity(),
                         marginEnd = dp(10)
                     })
 
-                    addView(TextView(parent.context).apply {
-                        setTextColor(Color.WHITE)
-                        textSize = 12f
-                        setLineSpacing(dp(2).toFloat(), 1f)
+                    addView(LinearLayout(parent.context).apply {
+                        orientation = LinearLayout.VERTICAL
+
+                        addView(TextView(parent.context).apply {
+                            setTextColor(Color.WHITE)
+                            textSize = 12f
+                            setLineSpacing(dp(2).toFloat(), 1f)
+                        }, LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ))
+
+                        addView(LinearLayout(parent.context).apply {
+                            gravity = Gravity.CENTER_VERTICAL
+                            visibility = View.GONE
+
+                            addView(ImageView(parent.context).apply {
+                                setImageResource(R.drawable.ic_attach_location)
+                                contentDescription = "Ubicacion de la alerta"
+                            }, LinearLayout.LayoutParams(dp(16), dp(16)).apply {
+                                marginEnd = dp(5)
+                            })
+                            addView(TextView(parent.context).apply {
+                                setTextColor(Color.parseColor("#DCEBFA"))
+                                textSize = 11f
+                            }, LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            ))
+                            addView(ImageButton(parent.context).apply {
+                                setImageResource(R.drawable.ic_copy_coordinates)
+                                background = null
+                                contentDescription = "Copiar coordenadas"
+                                scaleType = ImageView.ScaleType.CENTER
+                                setPadding(dp(4), dp(4), dp(4), dp(4))
+                            }, LinearLayout.LayoutParams(dp(28), dp(28)).apply {
+                                marginStart = dp(4)
+                            })
+                        }, LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { topMargin = dp(3) })
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
                     addView(ImageButton(parent.context).apply {
@@ -1756,9 +1810,22 @@ class MainActivity : AppCompatActivity(),
                 (card.getChildAt(0) as ImageView).setImageResource(
                     if (isLifeLine) R.drawable.ic_lifeline_alert else R.drawable.ic_alert_dot
                 )
-                (card.getChildAt(1) as TextView).text = emergencyInboxSummary(alert)
-                val locationButton = card.getChildAt(2) as ImageButton
+                val details = card.getChildAt(1) as LinearLayout
+                (details.getChildAt(0) as TextView).text = emergencyInboxSummary(alert)
+                val coordinatesRow = details.getChildAt(1) as LinearLayout
                 val location = emergencyLocationFromText(alert.text)
+                coordinatesRow.visibility = if (location != null) View.VISIBLE else View.GONE
+                if (location != null) {
+                    val coordinates = String.format(Locale.US, "%.6f, %.6f", location.first, location.second)
+                    (coordinatesRow.getChildAt(1) as TextView).text = coordinates
+                    (coordinatesRow.getChildAt(2) as ImageButton).setOnClickListener {
+                        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                            as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Coordenadas", coordinates))
+                        Toast.makeText(this@MainActivity, "Coordenadas copiadas", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                val locationButton = card.getChildAt(2) as ImageButton
                 locationButton.visibility = if (location != null) View.VISIBLE else View.INVISIBLE
                 locationButton.setOnClickListener {
                     if (location != null && ::cesiumWebController.isInitialized) {
@@ -1877,20 +1944,50 @@ class MainActivity : AppCompatActivity(),
         val temperature = vital("TEMPERATURA CORPORAL")
         val bloodPressure = vital("PRESION ARTERIAL")
         val location = emergencyLocationFromText(content)
+        val senderRecord = alert.idPersonal?.let { senderId ->
+            personalList.firstOrNull { it.idPersonal == senderId }
+        }
+        val senderName = senderRecord?.let { person ->
+            listOf(person.nombre, person.apellido)
+                .joinToString(" ") { it.trim() }
+                .ifBlank { person.apodo.trim() }
+        }?.takeIf { it.isNotBlank() } ?: alertSenderName(alert.user)
+        val senderRank = abbreviateRank(senderRecord?.puesto.orEmpty())
+            .ifBlank { alertSenderRank(alert.user) }
+        val senderWithRank = listOf(senderRank, senderName)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { "Personal" }
         return buildString {
             append(if (isLifeLine) "EMERGENCIA" else "ALERTA")
             alert.sentAtLabel?.takeIf { it.isNotBlank() }?.let { append("   ·   $it") }
-            if (!isLifeLine && device.isNotBlank()) append("\n$device")
-            append("\n${alert.user.uppercase()}")
+            if (!isLifeLine && device.isNotBlank()) {
+                // El servidor separa tipo y modelo con "|". En líneas distintas se leen
+                // como dos datos, no como un nombre pegado.
+                append("\n")
+                append(formatEmergencyDeviceLabel(device))
+            }
+            append("\n${senderWithRank.uppercase()}")
             if (isLifeLine) {
                 append("\nFC: $heartRate   ·   SpO2: $oxygen   ·   Resp.: $respiration")
                 append("\nTemp.: $temperature   ·   PA: $bloodPressure")
             }
-            location?.let {
-                append("\nCoordenadas: ")
-                append(String.format(Locale.US, "%.6f, %.6f", it.first, it.second))
-            }
         }
+    }
+
+    /** Mantiene tipo y modelo legibles en las alertas: SMARTWATCH | SAMSUNG SM-L500. */
+    private fun formatEmergencyDeviceLabel(label: String): String {
+        val parts = label.split('|').map { it.trim() }.filter { it.isNotBlank() }
+        val normalized = if (parts.size > 1) {
+            // Sólo se separa el tipo del resto de los datos del reloj.
+            "${parts.first()} | ${parts.drop(1).joinToString(" ")}"
+        } else {
+            label.trim()
+        }
+        return normalized.replace(
+            Regex("^(SMARTWATCH)\\s+(.+)$", RegexOption.IGNORE_CASE),
+            "$1 | $2"
+        )
     }
 
     override fun addMessage(msg: ChatMessage) {
@@ -1988,9 +2085,9 @@ class MainActivity : AppCompatActivity(),
     }
 
     override fun refreshPersonalPanelIfActive() {
-        if (panelNavigationController.activePanel == Panel.PERSONAL && personalList.isNotEmpty()) {
-            panelNavigationController.showPanel(Panel.PERSONAL)
-        }
+        // El panel activo de Personal es Recursos y ResourcesPanelRenderer
+        // actualiza la fila directamente. Recrearlo con cada ubicación hacía
+        // que el ScrollView regresara al inicio mientras se desplazaba.
     }
 
     private fun isChatPanelActive(): Boolean =
@@ -4794,6 +4891,7 @@ class MainActivity : AppCompatActivity(),
         val deviceLabel = field("DISPOSITIVO").takeUnless { it == "no disponible" }
             ?: Regex("^ALERTA\\s+DESDE\\s+(.+)$", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE))
                 .find(content)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+        val formattedDeviceLabel = formatEmergencyDeviceLabel(deviceLabel)
         val criticalAlerts = directedAlertCriticalVitals(
             heartRate, oxygen, respiration, temperature, bloodPressure
         )
@@ -4833,8 +4931,8 @@ class MainActivity : AppCompatActivity(),
             card.findViewById<TextView>(R.id.tvDirectedAlertTime).text =
                 message.sentAtLabel ?: formatEmergencyAlertTime("")
             card.findViewById<TextView>(R.id.tvDirectedAlertDevice).apply {
-                text = deviceLabel.uppercase()
-                visibility = if (!isLifeLine && deviceLabel.isNotBlank()) View.VISIBLE else View.GONE
+                text = formattedDeviceLabel.uppercase()
+                visibility = if (!isLifeLine && formattedDeviceLabel.isNotBlank()) View.VISIBLE else View.GONE
             }
             card.findViewById<TextView>(R.id.tvDirectedAlertSender).text = senderWithRank.uppercase()
             val status = card.findViewById<TextView>(R.id.tvDirectedAlertStatus)
@@ -5247,7 +5345,8 @@ class MainActivity : AppCompatActivity(),
     }
 
     override fun inflateResourcesPanel() {
-        applyPanelContentSize(expanded = false)
+        val previousScrollY = panelContent.findViewById<ScrollView>(R.id.resourcesScroll)?.scrollY ?: 0
+        applyPanelContentSize(expanded = true, keepNavigation = true)
         panelRenderer.inflateResourcesPanel(
             panelContent = panelContent,
             personalList = personalList,
@@ -5257,6 +5356,10 @@ class MainActivity : AppCompatActivity(),
             currentUser = currentUser,
             poisList = mapDataController.getPois()
         )
+        panelContent.post {
+            panelContent.findViewById<ScrollView>(R.id.resourcesScroll)
+                ?.scrollTo(0, previousScrollY)
+        }
 
         if (currentOperation.id > 0) {
             if (personalList.isEmpty()) fetchPersonalPanelData()
@@ -5271,13 +5374,15 @@ class MainActivity : AppCompatActivity(),
     }
 
     override fun onPanelChanged(panel: PanelNavigationController.Panel) {
-        val chatExpanded = ::panelNavigationController.isInitialized &&
-            panelNavigationController.activePanel == Panel.CHAT
+        val expandedPanel = panel == Panel.CHAT || panel == Panel.PERSONAL
         if (::emergencyInboxContainer.isInitialized) {
             emergencyInboxContainer.visibility = if (panel == Panel.NONE) View.VISIBLE else View.GONE
         }
-        applyPanelContentSize(expanded = chatExpanded)
-        if (!chatExpanded && ::chatController.isInitialized) {
+        applyPanelContentSize(
+            expanded = expandedPanel,
+            keepNavigation = panel == Panel.PERSONAL
+        )
+        if (panel != Panel.CHAT && ::chatController.isInitialized) {
             chatContactsVisible = false
             chatController.setConversationOpen(false)
         }
@@ -5529,7 +5634,7 @@ class MainActivity : AppCompatActivity(),
         } else {
             occupants.forEach { person ->
                 occupantList.addView(TextView(this).apply {
-                    text = listOf(personDisplayName(person), listOf(person.rol, person.puesto).filter { it.isNotBlank() }.joinToString(" - "))
+                    text = listOf(personDisplayName(person), listOf(person.rol, abbreviateRank(person.puesto)).filter { it.isNotBlank() }.joinToString(" - "))
                         .filter { it.isNotBlank() }
                         .joinToString("\n")
                     setTextColor(Color.parseColor("#E2E8F0"))
@@ -5675,7 +5780,7 @@ class MainActivity : AppCompatActivity(),
         })
         content.addView(header)
 
-        val subtitleText = listOf(person.rol, person.puesto, person.grupoNombre)
+        val subtitleText = listOf(person.rol, abbreviateRank(person.puesto), person.grupoNombre)
             .filter { it.isNotBlank() }
             .joinToString(" - ")
         if (subtitleText.isNotBlank()) {

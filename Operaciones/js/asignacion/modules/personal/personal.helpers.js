@@ -31,8 +31,15 @@ function abbreviatePuesto(puesto = "") {
     "capitan segundo": "Cap. 2/o",
     "capitan": "Cap.",
     "mayor": "May.",
+    "teniente coronel": "Tte. Cor.",
     "coronel": "Cor.",
-    "comandante": "Cmdte."
+    "comandante": "Cmdte.",
+    "general brigadier": "Gral. Brig.",
+    "general de brigada": "Gral. Bda.",
+    "general de division": "Gral. Div.",
+    "contraalmirante": "Contraalm.",
+    "vicealmirante": "Vicealm.",
+    "almirante": "Alm."
   };
   return abbreviations[normalized] || puesto;
 }

@@ -2617,32 +2617,43 @@
         : entity.position;
     }
 
-    function drawEmergencyPulse(id, position, persistent) {
+    function drawEmergencyPulse(id, position, persistent, compact) {
       if (!viewer || !id || !position) return;
 
       removeEmergencyPulse(id);
 
+      // La alerta queda anclada a la entidad viva: si el personal se mueve,
+      // los anillos lo acompañan. Si aún no existe marcador, conserva la
+      // coordenada recibida como respaldo.
+      const fallbackPosition = position;
+      const livePosition = new Cesium.CallbackProperty(function () {
+        const tracked = trackingPersonalEntities.get(String(id));
+        return positionForEntity(tracked) || fallbackPosition;
+      }, false);
+
       const startedAt = Date.now();
       const durationMs = 4200;
+      const innerRadius = compact ? 18 : 35;
+      const outerRadius = compact ? 125 : 395;
       const pulseEntities = EMERGENCY_PULSE_COLORS.map(function (color, index) {
         const delayMs = index * 430;
         const entity = viewer.entities.add({
           name: "Emergencia personal " + id,
-          position: position,
+          position: livePosition,
           ellipse: {
             semiMajorAxis: new Cesium.CallbackProperty(function () {
               const elapsed = Date.now() - startedAt - delayMs;
               const progress = persistent
                 ? ((elapsed % durationMs) + durationMs) % durationMs / durationMs
                 : Math.max(0, Math.min(1, elapsed / durationMs));
-              return 35 + progress * 360;
+              return innerRadius + progress * (outerRadius - innerRadius);
             }, false),
             semiMinorAxis: new Cesium.CallbackProperty(function () {
               const elapsed = Date.now() - startedAt - delayMs;
               const progress = persistent
                 ? ((elapsed % durationMs) + durationMs) % durationMs / durationMs
                 : Math.max(0, Math.min(1, elapsed / durationMs));
-              return 35 + progress * 360;
+              return innerRadius + progress * (outerRadius - innerRadius);
             }, false),
             material: new Cesium.ColorMaterialProperty(
               new Cesium.CallbackProperty(function () {
@@ -2656,7 +2667,7 @@
             ),
             outline: true,
             outlineColor: color.withAlpha(0.95),
-            outlineWidth: 4,
+            outlineWidth: compact ? 2 : 4,
             height: 0
           }
         });
@@ -2699,6 +2710,33 @@
         if (trackingPersonalEntities.has(id)) setSelectedTrackingPersonal(id);
       } catch (e) {
         console.error("Error en pulseEmergencyAtLocation: " + e.message);
+      }
+    };
+
+    // Indicador breve y compacto para identificar a la persona que acaba de alertar.
+    window.pulseIncomingEmergencyPersonal = function (idPersonal) {
+      try {
+        if (!viewer) return;
+        const id = String(idPersonal || "");
+        const tracked = trackingPersonalEntities.get(id);
+        const position = positionForEntity(tracked);
+        if (!id || !position) return;
+        drawEmergencyPulse(id, position, true, true);
+      } catch (e) {
+        console.error("Error en pulseIncomingEmergencyPersonal: " + e.message);
+      }
+    };
+
+    window.pulseIncomingEmergencyAtLocation = function (idPersonal, lat, lon) {
+      try {
+        if (!viewer) return;
+        const coords = normalizeCoordinatePair(lat, lon);
+        if (!coords) return;
+        const id = String(idPersonal || ("loc-" + Date.now()));
+        drawEmergencyPulse(id, Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat), true, true);
+        if (trackingPersonalEntities.has(id)) setSelectedTrackingPersonal(id);
+      } catch (e) {
+        console.error("Error en pulseIncomingEmergencyAtLocation: " + e.message);
       }
     };
 
@@ -5358,7 +5396,7 @@
               position: mobileToolPoints[1].cartesian,
               label: {
                 text: distFormatted,
-                font: 'bold 15px sans-serif',
+                font: 'bold 11px sans-serif',
                 fillColor: Cesium.Color.WHITE,
                 showBackground: true,
                 backgroundColor: Cesium.Color.fromCssColorString('#0B192C').withAlpha(0.92),
@@ -5391,10 +5429,10 @@
               label: {
                 text: areaFormatted,
                 font: 'bold 15px sans-serif',
-                fillColor: Cesium.Color.WHITE,
+                fillColor: Cesium.Color.fromCssColorString('#ECFEFF'),
                 showBackground: true,
-                backgroundColor: Cesium.Color.fromCssColorString('#0B192C').withAlpha(0.92),
-                backgroundPadding: new Cesium.Cartesian2(10, 6),
+                backgroundColor: Cesium.Color.fromCssColorString('#0B7285').withAlpha(0.28),
+                backgroundPadding: new Cesium.Cartesian2(5, 3),
                 disableDepthTestDistance: Number.POSITIVE_INFINITY
               }
             });
