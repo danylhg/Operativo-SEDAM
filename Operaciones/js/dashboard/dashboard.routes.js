@@ -608,7 +608,7 @@ export function selectRemoteRoute(id_ruta) {
   if (dashboardState.selectedRemoteRouteId === id_ruta) {
     dashboardState.selectedRemoteRouteId = null;
     applyRouteFilter(vehiculoIdStr);
-    setRouteInfo("");
+    setRouteInfo("Listo. Selecciona primero el origen y luego el destino.");
     return;
   }
 

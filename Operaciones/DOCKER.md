@@ -31,6 +31,37 @@ Get-Content .\docker\bdsedam.sql | docker compose --env-file .env.docker exec -T
 
 ## 3. Iniciar y comprobar
 
+### Inicializar una base Docker nueva desde el esquema local
+
+Si la instancia local de desarrollo está disponible (en este proyecto usa
+PostgreSQL 18), después de `up -d` importa solo su estructura y carga los
+datos de demostración. No se transfieren datos operativos ni grabaciones:
+
+```powershell
+Get-Content .\api\.env | ForEach-Object {
+  if ($_ -match '^([^#=]+)=(.*)$') {
+    [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), 'Process')
+  }
+}
+docker run --rm -e PGPASSWORD=$env:PGPASSWORD postgres:18-alpine `
+  pg_dump -h host.docker.internal -p $env:PGPORT -U $env:PGUSER -d $env:PGDATABASE `
+  --schema-only --no-owner --no-privileges |
+  docker compose --env-file .env.docker exec -T db psql -v ON_ERROR_STOP=1 -U operaciones -d bdsedam
+
+# Keep the database role aligned with the Compose secret after the import.
+Get-Content .\.env.docker | ForEach-Object {
+  if ($_ -match '^([^#=]+)=(.*)$') {
+    [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), 'Process')
+  }
+}
+docker compose --env-file .env.docker exec -T db psql -U operaciones -d bdsedam `
+  -c "ALTER USER operaciones PASSWORD '$env:POSTGRES_PASSWORD';"
+docker compose --env-file .env.docker exec -T api npm run seed:users
+```
+
+Ejecuta esta inicialización una vez por volumen nuevo. Sin la instancia local,
+solicita un respaldo de esquema autorizado; no importes una base con datos reales.
+
 ```powershell
 docker compose --env-file .env.docker up -d --build
 docker compose --env-file .env.docker ps

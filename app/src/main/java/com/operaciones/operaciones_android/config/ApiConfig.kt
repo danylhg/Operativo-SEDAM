@@ -13,8 +13,12 @@ object ApiConfig {
     private const val DEFAULT_HLS_PORT = 3000
     private const val DEFAULT_FFMPEG_HLS_PATH = "/Operaciones/runtime/ffmpeg-streams"
 
+    // Dirección de la API Docker que está ejecutándose en el equipo de desarrollo.
+    // Las instalaciones anteriores guardaban una de las dos IP antiguas; se migran
+    // automáticamente para que no dependan del botón de configuración al iniciar.
     private const val LEGACY_DEFAULT_BASE_URL = "http://192.168.100.12:3001"
-    const val DEFAULT_BASE_URL = "http://192.168.202.112:3001"
+    private const val PREVIOUS_DEFAULT_BASE_URL = "http://192.168.202.112:3001"
+    const val DEFAULT_BASE_URL = "http://10.10.45.7:3001"
 
     var BASE_URL: String = DEFAULT_BASE_URL
         private set
@@ -33,7 +37,9 @@ object ApiConfig {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val savedUrl = prefs.getString(KEY_BASE_URL, DEFAULT_BASE_URL)
             ?: DEFAULT_BASE_URL
-        val isLegacyDefault = savedUrl.trim().trimEnd('/') == LEGACY_DEFAULT_BASE_URL
+        val normalizedSavedUrl = savedUrl.trim().trimEnd('/')
+        val isLegacyDefault = normalizedSavedUrl == LEGACY_DEFAULT_BASE_URL ||
+            normalizedSavedUrl == PREVIOUS_DEFAULT_BASE_URL
 
         val rawToNormalize = if (isLegacyDefault) DEFAULT_BASE_URL else savedUrl
         BASE_URL = normalizeBaseUrl(rawToNormalize)

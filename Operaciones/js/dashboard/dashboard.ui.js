@@ -552,10 +552,13 @@ function buildVehiculoTree(vehiculos) {
   const byVehiculo = new Map();
 
   for (const v of vehiculos) {
-    const key = v.id_vehiculo ?? v.codigo_interno;
+    // El dashboard recibe tanto el formato actual del API (id_vehiculo) como
+    // el formato guardado por la asignacion web (id/unidad/nombre). No usar
+    // una clave indefinida: eso fusionaba todos esos vehiculos en una tarjeta.
+    const key = v.id_vehiculo ?? v.id ?? v.unidad ?? v.codigo_interno ?? v.alias ?? v.nombre;
     if (!byVehiculo.has(key)) {
       byVehiculo.set(key, {
-        id_vehiculo: v.id_vehiculo ?? null,
+        id_vehiculo: v.id_vehiculo ?? v.id ?? v.unidad ?? null,
         codigo_interno: v.codigo_interno || "",
         alias: v.alias || "",
         tipo: v.tipo || "",
@@ -565,7 +568,7 @@ function buildVehiculoTree(vehiculos) {
       });
     }
     const vehiculo = byVehiculo.get(key);
-    vehiculo.id_vehiculo = vehiculo.id_vehiculo ?? v.id_vehiculo ?? null;
+    vehiculo.id_vehiculo = vehiculo.id_vehiculo ?? v.id_vehiculo ?? v.id ?? v.unidad ?? null;
     vehiculo.latitud = vehiculo.latitud ?? v.latitud ?? v.lat ?? null;
     vehiculo.longitud = vehiculo.longitud ?? v.longitud ?? v.lng ?? v.lon ?? null;
     byVehiculo.get(key).rows.push(v);
@@ -599,7 +602,7 @@ function renderVehiculosHierarchyHtml(vehiculos) {
   for (const [, veh] of byVehiculo) {
     const nombre = veh.codigo_interno && veh.alias
       ? `${veh.codigo_interno} - ${veh.alias}`
-      : (veh.codigo_interno || veh.alias || "Vehiculo");
+      : (veh.codigo_interno || veh.alias || veh.nombre || veh.tipo || "Vehiculo");
 
     const nombreHtml = trackingLabel(nombre, "V", veh.id_vehiculo, veh.latitud, veh.longitud, veh);
     html += `<article class="miniCard vehicleCard"><p class="vehicleCardName">${nombreHtml}</p>`;
@@ -1088,12 +1091,26 @@ export function renderInfoPanel(bdData = null) {
 
   const tabContents = {
     operacion: `
-    <div class="infoBlock">
-      <p><strong>Titulo:</strong> ${escapeHtml(titulo)}</p>
-      <p><strong>Descripcion:</strong> ${escapeHtml(descripcion)}</p>
-      <p><strong>Fecha programada:</strong> ${escapeHtml(fechaP)}</p>
-      <p><strong>Hora programada:</strong> ${escapeHtml(horaP)}</p>
-      <p><strong>Creada:</strong> ${escapeHtml(fecha)}</p>
+    <div class="infoBlock operationInfoBlock">
+      <section class="operationInfoPrimary">
+        <span class="operationInfoLabel">Título</span>
+        <p class="operationInfoTitle">${escapeHtml(titulo)}</p>
+      </section>
+      <section class="operationInfoDescription">
+        <span class="operationInfoLabel">Descripción</span>
+        <p>${escapeHtml(descripcion)}</p>
+      </section>
+      <div class="operationInfoSchedule" aria-label="Programación de la operación">
+        <section class="operationInfoMeta">
+          <span class="operationInfoLabel">Fecha programada</span>
+          <strong>${escapeHtml(fechaP)}</strong>
+        </section>
+        <section class="operationInfoMeta">
+          <span class="operationInfoLabel">Hora programada</span>
+          <strong>${escapeHtml(horaP)}</strong>
+        </section>
+      </div>
+      <p class="operationInfoCreated">Creada: ${escapeHtml(fecha)}</p>
     </div>`,
     personal: `<div class="infoBlock">${personalHtml}</div>`,
     vehiculos: `<div class="infoBlock">${vehiculosHtml}</div>`,
@@ -1487,6 +1504,18 @@ function getPersonName(person = {}) {
     "";
 }
 
+function getAbbreviatedRank(person = {}) {
+  const raw = String(firstValue(person.puesto, person.rango, person.grado, person.cargo, person.rango_puesto) || "")
+    .trim()
+    .toLowerCase();
+  const ranks = [
+    [/teniente\s+coronel/, "Tte. Cor."], [/coronel/, "Cor."], [/teniente/, "Tte."],
+    [/capit[aá]n/, "Cap."], [/mayor/, "Myr."], [/sargento\s+primero/, "Sgto. 1/o"],
+    [/sargento\s+segundo/, "Sgto. 2/o"], [/sargento/, "Sgto."], [/cabo/, "Cbo."]
+  ];
+  return ranks.find(([pattern]) => pattern.test(raw))?.[1] || "";
+}
+
 function getAvailablePersonal() {
   const op = getCurrentOperation();
   const asignacion = getJsonStorage(ASIGNACION_ACTUAL_KEY, {}) || {};
@@ -1802,13 +1831,14 @@ export function showPersonnelDetail(personId, anchor = {}) {
 
   const id = String(personId);
   const live = getPersonalLiveRecord(id, anchor);
-  const nombre = getPersonName(person) || anchor.name || `Personal ${personId}`;
+  const personName = getPersonName(person) || anchor.name || `Personal ${personId}`;
+  const rank = getAbbreviatedRank(person);
+  const nombre = `${rank ? `${rank} ` : ""}${personName}`;
   const assignedDevices = getAssignedDevices(person, personId, nombre);
   const assignedDevice = assignedDevices[0] || {};
   const liveCoords = getPersonalEntityCoordinates(personId);
   const lat = firstValue(live.lat, liveCoords?.lat, person.latitud, person.lat);
   const lng = firstValue(live.lng, liveCoords?.lon, person.longitud, person.lng, person.lon);
-  const velocidad = firstValue(live.velocidad, live.speed, live.velocidad_kmh, person.velocidad, person.speed, person.velocidad_kmh, "0.00");
   const connectionStatus = getConnectionStatus(id, person, live);
   const fc = firstValue(live.frecuencia_cardiaca_bpm, live.frecuencia_cardiaca, live.fc, live.heart_rate_bpm, live.heart_rate, person.frecuencia_cardiaca_bpm, person.frecuencia_cardiaca, person.fc, person.heart_rate_bpm, person.heart_rate, assignedDevice.frecuencia_cardiaca_bpm, assignedDevice.frecuencia_cardiaca, assignedDevice.fc, assignedDevice.heart_rate_bpm, assignedDevice.heart_rate);
   const spo2 = firstValue(live.oxigenacion_spo2, live.spo2, live.oxigenacion, person.oxigenacion_spo2, person.spo2, person.oxigenacion, assignedDevice.oxigenacion_spo2, assignedDevice.spo2, assignedDevice.oxigenacion);
@@ -1820,8 +1850,7 @@ export function showPersonnelDetail(personId, anchor = {}) {
   const cameraProtocol = getPersonCameraProtocol(person, live);
   const dispositivosHtml = assignedDevices.length
     ? assignedDevices.map((device) => {
-      const code = getDeviceCodeValue(device);
-      return `<div class="personInfoDeviceLine">${escapeHtml(`${getDeviceDisplayName(device)} (${code})`)}</div>`;
+      return `<div class="personInfoDeviceLine">${escapeHtml(getDeviceCompactName(device))}</div>`;
     }).join("")
     : `<div class="personInfoDeviceLine muted">-</div>`;
   const hasBiometricData = [fc, spo2, temp, resp, baro].some(isRealBiometricValue);
@@ -1847,18 +1876,17 @@ export function showPersonnelDetail(personId, anchor = {}) {
 
   dom.personInfoPopupContent.innerHTML = `
     <h3 class="personInfoTitle">${escapeHtml(nombre)}</h3>
-    <div class="personInfoGrid">
-      <div class="personInfoLabel">Lat:</div><div class="personInfoValue">${escapeHtml(formatCoord(lat))}</div>
-      <div class="personInfoLabel">Lng:</div><div class="personInfoValue">${escapeHtml(formatCoord(lng))}</div>
-      <div class="personInfoLabel">Vel:</div><div class="personInfoValue">${escapeHtml(String(velocidad))} km/h</div>
+    <div class="personInfoStatus ${connectionStatus.online ? "online" : "offline"}">
+      <strong>${escapeHtml(connectionStatus.text)}</strong>
+      <span>${escapeHtml(connectionStatus.detail)}</span>
+    </div>
+    <div class="personInfoCoordinates">
+      <div><span>Lat</span><strong>${escapeHtml(formatCoord(lat))}</strong></div>
+      <div><span>Lng</span><strong>${escapeHtml(formatCoord(lng))}</strong></div>
     </div>
     <div class="personInfoDevices">
-      <div class="personInfoDeviceLabel">Dispositivos:</div>
+      <div class="personInfoDeviceLabel">Dispositivos</div>
       <div class="personInfoDeviceList">${dispositivosHtml}</div>
-    </div>
-    <div class="personInfoStatus ${connectionStatus.online ? "online" : "offline"}">
-      Estado <strong>${escapeHtml(connectionStatus.text)}</strong>
-      <span>${escapeHtml(connectionStatus.detail)}</span>
     </div>
     ${biometricHtml}
     <div class="personInfoCamera">

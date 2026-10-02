@@ -159,7 +159,12 @@
 }
 
 .routeConfirmButton {
-  color: #f3c84b;
+  color: #7dd3fc;
+}
+
+/* El estado se conserva para el flujo de selección, pero no ocupa espacio visual. */
+#routePanel .routeCreateInfo {
+  display: none;
 }
 
 .routeCancelButton:hover,
@@ -1776,6 +1781,87 @@ circle.pttAlertWarningMark {
   color: #d8e2ec;
 }
 
+/* Resumen de operación: campos separados para evitar una lectura compactada. */
+.operationInfoBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 0 10px;
+}
+
+.operationInfoPrimary,
+.operationInfoDescription,
+.operationInfoMeta {
+  border: 1px solid rgba(125, 211, 252, .20);
+  border-radius: 11px;
+  background: rgba(4, 22, 39, .38);
+}
+
+.operationInfoPrimary,
+.operationInfoDescription {
+  padding: 11px 12px;
+}
+
+.operationInfoLabel {
+  display: block;
+  margin-bottom: 5px;
+  color: #8eb7d8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.operationInfoTitle {
+  margin: 0 !important;
+  color: #f1f7ff !important;
+  font-size: 15px !important;
+  font-weight: 750;
+  line-height: 1.35 !important;
+}
+
+.operationInfoDescription p {
+  margin: 0 !important;
+  color: #d6e4f2;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.operationInfoSchedule {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.operationInfoMeta {
+  min-width: 0;
+  padding: 10px;
+}
+
+.operationInfoMeta strong {
+  display: block;
+  color: #eff8ff;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.operationInfoCreated {
+  margin: 0 !important;
+  padding: 0 2px;
+  color: #9fb4c7 !important;
+  font-size: 11px !important;
+  line-height: 1.4 !important;
+}
+
+@media (max-width: 430px) {
+  .operationInfoSchedule {
+    grid-template-columns: 1fr;
+  }
+}
+
 .miniCard {
   margin-top: 8px;
   padding: 10px;
@@ -2703,6 +2789,20 @@ circle.pttAlertWarningMark {
 #tacticalPanel #radiusContainer {
   grid-column: 1 / -1;
 }
+
+/* Círculo: el tamaño se define directamente al arrastrar en el mapa. */
+#tacticalPanel.is-circle-tool .tacticalStyleGrid {
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid rgba(147, 197, 253, .22);
+  border-radius: 12px;
+  background: rgba(11, 35, 54, .48);
+}
+
+#tacticalPanel.is-circle-tool .tacticalField {
+  margin: 0;
+}
+
 
 #tacticalPanel .controlLabel {
   display: flex;
@@ -5176,6 +5276,174 @@ body {
 
 #gridNamesWrapper { order: 2; }
 
+/* Drawing mode: two clear actions with a visible active state. */
+#tacticalPanel .pencilSubmenu {
+  margin: 4px 0 12px;
+  padding: 14px;
+  border: 1px solid rgba(147, 197, 253, .25);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(20, 53, 76, .82), rgba(11, 35, 54, .76));
+}
+
+#tacticalPanel .pencilHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 11px;
+}
+
+#tacticalPanel .pencilHeader .fieldLabel { margin: 0 0 3px; }
+
+#tacticalPanel .pencilHelp,
+#tacticalPanel .pencilMapHint {
+  display: block;
+  margin: 0;
+  color: rgba(219, 234, 254, .7);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+#tacticalPanel .pencilModeStatus {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid rgba(56, 189, 248, .45);
+  border-radius: 999px;
+  background: rgba(14, 116, 144, .25);
+  color: #dff8ff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+#tacticalPanel .drawingModeChoices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+#tacticalPanel .drawingModeButton {
+  display: flex;
+  align-items: center;
+  min-height: 68px;
+  gap: 9px;
+  padding: 9px;
+  border: 1px solid rgba(148, 163, 184, .36) !important;
+  border-radius: 9px;
+  background: rgba(5, 22, 39, .48) !important;
+  color: #dcecff !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  text-align: left;
+}
+
+#tacticalPanel .drawingModeButton.is-active {
+  border-color: rgba(56, 189, 248, .86) !important;
+  background: rgba(14, 116, 144, .37) !important;
+  color: #fff !important;
+}
+
+#tacticalPanel .drawingModeButton:hover,
+#tacticalPanel .drawingModeButton:focus-visible {
+  border-color: rgba(125, 211, 252, .88) !important;
+  background: rgba(14, 116, 144, .27) !important;
+  outline: none;
+}
+
+#tacticalPanel .drawingModeIcon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(148, 163, 184, .16);
+  color: #bae6fd;
+  font-size: 19px;
+  line-height: 1;
+}
+
+#tacticalPanel .drawingModeButton.is-active .drawingModeIcon {
+  background: rgba(34, 211, 238, .2);
+  color: #e6fcff;
+}
+
+#tacticalPanel .drawingModeButton strong,
+#tacticalPanel .drawingModeButton small { display: block; }
+#tacticalPanel .drawingModeButton strong { font-size: 12px; line-height: 1.25; }
+#tacticalPanel .drawingModeButton small { margin-top: 2px; color: rgba(219, 234, 254, .68); font-size: 10px; line-height: 1.25; }
+#tacticalPanel .pencilMapHint { margin-top: 10px; }
+
+/* Quadrants: compact configuration, generated immediately on size change. */
+#tacticalPanel .gridSubmenu {
+  margin: 2px 0 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+#tacticalPanel .gridConfigRow,
+#tacticalPanel .gridNamesHeading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#tacticalPanel .gridConfigRow {
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(147, 197, 253, .2);
+}
+
+#tacticalPanel .gridConfigRow .fieldLabel,
+#tacticalPanel .gridNamesHeading .fieldLabel {
+  margin: 0 0 3px;
+}
+
+#tacticalPanel .gridConfigHint {
+  display: block;
+  color: rgba(219, 234, 254, .68);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+#tacticalPanel .gridConfigRow .opsInput {
+  width: 132px;
+  min-width: 132px;
+  margin: 0;
+}
+
+#tacticalPanel .gridNamesWrapper { margin-top: 12px; }
+
+#tacticalPanel .gridNamesHeading { margin-bottom: 8px; }
+
+#tacticalPanel .gridNamesContainer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 196px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+#tacticalPanel .gridNamesContainer > div { margin: 0 !important; }
+
+#tacticalPanel .gridClearButton {
+  padding: 7px 10px;
+  border: 1px solid var(--dash-border);
+  border-radius: 7px;
+  background: transparent;
+  color: #bfdbfe;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#tacticalPanel .gridClearButton:hover {
+  border-color: var(--dash-border-strong);
+  background: rgba(59, 130, 246, .14);
+}
+
 .gridButtonsContainer .btnBeige {
   flex: 0 0 165px;
   min-width: 0;
@@ -7211,19 +7479,20 @@ body {
   display: none !important;
 }
 
-/* Panel de rutas: una sola paleta azul, con tarjetas y controles alineados. */
+/* Panel de rutas: tonos marino translúcidos coherentes con el tablero táctico. */
 #routePanel {
   padding: 12px;
-  background: rgba(14, 45, 76, 0.94);
-  border-color: rgba(125, 211, 252, 0.42);
+  background: rgba(12, 30, 49, 0.92);
+  border-color: rgba(96, 165, 250, 0.34);
+  box-shadow: 0 14px 34px rgba(2, 12, 27, 0.48);
 }
 
 #routePanel .routeSectionCard,
 #routePanel.routeCreatePanel .routeCreateCard {
   margin: 0 0 12px;
   padding: 14px;
-  background: rgba(5, 28, 51, 0.88);
-  border: 1px solid rgba(125, 211, 252, 0.28);
+  background: rgba(15, 38, 66, 0.78);
+  border: 1px solid rgba(147, 197, 253, 0.24);
   border-radius: 12px;
   box-shadow: none;
 }
@@ -7248,12 +7517,12 @@ body {
 
 #routePanel .routeCreateHint {
   margin-top: 0;
-  color: #bae6fd;
+  color: #cbd5e1;
 }
 
 #routePanel .fieldLabel,
 #routePanel .routeCreateLabel {
-  color: #7dd3fc;
+  color: #93c5fd;
   text-shadow: none;
 }
 
@@ -7262,8 +7531,8 @@ body {
 #routePanel #zoneColorSelect,
 #routePanel .zoneCoordinatesEditor textarea {
   margin-bottom: 0;
-  background: rgba(30, 67, 99, 0.7) !important;
-  border-color: rgba(125, 211, 252, 0.38) !important;
+  background: rgba(51, 65, 85, 0.76) !important;
+  border-color: rgba(148, 163, 184, 0.48) !important;
   color: #f0f9ff !important;
 }
 
@@ -7274,14 +7543,110 @@ body {
 
 #routePanel .zoneCoordinatesSummary,
 #routePanel .routeCreateInfo {
-  background: rgba(2, 20, 36, 0.72);
-  border-color: rgba(125, 211, 252, 0.16);
-  color: #bae6fd;
+  background: rgba(2, 15, 29, 0.58);
+  border-color: rgba(96, 165, 250, 0.22);
+  color: #dbeafe;
 }
 
 #routePanel .routeMapPicker {
-  background: rgba(14, 83, 120, 0.38);
-  border-color: rgba(56, 189, 248, 0.48);
+  background: rgba(14, 65, 96, 0.48);
+  border-color: rgba(56, 189, 248, 0.42);
+}
+
+#routePanel .routeMapPicker:hover,
+#routePanel .routeMapPicker:focus-visible {
+  background: rgba(14, 116, 144, 0.42);
+  border-color: rgba(103, 232, 249, 0.72);
+}
+
+#routePanel .routePanelTabs .infoPanelTab {
+  background: rgba(15, 38, 66, 0.58);
+  border-color: rgba(147, 197, 253, 0.25);
+  color: #cbd5e1;
+}
+
+#routePanel .routePanelTabs .infoPanelTab.active {
+  background: rgba(14, 116, 144, 0.34);
+  border-color: rgba(56, 189, 248, 0.7);
+  color: #ecfeff;
+}
+
+/* Ficha de personal: información compacta y fácil de escanear. */
+.personInfoPopup {
+  width: min(292px, calc(100vw - 28px)) !important;
+  padding: 10px !important;
+}
+
+.personInfoTitle {
+  margin-bottom: 6px !important;
+  padding-bottom: 6px !important;
+}
+
+.personInfoCoordinates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.personInfoCoordinates > div {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.personInfoCoordinates span {
+  color: #d5e7f0;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.personInfoCoordinates strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f8fbff;
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.personInfoStatus {
+  display: flex !important;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.personInfoStatus strong { margin-left: 0 !important; }
+
+.personInfoStatus span {
+  margin-top: 0 !important;
+  font-size: 10px !important;
+}
+
+.personInfoDevices {
+  margin-top: 8px !important;
+  padding-top: 7px !important;
+}
+
+.personInfoDeviceList { gap: 1px; }
+
+.personInfoBio {
+  margin-top: 8px !important;
+  padding: 8px 9px !important;
+}
+
+.personInfoCamera { margin-top: 8px !important; }
+
+.personInfoCamera .personCameraWaiting,
+.personInfoCamera .cameraWaitingSignal,
+.personInfoCamera .personInfoCameraFeed {
+  height: 72px !important;
+  min-height: 72px !important;
 }
 
 

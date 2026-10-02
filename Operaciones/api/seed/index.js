@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createClient } from "./db/client.js";
 import { seedUsers } from "./seeds/seedUsers.js";
+import { seedCatalogos } from "./seeds/seedCatalogos.js";
 import { seedDispositivos } from "./seeds/seedDispositivos.js";
 import { seedOperation1 } from "./seeds/seedOperation1.js";
 import { seedOperation2 } from "./seeds/seedOperation2.js";
@@ -14,6 +15,7 @@ async function main() {
     await client.query("BEGIN");
 
     const usersResult = await seedUsers(client);
+    const catalogosResult = await seedCatalogos(client);
     const op1Result = await seedOperation1(client);
     const op2Result = await seedOperation2(client);
     const op3Result = await seedOperation3(client);
@@ -33,6 +35,7 @@ async function main() {
     console.log(`Personal OP2: ${op2Result.personalAsignado}`);
     console.log(`Personal OP3: ${op3Result.personalAsignado}`);
     console.log(`Personal OP4: ${op4Result.personalAsignado}`);
+    console.log(`Catálogos: ${catalogosResult.vehiculos} vehículos, ${catalogosResult.equipos} equipos`);
     console.log(`Vehiculos fijos OP1: ${op1Result.vehiculosFijos}`);
     console.log(`Equipos fijos OP1:   ${op1Result.equiposFijos}`);
     console.log(`Vehiculos fijos OP2: ${op2Result.vehiculosFijos}`);

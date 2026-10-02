@@ -5,13 +5,15 @@ import { dom } from "./dashboard.dom.js?v=20261001-route-panel-tabs";
 import {
   getCurrentOperation,
   getOperationDateTime,
-  saveCurrentOperation
+  saveCurrentOperation,
+  getJsonStorage,
+  ASIGNACION_ACTUAL_KEY
 } from "./dashboard.storage.js";
 import {
   renderInfoPanel,
   updateChatAvailability,
   openPanel
-} from "./dashboard.ui.js?v=20261001-route-panel-tabs";
+} from "./dashboard.ui.js?v=20261002-vehicle-panel-grouping";
 import { bindDashboardEvents } from "./dashboard.events.js?v=20261001-route-panel-tabs";
 import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20260929-life-line-location-glass";
 import {
@@ -259,17 +261,19 @@ async function loadDashboardFromBD() {
   const opId = localStorage.getItem("active_operation_id");
   if (!opId) return null;
 
+  const storedOperation = getCurrentOperation();
   const token = localStorage.getItem("token");
   try {
     const requestOptions = {
       headers: { "Authorization": `Bearer ${token}` }
     };
-    const [res, assignedPersonalResponse, ...personalCatalogResponses] = await Promise.all([
+    const [res, assignedPersonalResponse, assignedVehiclesResponse, ...personalCatalogResponses] = await Promise.all([
       fetch(`${API_BASE}/ops/${opId}/mapa`, requestOptions),
       // Esta lista alimenta el panel de información y no debe depender de la
       // presencia en tiempo real. El endpoint /mapa sigue siendo exclusivo
       // para los iconos de personas conectadas en el mapa.
       fetch(`${API_BASE}/ops/${opId}/personal`, requestOptions).catch(() => null),
+      fetch(`${API_BASE}/ops/${opId}/vehiculos-asignados`, requestOptions).catch(() => null),
       ...["CUT", "CET", "CELL"].map((rol) =>
         fetch(`${API_BASE}/catalog/personal?rol=${rol}`, requestOptions).catch(() => null)
       )
@@ -292,6 +296,47 @@ async function loadDashboardFromBD() {
       const assignedPeople = assignedData?.items ?? assignedData?.personal ?? assignedData;
       if (Array.isArray(assignedPeople)) personal = assignedPeople;
     }
+    let vehiculos = Array.isArray(data.vehiculos) ? data.vehiculos : [];
+    if (assignedVehiclesResponse?.ok) {
+      const assignedData = await assignedVehiclesResponse.json().catch(() => null);
+      const assignedVehicles = assignedData?.items ?? assignedData?.vehiculos ?? assignedData;
+      if (Array.isArray(assignedVehicles)) vehiculos = assignedVehicles;
+    }
+
+    // La lista conservada por la asignacion web puede traer unidades que la
+    // respuesta compacta del servidor aun no incluye. Se unen por identidad
+    // para que el panel informativo y el selector de ruta no se contradigan.
+    const savedAssignment = getJsonStorage(ASIGNACION_ACTUAL_KEY, {}) || {};
+    const storedVehicles = [
+      ...(String(storedOperation?.id ?? storedOperation?.id_operacion ?? "") === String(opId) && Array.isArray(storedOperation?.vehiculos)
+        ? storedOperation.vehiculos
+        : []),
+      ...(Array.isArray(savedAssignment.vehiculos) ? savedAssignment.vehiculos : [])
+    ];
+    const vehicleKeys = (vehicle) => [
+      vehicle?.id_vehiculo,
+      vehicle?.id,
+      vehicle?.unidad,
+      vehicle?.codigo_interno,
+      vehicle?.codigoInterno,
+      vehicle?.alias,
+      vehicle?.nombre
+    ].filter((value) => value != null && String(value).trim() !== "")
+      .map((value) => String(value).trim().toLowerCase());
+    const vehicleIndexes = new Map();
+    const mergedVehicles = [];
+    [...vehiculos, ...storedVehicles].forEach((vehicle) => {
+      const keys = vehicleKeys(vehicle);
+      if (!keys.length) return;
+      const existingIndex = keys.map((key) => vehicleIndexes.get(key)).find((index) => index != null);
+      const index = existingIndex ?? mergedVehicles.length;
+      mergedVehicles[index] = existingIndex == null
+        ? vehicle
+        : { ...vehicle, ...mergedVehicles[index] };
+      keys.forEach((key) => vehicleIndexes.set(key, index));
+    });
+    vehiculos = mergedVehicles;
+
     const catalogPeople = [];
     for (const catalogResponse of personalCatalogResponses) {
       if (!catalogResponse?.ok) continue;
@@ -321,7 +366,7 @@ async function loadDashboardFromBD() {
       operacion: data.operacion,
       zona_operacion: data.zona_operacion || null,
       personal,
-      vehiculos: data.vehiculos || [],
+      vehiculos,
       equipos: data.equipos || [],
       dispositivos: data.dispositivos || [],
       grid: data.grid || data.cuadricula_operacion || null,

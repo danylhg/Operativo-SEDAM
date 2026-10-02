@@ -7,6 +7,10 @@ import { getCurrentOperation } from "./dashboard.storage.js";
 import { updateSelectionInfo, setRouteInfo, showPersonnelDetail } from "./dashboard.ui.js?v=20260923-draggable-person-popup";
 import {
   handleTacticalPlacement,
+  beginCircleDrag,
+  updateCircleDrag,
+  finishCircleDrag,
+  consumeCircleDragClick,
   updateTacticalPreview,
   isDraggableEntity,
   createMilSymbol,
@@ -1239,6 +1243,43 @@ function handleRoutePick(lat, lng) {
   return false;
 }
 
+function parseRouteCoordinate(value) {
+  const parts = String(value || "")
+    .trim()
+    .split(/[,;\s]+/)
+    .filter(Boolean);
+
+  if (parts.length !== 2) return null;
+
+  const lat = Number(parts[0]);
+  const lng = Number(parts[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return null;
+  }
+
+  return { lat, lng };
+}
+
+function useManualRouteCoordinates() {
+  const originText = dom.opLat?.value.trim() || "";
+  const destinationText = dom.opLng?.value.trim() || "";
+  const hasManualCoordinates = Boolean(originText || destinationText);
+
+  if (!hasManualCoordinates) return false;
+
+  const origin = parseRouteCoordinate(originText);
+  const destination = parseRouteCoordinate(destinationText);
+  if (!origin || !destination) {
+    setRouteInfo("Escribe origen y destino como latitud, longitud. Ejemplo: 19.4326, -99.1332.");
+    return null;
+  }
+
+  dashboardState.pickMode = "start";
+  handleRoutePick(origin.lat, origin.lng);
+  handleRoutePick(destination.lat, destination.lng);
+  return true;
+}
+
 function bindCesiumPointerEvents(handler) {
   const viewer = dashboardState.viewer;
   if (!viewer) return;
@@ -1260,6 +1301,7 @@ function bindCesiumPointerEvents(handler) {
       return;
     }
 
+    if (consumeCircleDragClick()) return;
     if (handleTacticalPlacement(lat, lng)) return;
     if (handleRoutePick(lat, lng)) return;
 
@@ -1269,6 +1311,14 @@ function bindCesiumPointerEvents(handler) {
   handler.setInputAction((click) => {
     if (dashboardState.toolMode === "pencil" || dashboardState.drawingMode === "pencil" || dashboardState.drawingMode === "eraser") {
       return;
+    }
+
+    if (dashboardState.toolMode === "circle" && dashboardState.placingMode) {
+      const cartesian = getMapClickPosition(click.position);
+      if (cartesian) {
+        const pos = cartesianToLatLng(cartesian);
+        if (beginCircleDrag(pos.lat, pos.lng, click.position)) return;
+      }
     }
 
     const pickedEntity = getSelectablePickedEntity(click.position);
@@ -1286,6 +1336,10 @@ function bindCesiumPointerEvents(handler) {
   }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
 
   handler.setInputAction((movement) => {
+    if (dashboardState.toolMode === "circle") {
+      if (updateCircleDrag(movement.endPosition)) return;
+    }
+
     if (!dashboardState.isDragging && dashboardState.areaDrawing) {
       const cartesian = getMapClickPosition(movement.endPosition);
       if (cartesian) {
@@ -1315,6 +1369,7 @@ function bindCesiumPointerEvents(handler) {
   }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
   handler.setInputAction(async () => {
+    if (finishCircleDrag()) return;
     const draggedEntity = dashboardState.draggingEntity;
     const dragStartPosition = dashboardState.dragStartPosition;
 
@@ -1406,8 +1461,11 @@ function bindMapUiEvents() {
   const createRouteBtn = document.getElementById("calcRoute");
   if (createRouteBtn) {
     createRouteBtn.onclick = () => {
+      const manualCoordinatesApplied = useManualRouteCoordinates();
+      if (manualCoordinatesApplied !== false) return;
+
       if (!dashboardState.startPoint || !dashboardState.endPoint) {
-        setRouteInfo("Selecciona primero el origen y el destino en el mapa.");
+        setRouteInfo("Selecciona en el mapa o escribe el origen y destino como latitud, longitud.");
         dashboardState.pickMode = dashboardState.startPoint ? "end" : "start";
         return;
       }

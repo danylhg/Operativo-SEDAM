@@ -44,6 +44,7 @@ const _mySentPoiIds = new Set();
 const _mySentRouteIds = new Set();
 let gridSaveTimer = null;
 let lastLocalGridSaveAt = 0;
+let circleDrag = null;
 const poiMotionStates = new Map();
 let poiMotionInterval = null;
 let geoMsgSocket = null;
@@ -2155,15 +2156,14 @@ export function setTacticalUI() {
   const isLabel = dashboardState.toolMode === "label";
   const isGrid = dashboardState.toolMode === "grid";
   const isCircle = dashboardState.toolMode === "circle";
-  const needsLabel = ["mil", "poi", "label", "circle", "polygon", "polyline", "perimeter"].includes(dashboardState.toolMode);
-  const needsRadius = dashboardState.toolMode === "circle";
+  const needsLabel = ["mil", "poi", "label", "polygon", "polyline", "perimeter"].includes(dashboardState.toolMode);
   const isMultiPoint = ["polygon", "polyline", "perimeter"].includes(dashboardState.toolMode);
   const showsFinishShapeAction = ["polygon", "polyline", "perimeter"].includes(dashboardState.toolMode) || dashboardState.areaDrawing;
   const showCancelButton = !isGrid && !isMil && !isDrawingTool && !["poi", "circle", "label", "building"].includes(dashboardState.toolMode);
   const showLabelInput = !isGrid && needsLabel && !isMil && !isDrawingTool;
   const showColorInput = !isBuilding && !isGrid && !isMil && !isEraser && dashboardState.toolMode !== "none";
   const showOpacityInput = !isBuilding && !isLabel && isToolActive && !isGrid && !isMil && !isPoi && !isDrawingTool && dashboardState.toolMode !== "perimeter";
-  const showWidthInput = !isBuilding && !isLabel && !isGrid && !isMil && !isPoi && !isEraser && dashboardState.toolMode !== "none";
+  const showWidthInput = !isBuilding && !isLabel && !isGrid && !isMil && !isPoi && !isEraser && !isCircle && dashboardState.toolMode !== "none";
 
   if (dom.tacticalPanel) {
     dom.tacticalPanel.classList.toggle("has-active-tool", isToolActive);
@@ -2184,13 +2184,15 @@ export function setTacticalUI() {
   if (dom.pencilSubmenu) dom.pencilSubmenu.style.display = isPencil ? "block" : "none";
   if (isPencil) {
     if (dom.btnSelectPencil) {
-      dom.btnSelectPencil.style.background = isEraser ? "rgba(255,255,255,0.1)" : "#00ffa6";
-      dom.btnSelectPencil.style.color = isEraser ? "#fff" : "#001b1b";
+      dom.btnSelectPencil.classList.toggle("is-active", !isEraser);
+      dom.btnSelectPencil.setAttribute("aria-pressed", String(!isEraser));
     }
     if (dom.btnSelectEraser) {
-      dom.btnSelectEraser.style.background = isEraser ? "#00ffa6" : "rgba(255,255,255,0.1)";
-      dom.btnSelectEraser.style.color = isEraser ? "#001b1b" : "#fff";
+      dom.btnSelectEraser.classList.toggle("is-active", isEraser);
+      dom.btnSelectEraser.setAttribute("aria-pressed", String(isEraser));
     }
+    const pencilModeStatus = document.getElementById("pencilModeStatus");
+    if (pencilModeStatus) pencilModeStatus.textContent = isEraser ? "Borrar" : "Dibujar";
   }
 
   if (dom.symLabelContainer) dom.symLabelContainer.style.display = showLabelInput ? "block" : "none";
@@ -2199,8 +2201,7 @@ export function setTacticalUI() {
   if (dom.widthContainer) dom.widthContainer.style.display = showWidthInput ? "block" : "none";
   updateTacticalControlReadouts();
   if (dom.tacticalActionButtons) {
-    dom.tacticalActionButtons.style.display =
-      isToolActive || dashboardState.areaDrawing ? "grid" : "none";
+    dom.tacticalActionButtons.style.display = showsFinishShapeAction ? "grid" : "none";
     dom.tacticalActionButtons.classList.toggle("hasFinishAction", showsFinishShapeAction);
   }
   if (dom.cancelPlace) dom.cancelPlace.style.display = showCancelButton ? "" : "none";
@@ -2213,10 +2214,6 @@ export function setTacticalUI() {
   }
 
   if (dom.symLabel) dom.symLabel.disabled = !showLabelInput;
-  if (dom.radiusInput) dom.radiusInput.disabled = !needsRadius;
-  if (dom.radiusContainer) {
-    dom.radiusContainer.style.display = needsRadius ? "block" : "none";
-  }
 
   if (isMil) {
     populateMilIconOptions();
@@ -2469,13 +2466,13 @@ export async function createLabel(lat, lng) {
   if (dom.tbHint) dom.tbHint.textContent = "Etiqueta colocada.";
 }
 
-export async function createCircle(lat, lng) {
+export async function createCircle(lat, lng, radiusOverride = null) {
   const viewer = dashboardState.viewer;
   if (!viewer) return;
 
   const label = getCurrentLabel();
   const colorName = getCurrentColorName();
-  const radius = getRadius();
+  const radius = Number.isFinite(radiusOverride) ? radiusOverride : getRadius();
   const localArea = makeCircleAreaData(`local_${Date.now()}`, lat, lng, radius, label, colorName);
   const localEntity = buildAreaEntity(localArea);
   if (localEntity) dashboardState.tacticalEntities.push(localEntity);
@@ -2528,6 +2525,101 @@ export async function createCircle(lat, lng) {
 
   addTacticalEntity(entFromBackend);
   if (dom.tbHint) dom.tbHint.textContent = "Círculo de cobertura colocado.";
+}
+
+export function beginCircleDrag(lat, lng, screenPosition) {
+  const viewer = dashboardState.viewer;
+  if (!viewer || dashboardState.toolMode !== "circle" || !dashboardState.placingMode) return false;
+
+  const initialRadius = 25;
+  const preview = buildAreaEntity(makeCircleAreaData(
+    `circle_preview_${Date.now()}`,
+    lat,
+    lng,
+    initialRadius,
+    getCurrentLabel() || "Círculo de cobertura",
+    getCurrentColorName()
+  ));
+  if (!preview) return false;
+
+  // La previsualización no se ajusta al terreno hasta soltar: evita que Cesium
+  // reconstruya la geometría del suelo en cada píxel de arrastre.
+  preview.ellipse.heightReference = Cesium.HeightReference.NONE;
+  preview.ellipse.height = 0;
+
+  const center = Cesium.Cartesian3.fromDegrees(lng, lat);
+  const canvas = viewer.scene.canvas;
+  const metersPerPixel = viewer.camera.getPixelSize(
+    new Cesium.BoundingSphere(center, 1),
+    canvas.clientWidth,
+    canvas.clientHeight
+  ) || (viewer.camera.positionCartographic.height / Math.max(canvas.clientHeight, 1));
+
+  circleDrag = {
+    lat,
+    lng,
+    radius: initialRadius,
+    preview,
+    startScreen: { x: screenPosition.x, y: screenPosition.y },
+    metersPerPixel,
+    pending: null,
+    frame: null
+  };
+  viewer.scene.screenSpaceCameraController.enableRotate = false;
+  viewer.scene.screenSpaceCameraController.enableTranslate = false;
+  if (dom.tbHint) dom.tbHint.textContent = "Arrastra para definir el tamaño del círculo.";
+  return true;
+}
+
+export function updateCircleDrag(screenPosition) {
+  if (!circleDrag?.preview) return false;
+  circleDrag.pending = { x: screenPosition.x, y: screenPosition.y };
+  if (circleDrag.frame) return true;
+
+  circleDrag.frame = window.requestAnimationFrame(() => {
+    if (!circleDrag?.preview || !circleDrag.pending) return;
+    circleDrag.frame = null;
+    const point = circleDrag.pending;
+    circleDrag.pending = null;
+    applyCircleDragRadius(point);
+  });
+  return true;
+}
+
+function applyCircleDragRadius(screenPosition) {
+  if (!circleDrag?.preview) return;
+  const viewer = dashboardState.viewer;
+  if (!viewer) return;
+  const dx = screenPosition.x - circleDrag.startScreen.x;
+  const dy = screenPosition.y - circleDrag.startScreen.y;
+  const radius = Math.max(10, Math.hypot(dx, dy) * circleDrag.metersPerPixel);
+  circleDrag.radius = radius;
+  circleDrag.preview.ellipse.semiMajorAxis = radius;
+  circleDrag.preview.ellipse.semiMinorAxis = radius;
+  viewer.scene.requestRender?.();
+}
+
+export function finishCircleDrag() {
+  if (!circleDrag?.preview) return false;
+  if (circleDrag.frame) window.cancelAnimationFrame(circleDrag.frame);
+  if (circleDrag.pending) applyCircleDragRadius(circleDrag.pending);
+  const { lat, lng, radius, preview } = circleDrag;
+  circleDrag = { ignoreNextClick: true };
+  const viewer = dashboardState.viewer;
+  if (preview && viewer) viewer.entities.remove(preview);
+  if (viewer) {
+    viewer.scene.screenSpaceCameraController.enableRotate = true;
+    viewer.scene.screenSpaceCameraController.enableTranslate = true;
+  }
+  // Mantener el modo activo permite colocar varios círculos seguidos sin reabrir la herramienta.
+  createCircle(lat, lng, radius);
+  return true;
+}
+
+export function consumeCircleDragClick() {
+  if (!circleDrag?.ignoreNextClick) return false;
+  circleDrag = null;
+  return true;
 }
 
 export async function finishPolygon() {
@@ -4275,8 +4367,14 @@ export function bindTacticalEvents() {
     });
   }
 
-  if (dom.generateGridBtn) {
-    dom.generateGridBtn.addEventListener("click", generateGrid);
+  if (dom.gridSizeSelect) {
+    dom.gridSizeSelect.addEventListener("change", () => {
+      if (!dashboardState.currentOperationZone) {
+        setRouteInfo("Delimita una zona de operación antes de generar la cuadrícula.");
+        return;
+      }
+      generateGrid();
+    });
   }
 
   if (dom.clearGridBtn) {
