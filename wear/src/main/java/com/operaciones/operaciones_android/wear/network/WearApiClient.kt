@@ -5,6 +5,7 @@ import com.operaciones.operaciones_android.wear.config.WearApiConfig
 import com.operaciones.operaciones_android.wear.data.WearChatMessage
 import com.operaciones.operaciones_android.wear.data.WearOperation
 import com.operaciones.operaciones_android.wear.data.WearUser
+import com.operaciones.operaciones_android.wear.data.personDisplayLabel
 import com.operaciones.operaciones_android.wear.data.WearUserRole
 import com.operaciones.operaciones_android.wear.device.WearDeviceInfo
 import okhttp3.Call
@@ -263,9 +264,12 @@ class WearApiClient(
             path = "/ops/$operationId/personal",
             token = token,
             mapper = { item ->
-                item.safeString("apodo").ifBlank {
-                    "${item.safeString("nombre")} ${item.safeString("apellido")}".trim()
-                }.ifBlank { item.safeString("rol").ifBlank { "Personal" } }
+                personDisplayLabel(
+                    item.safeString("puesto"),
+                    item.safeString("nombre"),
+                    item.safeString("apellido"),
+                    item.safeString("apodo")
+                ).ifBlank { item.safeString("rol").ifBlank { "Personal" } }
             },
             onSuccess = { finish("personal", it) },
             onError = { finish("personal", emptyList(), it) }

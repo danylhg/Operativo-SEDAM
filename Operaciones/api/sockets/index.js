@@ -806,7 +806,8 @@ export function initSocket(server) {
         velocidad_kmh,
         rumbo_grados,
         precision_m,
-        bateria_pct
+        bateria_pct,
+        dispositivo_fisico
       } = data ?? {};
       const serialDispositivo = firstPayloadValue(
         data,
@@ -884,7 +885,11 @@ export function initSocket(server) {
       });
 
       try {
-        const personalFromDevices = await derivePersonalTrackingFromDevice(opId, Number(id_dispositivo));
+        const personalFromDevices = await derivePersonalTrackingFromDevice(
+          opId,
+          Number(id_dispositivo),
+          dispositivo_fisico && typeof dispositivo_fisico === "object" ? dispositivo_fisico : null
+        );
         if (personalFromDevices) {
           io.to(`op_${opId}`).emit("tracking_personal", personalFromDevices);
         }

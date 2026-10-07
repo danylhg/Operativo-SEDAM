@@ -3114,8 +3114,21 @@
       });
     }
 
+    // Etiqueta del personal en el mapa: cargo abreviado + apellido (sin números).
+    function buildPersonalMapLabel(label, meta) {
+      const m = meta || {};
+      const rank = m.puesto ? formatAbbreviatedPersonLabel(m.puesto) : '';
+      let surname = String(m.apellido || '').trim().split(/\s+/)[0] || '';
+      if (!surname) {
+        // Sin apellido registrado: se usa el apodo sin el número final ("Campos 2" -> "Campos").
+        surname = String(label || '').replace(/\s*\d+\s*$/, '').trim();
+      }
+      return [rank, surname].filter(Boolean).join(' ') || String(label || '');
+    }
+
     window.updateTrackingPersonal = function (idPersonal, lat, lon, label, meta) {
       try {
+        label = buildPersonalMapLabel(label, meta);
         const id = String(idPersonal || "");
         const coords = normalizeCoordinatePair(lat, lon);
         if (!coords) return;

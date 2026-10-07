@@ -684,6 +684,7 @@ class OperationMapDataController(
                         .put("nombre", person.nombre)
                         .put("apellido", person.apellido)
                         .put("apodo", person.apodo)
+                        .put("puesto", person.puesto)
                         .put("grupoNombre", person.grupoNombre)
                         .put("grupoApodo", person.grupoApodo)
                         .put("cetNombre", person.cetNombre)

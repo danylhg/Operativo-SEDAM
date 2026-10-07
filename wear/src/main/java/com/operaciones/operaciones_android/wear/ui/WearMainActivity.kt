@@ -70,6 +70,7 @@ import com.operaciones.operaciones_android.wear.data.WearChatMessage
 import com.operaciones.operaciones_android.wear.data.WearOperation
 import com.operaciones.operaciones_android.wear.data.WearOperationStatus
 import com.operaciones.operaciones_android.wear.data.WearUser
+import com.operaciones.operaciones_android.wear.data.personDisplayLabel
 import com.operaciones.operaciones_android.wear.device.WearDeviceInfo
 import com.operaciones.operaciones_android.wear.emergency.WearEmergencyService
 import com.operaciones.operaciones_android.wear.health.HeartRateMonitor
@@ -1378,8 +1379,9 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
     }
 
     private fun addResourceGroup(list: LinearLayout, label: String, items: List<String>) {
-        val shown = items.take(2).joinToString("\n").ifBlank { "--" }
-        val suffix = if (items.size > 2) "+${items.size - 2}" else ""
+        val unique = items.distinct()
+        val shown = unique.take(8).joinToString("\n").ifBlank { "--" }
+        val suffix = if (unique.size > 8) "+${unique.size - 8}" else ""
         list.addView(sectionBlock(label, shown, suffix))
     }
 
@@ -2498,6 +2500,13 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                 .firstOrNull { it.optInt(idField) == id }
             val marker = JSONObject(assigned?.toString() ?: "{}")
             data.keys().forEach { key -> marker.put(key, data.opt(key)) }
+            // El payload en vivo trae solo el apodo en "nombre"; se conservan el
+            // cargo, nombre y apellido reales de la asignación para la etiqueta.
+            if (assigned != null) {
+                listOf("puesto", "nombre", "apellido").forEach { key ->
+                    if (assigned.optString(key).isNotBlank()) marker.put(key, assigned.optString(key))
+                }
+            }
             realtimeMarkers["$event:$id"] = marker
             invalidate()
         }
@@ -2787,11 +2796,11 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                     drawMarker(canvas, person, centerLat, centerLon)
                 }
             }
-            val devices = data.optJSONArray("dispositivos")
-            if (devices != null) for (index in 0 until devices.length()) {
-                drawMarker(canvas, devices.optJSONObject(index) ?: continue, centerLat, centerLon)
-            }
-            realtimeMarkers.values.forEach { drawMarker(canvas, it, centerLat, centerLon) }
+            // Los dispositivos (teléfono/reloj) pertenecen a una persona que ya
+            // se dibuja arriba; pintarlos duplicaba a cada conectado.
+            realtimeMarkers.values
+                .filter { !it.has("id_dispositivo") }
+                .forEach { drawMarker(canvas, it, centerLat, centerLon) }
             drawFreehandDrawings(canvas, centerLat, centerLon)
             val remoteRoutes = data.optJSONArray("rutas_navegacion")
             // Igual que el mapa principal, el reloj conserva solamente la última
@@ -3192,19 +3201,35 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
         }
 
         private fun drawMarkerLabel(canvas: Canvas, x: Float, y: Float, item: JSONObject) {
-            val label = item.optString("apodo").ifBlank {
-                item.optString("alias").ifBlank {
-                    item.optString("nombre").ifBlank { item.optString("codigo_interno") }
+            val label = if (item.has("id_personal")) {
+                personDisplayLabel(
+                    item.optString("puesto"),
+                    item.optString("nombre"),
+                    item.optString("apellido"),
+                    item.optString("apodo")
+                )
+            } else {
+                item.optString("apodo").ifBlank {
+                    item.optString("alias").ifBlank {
+                        item.optString("nombre").ifBlank { item.optString("codigo_interno") }
+                    }
                 }
             }
             if (label.isNotBlank()) {
-                paint.color = Color.WHITE
+                val text = label.take(20)
                 paint.textSize = 10f
                 paint.style = Paint.Style.FILL
                 paint.textAlign = Paint.Align.CENTER
-                paint.setShadowLayer(3f, 0f, 1f, Color.BLACK)
-                canvas.drawText(label.take(14), x, y + 18f, paint)
-                paint.clearShadowLayer()
+                // Cuadro translúcido detrás del nombre para que se lea sobre el mapa.
+                val halfWidth = paint.measureText(text) / 2f + 4f
+                val baseline = y + 18f
+                paint.color = Color.argb(150, 0, 0, 0)
+                canvas.drawRoundRect(
+                    x - halfWidth, baseline - 10f, x + halfWidth, baseline + 4f,
+                    4f, 4f, paint
+                )
+                paint.color = Color.WHITE
+                canvas.drawText(text, x, baseline, paint)
                 paint.textAlign = Paint.Align.LEFT
             }
         }

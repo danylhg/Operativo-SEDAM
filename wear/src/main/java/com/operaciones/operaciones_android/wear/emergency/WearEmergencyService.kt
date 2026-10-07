@@ -271,13 +271,9 @@ class WearEmergencyService : Service(), SensorEventListener {
         )
     }
 
-    private fun registerAccelerometer() {
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        accelerometer?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-        }
-    }
+    // Detección por agitación DESACTIVADA: ya no se registra el acelerómetro,
+    // por lo que agitar el reloj no genera ninguna alerta.
+    private fun registerAccelerometer() = Unit
 
     private fun unregisterAccelerometer() {
         if (::sensorManager.isInitialized) sensorManager.unregisterListener(this)

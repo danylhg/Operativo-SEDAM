@@ -1326,6 +1326,7 @@ function formatBattery(value) {
   const battery = firstValue(value);
   if (battery == null) return "-";
   const text = String(battery).trim();
+  if (!text || text === "-") return "-";
   return text.endsWith("%") ? text : `${text}%`;
 }
 
@@ -1410,7 +1411,7 @@ function getConnectionStatus(personId, person = {}, live = {}) {
   if (!timestamp) {
     return {
       online: false,
-      text: "SIN CONEXIÓN",
+      text: "Sin conexión",
       detail: "Sin ubicación reciente",
       timestamp: null
     };
@@ -1420,7 +1421,7 @@ function getConnectionStatus(personId, person = {}, live = {}) {
   if (ageMs <= PERSONAL_CONNECTION_STALE_MS) {
     return {
       online: true,
-      text: "EN LÍNEA",
+      text: "En línea",
       detail: `Actualizado ${formatStatusTime(timestamp)}`,
       timestamp
     };
@@ -1428,7 +1429,7 @@ function getConnectionStatus(personId, person = {}, live = {}) {
 
   return {
     online: false,
-    text: "SIN CONEXIÓN",
+    text: "Sin conexión",
     detail: `Última vez ${formatStatusTime(timestamp)}`,
     timestamp
   };
@@ -1846,53 +1847,114 @@ export function showPersonnelDetail(personId, anchor = {}) {
   const resp = firstValue(live.frecuencia_respiratoria_rpm, live.respiracion, live.respiratory_rate, person.frecuencia_respiratoria_rpm, person.respiracion, person.respiratory_rate);
   const baro = firstValue(live.presion_barometrica_hpa, live.barometro, live.baro, live.presion, live.pressure, person.presion_barometrica_hpa, person.barometro, person.baro, person.presion, person.pressure);
   const bateria = formatBattery(firstValue(live.bateria_pct, live.bateria, live.battery, live.battery_level, person.bateria_pct, person.bateria, person.battery, person.battery_level, assignedDevice.bateria_pct, assignedDevice.bateria, assignedDevice.battery, assignedDevice.battery_level, assignedDevice.nivel_bateria));
-  const actualizado = firstValue(live.signos_actualizacion, live.timestamp, person.signos_actualizacion, person.updated_at, person.fecha_actualizacion, person.ultima_actualizacion, person.timestamp);
   const cameraProtocol = getPersonCameraProtocol(person, live);
+  const isDeviceConnected = (device) => [device.en_linea, device.online, device.conectado, device.connected]
+    .some((value) => value === true || String(value).toLowerCase() === "true" || String(value) === "1");
+  const trackingSources = (() => {
+    const raw = firstValue(live.dispositivos_fuente, person.dispositivos_fuente);
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string") {
+      try { return JSON.parse(raw); } catch (_) { return []; }
+    }
+    return [];
+  })();
+  // Prefiere la fuente que trae el teléfono físico desde el que se conecta la persona
+  const trackingSource = trackingSources.find((source) => source?.dispositivo_fisico && typeof source.dispositivo_fisico === "object") ||
+    trackingSources[0] || {};
+  const physicalConnection = trackingSource.dispositivo_fisico && typeof trackingSource.dispositivo_fisico === "object"
+    ? trackingSource.dispositivo_fisico
+    : null;
+  const connectionDeviceId = firstValue(trackingSource.id_dispositivo, live.tracking_dispositivo_id, live.id_dispositivo, live.device_id, live.deviceId);
+  const connectedDevice = physicalConnection
+    ? assignedDevices.find(isDeviceConnected)
+    : assignedDevices.find((device) => deviceMatchesIdentifier(device, connectionDeviceId)) ||
+      assignedDevices.find(isDeviceConnected) || (connectionStatus.online ? assignedDevice : null);
+  const trackingSourceName = [trackingSource.marca, trackingSource.modelo, trackingSource.tipo].filter(Boolean).join(" ");
+  const physicalConnectionName = physicalConnection
+    ? [physicalConnection.marca, physicalConnection.modelo].filter(Boolean).join(" ")
+    : "";
+  const connectionDeviceName = physicalConnectionName || (connectedDevice ? getDeviceCompactName(connectedDevice) : (trackingSourceName || "Sin dispositivo identificado"));
+  const connectionBattery = physicalConnection
+    ? formatBattery(firstValue(physicalConnection.bateria_pct, bateria))
+    : connectedDevice
+    ? formatBattery(firstValue(connectedDevice.bateria_pct, connectedDevice.bateria, connectedDevice.battery, connectedDevice.battery_level, connectedDevice.nivel_bateria, trackingSource.bateria_pct, bateria))
+    : formatBattery(firstValue(trackingSource.bateria_pct, bateria));
+  const biometricSource = getBiometricSourceLabel(live, person, assignedDevices, assignedDevice);
+  const biometricDevice = assignedDevices.find((device) =>
+    ["SMARTWATCH", "WEARABLE", "RELOJ", "WATCH"].includes(String(device.tipo || "").trim().toUpperCase())
+  );
+  // Pila del reloj: la del dispositivo asignado si está conectado; si no, la que
+  // reporta el propio reloj junto con los signos vitales (solo si hay señal vigente).
+  const hasLiveVitals = [fc, spo2, temp, resp, baro].some(isRealBiometricValue);
+  const biometricBattery = biometricDevice && isDeviceConnected(biometricDevice)
+    ? formatBattery(firstValue(
+      biometricDevice.bateria_pct,
+      biometricDevice.bateria,
+      biometricDevice.battery,
+      biometricDevice.battery_level,
+      biometricDevice.nivel_bateria
+    ))
+    : (connectionStatus.online && hasLiveVitals && biometricSource
+      ? formatBattery(firstValue(live.bateria_pct, live.bateria, live.battery, live.battery_level))
+      : "-");
+  // Teléfono distinto a los asignados desde el que se está conectando la persona
+  const extraConnectedHtml = connectionStatus.online && physicalConnectionName &&
+    !assignedDevices.some((device) => sameText(getDeviceCompactName(device), physicalConnectionName))
+    ? (() => {
+      const extraBattery = formatBattery(physicalConnection.bateria_pct);
+      return `<div class="personInfoDeviceLine online"><span class="personInfoDeviceName">${escapeHtml(physicalConnectionName)}</span>${extraBattery === "-" ? "" : `<span class="personInfoDeviceBattery">${escapeHtml(extraBattery)}</span>`}</div>`;
+    })()
+    : "";
   const dispositivosHtml = assignedDevices.length
     ? assignedDevices.map((device) => {
-      return `<div class="personInfoDeviceLine">${escapeHtml(getDeviceCompactName(device))}</div>`;
-    }).join("")
-    : `<div class="personInfoDeviceLine muted">-</div>`;
-  const hasBiometricData = [fc, spo2, temp, resp, baro].some(isRealBiometricValue);
-  const biometricSource = hasBiometricData ? getBiometricSourceLabel(live, person, assignedDevices, assignedDevice) : "";
-  const biometricTitle = biometricSource ? `Biometricos (${biometricSource})` : "Biometricos";
+      const connected = device === connectedDevice || isDeviceConnected(device);
+      const battery = connected
+        ? formatBattery(firstValue(device.bateria_pct, device.bateria, device.battery, device.battery_level, device.nivel_bateria))
+        : "-";
+      const batteryHtml = battery === "-" ? "" : `<span class="personInfoDeviceBattery">${escapeHtml(battery)}</span>`;
+      return `<div class="personInfoDeviceLine${connected ? " online" : ""}"><span class="personInfoDeviceName">${escapeHtml(getDeviceCompactName(device))}</span>${batteryHtml}</div>`;
+    }).join("") + extraConnectedHtml
+    : (extraConnectedHtml || `<div class="personInfoDeviceLine muted">-</div>`);
+  const renderVitalRow = (label, value, unit = "") => {
+    const valid = isRealBiometricValue(value);
+    return `<div class="personInfoVitalItem"><span>${escapeHtml(label)}</span><strong>${valid ? `${escapeHtml(String(value))}${unit}` : "--"}</strong></div>`;
+  };
   const biometricRows = [
-    renderPersonBiometricRow("FC", fc, " bpm"),
-    renderPersonBiometricRow("SpO2", spo2, "%"),
-    renderPersonBiometricRow("Temp", temp, " C"),
-    renderPersonBiometricRow("Resp", resp, " rpm"),
-    renderPersonBiometricRow("Baro", baro, " hPa"),
-    bateria !== "-" ? `<div class="personInfoLabel">Bateria:</div><div class="personInfoValue">${escapeHtml(bateria)}</div>` : ""
-  ].filter(Boolean).join("");
-  const biometricHtml = hasBiometricData ? `
+    renderVitalRow("FC", fc, " bpm"),
+    renderVitalRow("SpO2", spo2, "%"),
+    renderVitalRow("Temp", temp, " C"),
+    renderVitalRow("Resp", resp, " rpm"),
+    renderVitalRow("Baro", baro, " hPa")
+  ].join("");
+  const biometricHtml = `
     <div class="personInfoBio">
-      <div class="personInfoBioTitle">${escapeHtml(biometricTitle)}</div>
+      <div class="personInfoBioTitle">Biométricos</div>
+      ${biometricSource ? `<div class="personInfoBioSource"><span class="personInfoVitalsBadge" aria-label="Signos vitales"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5S4.5 16 4.5 9.9A4.1 4.1 0 0 1 12 7.5a4.1 4.1 0 0 1 7.5 2.4c0 6.1-7.5 10.6-7.5 10.6Z"></path></svg></span><strong>${escapeHtml(biometricSource)}</strong>${biometricBattery === "-" ? "" : `<span class="personInfoBioBattery">${escapeHtml(biometricBattery)}</span>`}</div>` : `<div class="personInfoBioSource">Sin fuente biométrica identificada</div>`}
       <div class="personInfoGrid">
         ${biometricRows}
       </div>
-      <div class="personInfoUpdated">${escapeHtml(actualizado ? `Actualizado ${formatTime(actualizado)}` : "Sin datos recientes")}</div>
     </div>
-  ` : "";
+  `;
 
   dom.personInfoPopupContent.innerHTML = `
-    <h3 class="personInfoTitle">${escapeHtml(nombre)}</h3>
+    <div class="personInfoHeading"><h3 class="personInfoTitle">${escapeHtml(nombre)}</h3><button class="personInfoMessageBtn" type="button" title="Enviar mensaje" aria-label="Enviar mensaje"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="3"></rect><path d="M8 18 6 21v-3M7 9h10M7 13h6"></path></svg></button></div>
     <div class="personInfoStatus ${connectionStatus.online ? "online" : "offline"}">
       <strong>${escapeHtml(connectionStatus.text)}</strong>
-      <span>${escapeHtml(connectionStatus.detail)}</span>
     </div>
     <div class="personInfoCoordinates">
-      <div><span>Lat</span><strong>${escapeHtml(formatCoord(lat))}</strong></div>
-      <div><span>Lng</span><strong>${escapeHtml(formatCoord(lng))}</strong></div>
+      <span class="personInfoCoordinatesIcon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z"></path><circle cx="12" cy="9" r="2.3"></circle></svg></span>
+      <strong><b>Lat</b> ${escapeHtml(formatCoord(lat))}</strong><strong><b>Lng</b> ${escapeHtml(formatCoord(lng))}</strong>
+      <button class="personInfoCopyCoordinates" type="button" title="Copiar coordenadas" aria-label="Copiar coordenadas"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="1"></rect><path d="M15 9V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h4"></path></svg></button>
     </div>
     <div class="personInfoDevices">
       <div class="personInfoDeviceLabel">Dispositivos</div>
+      ${connectionStatus.online ? `<div class="personInfoConnectionSource">Conectado desde: <strong>${escapeHtml(connectionDeviceName)}</strong>${connectionBattery === "-" ? "" : `<span>${escapeHtml(connectionBattery)}</span>`}</div>` : ""}
       <div class="personInfoDeviceList">${dispositivosHtml}</div>
     </div>
     ${biometricHtml}
     <div class="personInfoCamera">
       ${renderWaitingCameraSignal(cameraProtocol)}
     </div>
-    <button class="personInfoMessageBtn" type="button">Enviar mensaje</button>
   `;
 
   dom.personInfoPopupContent.querySelector(".personInfoMessageBtn")?.addEventListener("click", (event) => {
@@ -1912,6 +1974,23 @@ export function showPersonnelDetail(personId, anchor = {}) {
     }));
     dom.personInfoPopup?.classList.add("hidden");
     window.setTimeout(() => dom.chatInput?.focus(), 0);
+  });
+
+  dom.personInfoPopupContent.querySelector(".personInfoCopyCoordinates")?.addEventListener("click", async () => {
+    const coordinates = `${formatCoord(lat)}, ${formatCoord(lng)}`;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+      await navigator.clipboard.writeText(coordinates);
+    } catch (_) {
+      const input = document.createElement("textarea");
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      input.value = coordinates;
+      document.body.append(input);
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+    }
   });
 
   const cameraContainer = dom.personInfoPopupContent.querySelector(".personInfoCamera");

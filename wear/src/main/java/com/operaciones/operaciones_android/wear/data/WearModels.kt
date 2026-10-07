@@ -34,6 +34,45 @@ enum class WearOperationStatus {
     }
 }
 
+/** Abrevia el cargo/grado (p. ej. "Teniente de Navío" -> "Tte. Nav."). */
+fun abbreviateRank(value: String): String {
+    val rank = java.text.Normalizer.normalize(value.trim(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+        .lowercase()
+    return when {
+        rank.contains("general de division") -> "Gral. Div."
+        rank.contains("general de brigada") || rank.contains("general brigadier") -> "Gral. Brig."
+        rank.contains("teniente coronel") -> "Tte. Cor."
+        rank.contains("capitan de navio") -> "Cap. Nav."
+        rank.contains("capitan de fragata") -> "Cap. Frag."
+        rank.contains("capitan de corbeta") -> "Cap. Corb."
+        rank.contains("capitan primero") -> "Cap. 1/o."
+        rank.contains("teniente de navio") -> "Tte. Nav."
+        rank.contains("teniente de fragata") -> "Tte. Frag."
+        rank.contains("teniente de corbeta") -> "Tte. Corb."
+        rank.contains("sargento primero") -> "Sgto. 1/o."
+        rank.contains("sargento segundo") -> "Sgto. 2/o."
+        rank.contains("subteniente") -> "Subtte."
+        rank.contains("teniente") -> "Tte."
+        rank.contains("coronel") -> "Cor."
+        rank.contains("capitan") -> "Cap."
+        rank.contains("mayor") -> "My."
+        rank.contains("sargento") -> "Sgto."
+        rank.contains("cabo") -> "Cbo."
+        rank.contains("soldado") && rank.contains("marinero") -> "Sldo./Mro."
+        rank.contains("soldado") -> "Sold."
+        rank.contains("marinero") -> "Mar."
+        else -> value.trim()
+    }
+}
+
+/** Cargo abreviado + apellido; usa nombre o apodo solo si no hay apellido. */
+fun personDisplayLabel(puesto: String, nombre: String, apellido: String, apodo: String): String {
+    val name = apellido.trim().ifBlank { nombre.trim() }.ifBlank { apodo.trim() }
+        .replace(Regex("\\s+\\d+$"), "")
+    return listOf(abbreviateRank(puesto), name).filter { it.isNotBlank() }.joinToString(" ")
+}
+
 data class WearUser(
     val id: Int,
     val nombre: String,

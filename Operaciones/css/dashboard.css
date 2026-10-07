@@ -3624,6 +3624,55 @@ circle.pttAlertWarningMark {
   font-weight: 900 !important;
 }
 
+/* Botones compactos con icono */
+#vehicleQuickMenu .vehicleQuickMenuActions {
+  gap: 8px;
+  margin-top: 4px;
+  align-items: stretch;
+}
+
+#vehicleQuickMenu .actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px !important;
+  height: 34px;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  text-align: center;
+  white-space: nowrap;
+}
+
+#vehicleQuickMenu .quickActionIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: #67d7e2;
+}
+
+#vehicleQuickMenu .quickActionLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Botón de cerrar sin cuadro de fondo */
+#btnCloseVehicleQuickMenu {
+  width: 22px !important;
+  height: 22px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#btnCloseVehicleQuickMenu:hover {
+  border: 0 !important;
+  background: transparent !important;
+  color: #38bdf8 !important;
+}
+
 #vehicleQuickMenu .actionBtn:hover {
   background: rgba(36, 92, 111, 0.92) !important;
   border-color: rgba(103, 215, 226, 0.68) !important;
@@ -6487,7 +6536,7 @@ body {
 
 #entityPopupName {
   max-width: calc(100% - 28px) !important;
-  color: #f4fbff !important;
+  color: #38bdf8 !important;
   font-size: 11px !important;
   line-height: 1.18 !important;
   font-weight: 900 !important;
@@ -6531,6 +6580,24 @@ body {
   font-size: 10px;
   font-weight: 800;
   text-align: right;
+}
+
+/* Resalta en azul los datos importantes del popup de ruta. */
+.entityPopupCreator .popupHighlight,
+.routePopupDetails .popupHighlight {
+  color: #38bdf8 !important;
+  font-weight: 800;
+}
+
+/* Coordenadas de destino en una sola línea. */
+.routePopupDetails .routePopupCoords {
+  white-space: nowrap;
+}
+
+.routePopupDetails .routePopupCoords strong {
+  white-space: nowrap;
+  font-size: 9.5px;
+  letter-spacing: -0.1px;
 }
 
 .poiPopupDetails {
@@ -7647,6 +7714,231 @@ body {
 .personInfoCamera .personInfoCameraFeed {
   height: 72px !important;
   min-height: 72px !important;
+}
+
+/* Ficha de personal: estado y telemetría compactos. */
+.personInfoTitle {
+  margin-bottom: 1px !important;
+  padding-bottom: 0 !important;
+  border-bottom: 0 !important;
+}
+
+.personInfoStatus {
+  margin: 0 0 5px 5px !important;
+}
+
+.personInfoStatus strong {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.personInfoCoordinates {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.personInfoCoordinates strong {
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.personInfoCoordinates strong + strong { margin-left: 5px; }
+
+.personInfoCoordinates strong b {
+  color: #d5e7f0;
+  font-size: 9px;
+}
+
+.personInfoCoordinatesIcon {
+  color: #60a5fa;
+  display: grid;
+  width: 13px;
+  height: 13px;
+  margin-right: 2px;
+  place-items: center;
+}
+
+.personInfoCoordinatesIcon svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: #60a5fa !important;
+  stroke-width: 1.8;
+}
+
+.personInfoCopyCoordinates {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #60a5fa;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  margin-left: 3px;
+  padding: 2px;
+  place-items: center;
+  cursor: pointer;
+}
+
+.personInfoCopyCoordinates svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.personInfoDeviceLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.personInfoDeviceLine::before {
+  content: "•";
+  color: #94a3b8;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.personInfoDeviceLine.online::before { color: #67e8f9; }
+.personInfoDeviceName { flex: 1; min-width: 0; }
+.personInfoDeviceBattery { color: #60a5fa; font-size: 10px; font-weight: 800; white-space: nowrap; }
+
+.personInfoConnectionSource {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #9ec7e8;
+  font-size: 10px;
+}
+
+.personInfoConnectionSource strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f8fbff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personInfoConnectionSource span {
+  margin-left: auto;
+  color: #60a5fa;
+  font-weight: 800;
+}
+
+.personInfoBioSource {
+  margin: -4px 0 6px;
+  color: #9ec7e8;
+  font-size: 10px;
+}
+
+.personInfoBioSource strong { color: #e8f5fb; }
+.personInfoBioSource .personInfoBioBattery {
+  margin-left: 8px;
+  color: #60a5fa;
+  font-weight: 800;
+}
+
+.personInfoVitalsBadge {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  margin-right: 4px;
+  vertical-align: -3px;
+}
+
+.personInfoVitalsBadge svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: #60a5fa;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.personInfoBio .personInfoGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 8px;
+}
+
+.personInfoVitalItem {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.personInfoVitalItem span {
+  color: #c7d8e5;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.personInfoVitalItem strong {
+  min-width: 0;
+  color: #f8fafc;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personInfoHeading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 30px;
+}
+
+.personInfoHeading .personInfoTitle {
+  flex: 0 1 auto;
+  margin-right: 0 !important;
+}
+
+.personInfoMessageBtn {
+  position: static;
+  display: inline-grid;
+  width: 26px;
+  min-height: 26px;
+  height: 26px;
+  margin: 0 0 3px;
+  padding: 3px;
+  flex: 0 0 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #60a5fa;
+}
+
+.personInfoMessageBtn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.personInfoMessageBtn:hover,
+.personInfoMessageBtn:focus-visible {
+  background: rgba(37, 99, 235, 0.18);
+  color: #93c5fd;
+}
+
+.personInfoCamera .personCameraWaiting,
+.personInfoCamera .cameraWaitingSignal,
+.personInfoCamera .personInfoCameraFeed {
+  height: 118px !important;
+  min-height: 118px !important;
 }
 
 

@@ -105,6 +105,7 @@ function buildPersonalPosition(rows) {
       tipo: row.tipo || null,
       marca: row.marca || null,
       modelo: row.modelo || null,
+      bateria_pct: optionalNumber(row.bateria_pct),
       precision_m: optionalNumber(row.precision_m),
       ultima_actualizacion: row.ultima_actualizacion,
     })),
@@ -165,7 +166,7 @@ async function getLatestPersonalPosition(idOperacion, idPersonal) {
   return rows[0] || null;
 }
 
-export async function derivePersonalTrackingFromDevice(idOperacion, idDispositivo) {
+export async function derivePersonalTrackingFromDevice(idOperacion, idDispositivo, physicalDevice = null) {
   await ensureExtendedTrackingSchema();
   await ensurePersonalMotionTrackingSchema();
 
@@ -175,6 +176,21 @@ export async function derivePersonalTrackingFromDevice(idOperacion, idDispositiv
   const deviceRows = await getActiveDevicePositionsForPersonal(idOperacion, assignment.id_personal);
   const position = buildPersonalPosition(deviceRows);
   if (!position) return null;
+
+  if (physicalDevice && typeof physicalDevice === "object") {
+    position.dispositivos_fuente = position.dispositivos_fuente.map((source) =>
+      Number(source.id_dispositivo) === Number(idDispositivo)
+        ? {
+            ...source,
+            dispositivo_fisico: {
+              marca: physicalDevice.marca || null,
+              modelo: physicalDevice.modelo || null,
+              bateria_pct: optionalNumber(physicalDevice.bateria_pct),
+            },
+          }
+        : source
+    );
+  }
 
   await pool.query(
     `INSERT INTO tracking_personal (

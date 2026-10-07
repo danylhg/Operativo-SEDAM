@@ -24,6 +24,7 @@ import android.media.MediaMuxer
 import android.media.CamcorderProfile
 import android.net.Uri
 import android.os.Build
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -543,7 +544,8 @@ class MainActivity : AppCompatActivity(),
                             headingDegrees = headingDegrees,
                             accuracyMeters = accuracyMeters,
                             numeroSerie = dispositivo?.numeroSerie,
-                            imei = dispositivo?.imei
+                            imei = dispositivo?.imei,
+                            bateriaPct = getCurrentBatteryPct()
                         )
                     } else {
                         chatSocketManager?.emitTracking(
@@ -1296,6 +1298,7 @@ class MainActivity : AppCompatActivity(),
             .put("nombre", person?.nombre ?: label)
             .put("apellido", person?.apellido ?: "")
             .put("apodo", person?.apodo ?: label)
+            .put("puesto", person?.puesto ?: "")
             .put("grupoNombre", person?.grupoNombre ?: "")
             .put("grupoApodo", person?.grupoApodo ?: "")
             .put("cetNombre", person?.cetNombre ?: "")
@@ -6404,6 +6407,13 @@ class MainActivity : AppCompatActivity(),
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
+
+    private fun getCurrentBatteryPct(): Int? {
+        val battery = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return null
+        val level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        return if (level >= 0 && scale > 0) (level * 100 / scale) else null
+    }
 
     private fun popupX(screenX: Double?, viewportWidth: Double?, popupWidth: Int): Int {
         val location = IntArray(2)

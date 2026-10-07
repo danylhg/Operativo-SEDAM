@@ -230,6 +230,8 @@ router.get("/ops/:id/personal", requireAuth, async (req, res) => {
         t.rumbo_grados,
         t.rumbo_grados AS curso,
         t.rumbo_grados AS heading,
+        t.fuente_tracking,
+        t.dispositivos_fuente,
         COALESCE(t.frecuencia_cardiaca_bpm, sv.frecuencia_cardiaca_bpm) AS frecuencia_cardiaca_bpm,
         COALESCE(t.frecuencia_cardiaca, sv.frecuencia_cardiaca) AS frecuencia_cardiaca,
         COALESCE(t.fc, sv.fc) AS fc,

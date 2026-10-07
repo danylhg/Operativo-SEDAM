@@ -104,25 +104,14 @@ class EmergencyMonitorService : Service(), SensorEventListener {
     // Acelerómetro — detección de doble shake
     // ─────────────────────────────────────────────────────────────────────────
 
+    // Detección por agitación DESACTIVADA: ya no se registra el acelerómetro,
+    // por lo que agitar el equipo no genera ninguna alerta.
     private fun registerAccelerometer() {
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-
-        if (accelerometer == null) {
-            Log.w(TAG, "Dispositivo sin acelerómetro — servicio de emergencia sin sensor")
-            return
-        }
-
-        sensorManager.registerListener(
-            this,
-            accelerometer,
-            SensorManager.SENSOR_DELAY_GAME   // ~20 ms — suficiente y no consume demasiado
-        )
-        Log.d(TAG, "Acelerómetro registrado")
+        Log.d(TAG, "Alerta por agitación desactivada — acelerómetro no registrado")
     }
 
     private fun unregisterAccelerometer() {
-        sensorManager.unregisterListener(this)
+        if (::sensorManager.isInitialized) sensorManager.unregisterListener(this)
     }
 
     override fun onSensorChanged(event: SensorEvent?) {

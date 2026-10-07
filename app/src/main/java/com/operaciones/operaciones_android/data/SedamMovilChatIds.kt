@@ -30,6 +30,7 @@ object SedamMovilChatIds {
 
     fun idDeTipo(tipo: String): Int? = porTipo[tipo.trim().uppercase()]
 
+
     fun tipoDeId(id: Int): String? = porId[id]
 
     /** Asigna un ID estable durante la sesión a cada conversación concreta. */

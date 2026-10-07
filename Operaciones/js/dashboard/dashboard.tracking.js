@@ -219,15 +219,24 @@ function stripTrackingIdentityPrefix(value) {
 
 function compactPersonalRank(value) {
   const rank = String(value || "").trim();
-  const lower = rank.toLowerCase();
+  const lower = rank.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   if (!lower) return "";
+  if (lower.includes("general de division")) return "Gral. Div.";
+  if (lower.includes("general de brigada") || lower.includes("general brigadier")) return "Gral. Bgda.";
+  if (lower.includes("general")) return "Gral.";
+  if (lower.includes("vicealmirante")) return "Valm.";
+  if (lower.includes("contralmirante")) return "Calm.";
+  if (lower.includes("almirante")) return "Alm.";
+  if (lower.includes("teniente coronel")) return "Tte. Cor.";
+  if (lower.includes("coronel")) return "Cnel.";
+  if (lower.includes("mayor")) return "My.";
   if (lower.includes("teniente de nav")) return "Tte. Nav.";
   if (lower.includes("teniente de fragata")) return "Tte. Frag.";
   if (lower.includes("teniente de corbeta")) return "Tte. Corb.";
   if (lower.includes("primer teniente") || lower.includes("1er teniente")) return "1er. Tte.";
   if (lower.includes("segundo teniente") || lower.includes("2do teniente")) return "2do. Tte.";
-  if (lower.includes("teniente") || lower === "tte" || lower === "tte.") return "Tte.";
   if (lower.includes("subteniente")) return "Subtte.";
+  if (lower.includes("teniente") || lower === "tte" || lower === "tte.") return "Tte.";
   if (lower.includes("capit")) return "Cap.";
   if (lower.includes("sargento")) return "Sgto.";
   if (lower.includes("cabo")) return "Cbo.";
@@ -235,13 +244,23 @@ function compactPersonalRank(value) {
   if (lower.includes("soldado")) return "Sld.";
   return rank;
 }
+// Última identidad completa conocida por persona: las actualizaciones en vivo
+// pueden llegar sin puesto/apellido y la etiqueta no debe cambiar entre
+// "Cap. López" y "López".
+const personalLabelIdentity = new Map();
 
 function makeTrackingMapLabel(key, label, meta = {}) {
   const kind = meta.tacticalType || (String(key || "").startsWith("E:") ? "equipo" : "");
   const item = meta.liveData || {};
   if (kind === "personal") {
-    const surname = String(item.apellido || "").trim() || String(label || "").trim().split(/\s+/).pop();
-    const rank = compactPersonalRank(item.puesto || item.grado || item.rango || item.cargo);
+    const known = personalLabelIdentity.get(key) || {};
+    const surname = String(item.apellido || "").trim() || known.surname ||
+      String(label || "").trim().split(/\s+/).pop();
+    const rank = compactPersonalRank(item.puesto || item.grado || item.rango || item.cargo) || known.rank || "";
+    personalLabelIdentity.set(key, {
+      surname: String(item.apellido || "").trim() || known.surname || "",
+      rank
+    });
     return compactTrackingLabel([rank, surname].filter(Boolean).join(" ") || label);
   }
   if (kind !== "equipo") return compactTrackingLabel(label);
@@ -709,9 +728,9 @@ function upsertTrackingEntity(key, lat, lng, label, color, meta = {}) {
     ent.name = label;
     if (ent.label) {
       ent.label.text = mapLabel;
-      ent.label.backgroundColor = color.withAlpha(0.7);
+      ent.label.backgroundColor = color.withAlpha(0.25);
       ent.label.pixelOffset = marker.labelOffset;
-      ent.label.show = (dashboardState.selectedEntity === ent);
+      ent.label.show = meta.tacticalType === "personal" || (dashboardState.selectedEntity === ent);
     }
     ent.billboard = marker.billboard;
     ent.point = marker.point;
@@ -742,10 +761,10 @@ function upsertTrackingEntity(key, lat, lng, label, color, meta = {}) {
       style: Cesium.LabelStyle.FILL_AND_OUTLINE,
       heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
       showBackground: true,
-      backgroundColor: color.withAlpha(0.6),
+      backgroundColor: color.withAlpha(0.25),
       backgroundPadding: new Cesium.Cartesian2(4, 2),
       scaleByDistance: getTrackingScaleByDistance(),
-      show: false
+      show: meta.tacticalType === "personal"
     },
     properties: {
       trackingKey: key,

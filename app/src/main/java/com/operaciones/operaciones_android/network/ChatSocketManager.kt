@@ -2,6 +2,7 @@ package com.operaciones.operaciones_android.network
 
 import com.operaciones.operaciones_android.config.ApiConfig
 import android.util.Log
+import android.os.Build
 import io.socket.client.IO
 import io.socket.client.Socket
 import org.json.JSONObject
@@ -355,7 +356,8 @@ class ChatSocketManager(
         headingDegrees: Double? = null,
         accuracyMeters: Float? = null,
         numeroSerie: String? = null,
-        imei: String? = null
+        imei: String? = null,
+        bateriaPct: Int? = null
     ) {
         val connected = socket?.connected() == true
         Log.d(
@@ -375,6 +377,12 @@ class ChatSocketManager(
             speedKmh?.let { put("velocidad_kmh", it) }
             headingDegrees?.let { put("rumbo_grados", it) }
             accuracyMeters?.let { put("precision_m", it) }
+            bateriaPct?.let { put("bateria_pct", it) }
+            put("dispositivo_fisico", JSONObject().apply {
+                put("marca", Build.MANUFACTURER.orEmpty())
+                put("modelo", Build.MODEL.orEmpty())
+                bateriaPct?.let { put("bateria_pct", it) }
+            })
             numeroSerie?.takeIf { it.isNotBlank() }?.let {
                 put("serial_dispositivo", it)
                 put("numero_serie", it)

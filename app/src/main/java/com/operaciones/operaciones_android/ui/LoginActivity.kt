@@ -91,7 +91,13 @@ class LoginActivity : AppCompatActivity() {
         }
         btnLogin.setOnClickListener { attemptLogin() }
         btnTogglePassword.setOnClickListener { togglePasswordVisibility() }
-        btnApiAddress.setOnClickListener { showApiAddressDialog() }
+        btnApiAddress.setOnClickListener {
+            // La dirección debe poder corregirse incluso si una petición quedó
+            // esperando respuesta; de otro modo el botón parece no responder.
+            currentCall?.cancel()
+            setLoading(false)
+            showApiAddressDialog()
+        }
     }
 
     private fun openFromWearIfPossible(): Boolean {
@@ -578,8 +584,10 @@ class LoginActivity : AppCompatActivity() {
         btnLogin.isEnabled  = true
         btnLogin.alpha      = if (loading) 0.8f else 1f
         if (::btnApiAddress.isInitialized) {
-            btnApiAddress.isEnabled = !loading
-            btnApiAddress.alpha = if (loading) 0.6f else 1f
+            // Mantener disponible la configuración permite cambiar de servidor
+            // cuando la conexión actual se queda esperando o falla.
+            btnApiAddress.isEnabled = true
+            btnApiAddress.alpha = 1f
         }
 
         loadingTextRunnable?.let { mainHandler.removeCallbacks(it) }

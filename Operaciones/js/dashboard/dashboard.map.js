@@ -212,6 +212,13 @@ function getSelectablePickedEntity(position) {
   return picked?.id && isSelectableEntity(picked.id) ? picked.id : null;
 }
 
+// Iconos (SVG en línea) de los botones del menú rápido, por tipo de acción.
+const QUICK_ACTION_ICONS = {
+  chat: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+  route: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/></svg>'
+};
+
 function getQuickMenuContext(entity) {
   const trackingKey = String(getEntityProperty(entity, "trackingKey") || "");
   if (!trackingKey) return null;
@@ -222,7 +229,7 @@ function getQuickMenuContext(entity) {
       label: "Vehiculo",
       name: entity.name || "Vehiculo",
       actions: [
-        { slot: "chat", kind: "vehiculo", text: "Mandar mensaje" },
+        { slot: "chat", kind: "vehiculo", text: "Mensaje" },
         { slot: "route", kind: "ruta", text: "Ver ruta" }
       ]
     };
@@ -234,13 +241,13 @@ function getQuickMenuContext(entity) {
 
     const actions = role === "CET"
       ? [
-        { slot: "chat", kind: "cet", text: "Mandar mensaje a CET" },
-        { slot: "alert", kind: "flotilla", text: "Mandar mensaje a flotilla" },
+        { slot: "chat", kind: "cet", text: "Mensaje a CET" },
+        { slot: "alert", kind: "flotilla", text: "Mensaje a flotilla" },
         { slot: "route", kind: "ruta", text: "Ver ruta" }
       ]
       : [
-        { slot: "chat", kind: "flotilla", text: "Mandar mensaje a flotilla" },
-        { slot: "alert", kind: "grupo", text: "Mandar mensaje a grupo" },
+        { slot: "chat", kind: "flotilla", text: "Mensaje a flotilla" },
+        { slot: "alert", kind: "grupo", text: "Mensaje a grupo" },
         { slot: "route", kind: "ruta", text: "Ver ruta" }
       ];
 
@@ -300,7 +307,7 @@ function showQuickMenuForEntity(entity, clickPosition) {
   }
 
   if (dom.vehicleQuickMenuName) {
-    dom.vehicleQuickMenuName.textContent = `${context.name} (${context.label})`;
+    dom.vehicleQuickMenuName.textContent = context.type === "vehiculo" ? context.name : `${context.name} (${context.label})`;
   }
 
   const trackingKey = String(getEntityProperty(entity, "trackingKey") || "");
@@ -443,9 +450,15 @@ function showQuickMenuForEntity(entity, clickPosition) {
   context.actions.forEach((action) => {
     const button = buttons[action.slot];
     if (!button) return;
-    button.textContent = action.text;
+    const icon = document.createElement("span");
+    icon.className = "quickActionIcon";
+    icon.innerHTML = QUICK_ACTION_ICONS[action.slot] || "";
+    const label = document.createElement("span");
+    label.className = "quickActionLabel";
+    label.textContent = action.text;
+    button.replaceChildren(icon, label);
     button.dataset.actionKind = action.kind;
-    button.style.display = "block";
+    button.style.display = "flex";
   });
 
   dom.vehicleQuickMenu.dataset.contextType = context.type;
@@ -553,7 +566,12 @@ function showRouteDeletePopup(routeId, clickPosition) {
   ].filter(Boolean).join(" ");
   setEntityPopupCreator(author);
   const creator = dom.entityPopup.querySelector(".entityPopupCreator");
-  if (creator?.textContent) creator.textContent = creator.textContent.replace(/^Colocado por:/, "Creada por:");
+  if (creator && author.trim()) {
+    const highlight = document.createElement("span");
+    highlight.className = "popupHighlight";
+    highlight.textContent = author.trim();
+    creator.replaceChildren("Creada por: ", highlight);
+  }
 
   let details = dom.entityPopup.querySelector(".routePopupDetails");
   if (!details) {
@@ -573,7 +591,7 @@ function showRouteDeletePopup(routeId, clickPosition) {
       ? `${Math.floor(durationMinutes / 60)} h ${durationMinutes % 60} min`
       : `${durationMinutes} min`;
   const destinationText = Number.isFinite(lat) && Number.isFinite(lng)
-    ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+    ? `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`
     : "No disponible";
   details.replaceChildren();
   [["Destino", destinationText], ["Distancia", distanceText], ["Duración", durationText]].forEach(([label, value]) => {
@@ -582,6 +600,8 @@ function showRouteDeletePopup(routeId, clickPosition) {
     const content = document.createElement("strong");
     key.textContent = label;
     content.textContent = value;
+    if (label === "Destino") row.classList.add("routePopupCoords");
+    if (value !== "No disponible") content.classList.add("popupHighlight");
     row.append(key, content);
     details.appendChild(row);
   });
@@ -650,7 +670,14 @@ function setEntityPopupCreator(creatorName) {
   }
 
   const name = String(creatorName || "").trim();
-  creatorEl.textContent = name ? `Colocado por: ${name}` : "";
+  if (name) {
+    const highlight = document.createElement("span");
+    highlight.className = "popupHighlight";
+    highlight.textContent = name;
+    creatorEl.replaceChildren("Colocado por: ", highlight);
+  } else {
+    creatorEl.textContent = "";
+  }
   creatorEl.style.display = name ? "block" : "none";
 }
 
@@ -1072,7 +1099,7 @@ function handleEntitySelection(clickPosition) {
     }
 
     if (dashboardState.selectedEntity && dashboardState.selectedEntity.label && !isWaypointOrTargetEntity(dashboardState.selectedEntity)) {
-      dashboardState.selectedEntity.label.show = false;
+      keepPersonalLabelVisible(dashboardState.selectedEntity);
     }
     dashboardState.selectedEntity = pickedEntity;
     if (dashboardState.selectedEntity && dashboardState.selectedEntity.label) {
@@ -1110,7 +1137,7 @@ function handleEntitySelection(clickPosition) {
   } else {
     deselectRemoteRoute();
     if (dashboardState.selectedEntity && dashboardState.selectedEntity.label && !isWaypointOrTargetEntity(dashboardState.selectedEntity)) {
-      dashboardState.selectedEntity.label.show = false;
+      keepPersonalLabelVisible(dashboardState.selectedEntity);
     }
     dashboardState.selectedEntity = null;
     updateSelectionInfo(null);
@@ -1118,6 +1145,12 @@ function handleEntitySelection(clickPosition) {
     if (dom.vehicleQuickMenu) dom.vehicleQuickMenu.style.display = "none";
     dom.personInfoPopup?.classList.add("hidden");
   }
+}
+
+// Al deseleccionar, oculta la etiqueta salvo en personal (siempre visible).
+function keepPersonalLabelVisible(entity) {
+  const isPersonal = String(getEntityProperty(entity, "trackingKey") || "").startsWith("P:");
+  entity.label.show = isPersonal;
 }
 
 function handleAreaClick(lat, lng) {
