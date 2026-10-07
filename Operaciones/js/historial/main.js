@@ -1,8 +1,9 @@
 import { loadCesiumToken, loadReplay, loadStreamRecordings, downloadRecording } from "./historial.api.js";
 import { readHistoryDom, dom } from "./historial.dom.js";
-import { initHistoryMap, buildMapEntities, setHistoryLayerVisibility } from "./historial.map.js";
+import { initHistoryMap, buildMapEntities, setHistoryLayerVisibility, getLayerCounts, flyToLocation } from "./historial.map.js";
+import { LAYERS } from "./historial.meta.js";
 import { replayState } from "./historial.state.js";
-import { initTimeline, setReplayData } from "./historial.timeline.js";
+import { initTimeline, setReplayData, seekTo } from "./historial.timeline.js";
 import {
   renderChatMessages,
   renderError,
@@ -12,6 +13,7 @@ import {
 } from "./historial.ui.js";
 
 readHistoryDom();
+renderLayerLegend();
 bindShell();
 initTimeline();
 main();
@@ -19,7 +21,7 @@ main();
 async function main() {
   const operationId = getOperationId();
   if (!operationId) {
-    renderError("No se encontro el id de operacion. Abre historial.html?id=3 o selecciona una operacion cerrada.");
+    renderError("No se encontró el id de operación. Abre historial.html?id=3 o selecciona una operación cerrada.");
     return;
   }
 
@@ -40,10 +42,36 @@ async function main() {
     renderChatMessages(replayState.events);
     renderEventLog(replayState.events);
     buildMapEntities(replay);
+    renderLayerCounts();
     attachRecordingDownloads();
   } catch (error) {
     console.error("Error cargando historial", error);
-    renderError(error.message || "No se pudo cargar el historial de la operacion.");
+    renderError(error.message || "No se pudo cargar el historial de la operación.");
+  }
+}
+
+// Leyenda de capas: interruptor + color + cantidad de elementos de cada tipo.
+function renderLayerLegend() {
+  if (!dom.layerList) return;
+
+  dom.layerList.innerHTML = LAYERS.map(layer => `
+    <label class="hLayer empty" data-layer="${layer.key}" style="--c:${layer.color}">
+      <input type="checkbox" data-history-layer="${layer.key}" checked>
+      <span class="hLayerSwitch" aria-hidden="true"></span>
+      <span class="hLayerName">${layer.label}</span>
+      <span class="hLayerCount">0</span>
+    </label>
+  `).join("");
+}
+
+function renderLayerCounts() {
+  const counts = getLayerCounts();
+  for (const layer of LAYERS) {
+    const row = dom.layerList?.querySelector(`[data-layer="${layer.key}"]`);
+    if (!row) continue;
+    const count = counts[layer.key] || 0;
+    row.classList.toggle("empty", count === 0);
+    row.querySelector(".hLayerCount").textContent = String(count);
   }
 }
 
@@ -52,42 +80,32 @@ function bindShell() {
     window.location.href = "menu_inicial.html";
   });
 
-  document.querySelectorAll(".tabBtn").forEach((button) => {
+  document.querySelectorAll(".hTab").forEach((button) => {
     button.addEventListener("click", () => {
-      document.querySelectorAll(".tabBtn").forEach(btn => btn.classList.remove("active"));
-      document.querySelectorAll(".tabContent").forEach(content => content.classList.add("hidden"));
+      document.querySelectorAll(".hTab").forEach(btn => btn.classList.remove("active"));
+      document.querySelectorAll(".hPane").forEach(content => content.classList.add("hidden"));
       button.classList.add("active");
       document.getElementById(`${button.dataset.tab}Tab`)?.classList.remove("hidden");
     });
   });
 
-  dom.panelToggle?.addEventListener("click", () => {
-    dom.sidePanel?.classList.toggle("collapsed");
+  dom.layerList?.addEventListener("change", (event) => {
+    const input = event.target.closest("[data-history-layer]");
+    if (input) setHistoryLayerVisibility(input.dataset.historyLayer, input.checked);
   });
 
-  document.querySelectorAll("[data-history-layer]").forEach((input) => {
-    input.addEventListener("change", () => {
-      setHistoryLayerVisibility(input.dataset.historyLayer, input.checked);
-    });
+  dom.layersToggle?.addEventListener("click", () => {
+    const collapsed = dom.layers.classList.toggle("collapsed");
+    dom.layersToggle.setAttribute("aria-expanded", String(!collapsed));
   });
 
-  const filterToggleBtn = document.getElementById("historyFilterToggleBtn");
-  const mapFilters = document.getElementById("historyMapFilters");
-
-  if (filterToggleBtn && mapFilters) {
-    filterToggleBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const isShowing = mapFilters.classList.toggle("show");
-      filterToggleBtn.classList.toggle("active", isShowing);
-    });
-
-    document.addEventListener("click", (e) => {
-      if (!mapFilters.contains(e.target) && !filterToggleBtn.contains(e.target)) {
-        mapFilters.classList.remove("show");
-        filterToggleBtn.classList.remove("active");
-      }
-    });
-  }
+  // Actividad: saltar al instante del evento y centrar el mapa en su ubicación.
+  dom.eventLog?.addEventListener("click", (event) => {
+    const item = event.target.closest(".hEvent");
+    if (!item) return;
+    seekTo(Number(item.dataset.ms));
+    if (item.dataset.lat) flyToLocation(Number(item.dataset.lat), Number(item.dataset.lng));
+  });
 }
 
 function getOperationId() {
@@ -126,7 +144,7 @@ function attachRecordingDownloads() {
         URL.revokeObjectURL(url);
       } catch (error) {
         console.error("No se pudo descargar grabacion", error);
-        alert(error.message || "No se pudo descargar la grabacion.");
+        alert(error.message || "No se pudo descargar la grabación.");
       } finally {
         button.disabled = false;
       }

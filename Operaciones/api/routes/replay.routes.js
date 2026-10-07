@@ -6,10 +6,21 @@ import { isInt } from "../utils/validators.js";
 import { ensureTimelineSchema } from "../utils/timeline.js";
 import { fetchOperationGrid } from "../utils/grid.js";
 import { ensureExtendedTrackingSchema } from "../utils/trackingSchema.js";
+import { ensureGeoMsgSchema } from "../utils/geoMsg.js";
 
 const router = Router();
 const MAX_TRACKING_EVENTS_PER_LAYER = 100000;
 const MAX_TIMELINE_EVENTS = 100000;
+
+// Los waypoints y los blancos comparten tabla (puntos_interes). Un blanco es un
+// objeto MIL-STD-2525 de unidad (SIDC "S...") o con tipo_poi MIL; todo lo demas
+// (SIDC de grafico tactico "G...", PDI) es un waypoint.
+function isTargetPoi(row) {
+  const sidc = String(row?.sidc || row?.icono_src || "").toUpperCase();
+  if (sidc.startsWith("S")) return true;
+  if (sidc.startsWith("G")) return false;
+  return String(row?.tipo_poi || "").toUpperCase() === "MIL";
+}
 
 function rowsToEvents(rows, mapFn) {
   return rows.map(mapFn).filter(Boolean);
@@ -147,7 +158,8 @@ router.get("/ops/:id/replay", requireAuth, async (req, res) => {
       personalAsignado,
       vehiculosAsignados,
       equiposAsignados,
-      grid
+      grid,
+      geoMensajes
     ] = await Promise.all([
       pool.query(
         `SELECT id_zona, id_operacion, nombre, geometria, centroide_lat, centroide_lon, zoom_inicial, color
@@ -482,10 +494,25 @@ router.get("/ops/:id/replay", requireAuth, async (req, res) => {
             e.numero_serie`,
         [id_operacion]
       ),
-      fetchOperationGrid(pool, id_operacion)
+      fetchOperationGrid(pool, id_operacion),
+      ensureGeoMsgSchema()
+        .then(() => pool.query(
+          `SELECT id_geo_msg, lat, lon, texto, autor, id_personal_autor, id_usuario_autor,
+                  visibilidad, fecha_creacion, fecha_actualizacion, fecha_eliminacion
+             FROM geo_mensaje
+            WHERE id_operacion = $1
+            ORDER BY fecha_creacion ASC, id_geo_msg ASC`,
+          [id_operacion]
+        ))
+        .catch((error) => {
+          console.warn("[replay] geo_mensaje no disponible:", error.message);
+          return { rows: [] };
+        })
     ]);
 
     const [pois, areas, estructuras, rutasTacticas, rutasNavegacion, dibujos, zonas] = capas;
+    const waypoints = pois.rows.filter(row => !isTargetPoi(row));
+    const blancos = pois.rows.filter(isTargetPoi);
     const loggedKeys = new Set(
       eventos.rows.map(e => `${e.tipo_evento}:${e.entidad_tipo}:${e.entidad_id ?? ""}`)
     );
@@ -546,6 +573,10 @@ router.get("/ops/:id/replay", requireAuth, async (req, res) => {
       ...rowsToEvents(pois.rows, row => eventIfMissing("poi_creado", "poi", row.id_poi, row.fecha_creacion, row)),
       ...rowsToEvents(pois.rows, row => !row.activo
         ? eventIfMissing("poi_eliminado", "poi", row.id_poi, row.fecha_actualizacion, row)
+        : null),
+      ...rowsToEvents(geoMensajes.rows, row => eventIfMissing("geo_msg_creado", "geo_msg", row.id_geo_msg, row.fecha_creacion, row)),
+      ...rowsToEvents(geoMensajes.rows, row => row.fecha_eliminacion
+        ? eventIfMissing("geo_msg_eliminado", "geo_msg", row.id_geo_msg, row.fecha_eliminacion, row)
         : null),
       ...rowsToEvents(areas.rows, row => eventIfMissing("area_creada", "area", row.id_area, row.fecha_creacion, row)),
       ...rowsToEvents(areas.rows, row => row.estado === "ELIMINADA"
@@ -610,6 +641,9 @@ router.get("/ops/:id/replay", requireAuth, async (req, res) => {
       },
       snapshots: {
         pois: pois.rows,
+        waypoints,
+        blancos,
+        geo_mensajes: geoMensajes.rows,
         areas: areas.rows,
         estructuras: estructuras.rows,
         rutas_tacticas: rutasTacticas.rows,

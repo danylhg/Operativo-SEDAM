@@ -1,5 +1,6 @@
 import { Server } from "socket.io";
 import { pool } from "../db.js";
+import { persistGeoMsgCreated, persistGeoMsgUpdated, persistGeoMsgDeleted } from "../utils/geoMsg.js";
 import { ensureExtendedTrackingSchema, ensurePersonalMotionTrackingSchema } from "../utils/trackingSchema.js";
 import { derivePersonalTrackingFromDevice, getLatestDevicePosition } from "../utils/personalTrackingFromDevices.js";
 
@@ -383,6 +384,7 @@ export function initSocket(server) {
         geoMessagesByOperation.set(opId, geoMessages);
       }
       geoMessages.set(idGeoMsg, payload);
+      persistGeoMsgCreated(payload);
       if (payload.visibilidad === "PUBLICO") {
         socket.to(`op_${opId}`).emit("geo_msg_created", payload);
       } else if (payload.id_personal_autor) {
@@ -411,6 +413,7 @@ export function initSocket(server) {
       }
 
       geoMessagesByOperation.get(opId)?.delete(idGeoMsg);
+      persistGeoMsgDeleted(opId, idGeoMsg);
       const payload = { id_operacion: opId, id_geo_msg: idGeoMsg };
       socket.to(`op_${opId}`).emit("geo_msg_deleted", payload);
       if (typeof ack === "function") ack({ ok: true, ...payload });
@@ -425,6 +428,7 @@ export function initSocket(server) {
       // Editar solo cambia el texto; la visibilidad la controla exclusivamente el autor.
       const payload = { ...current, text, visibilidad: current.visibilidad || "PRIVADO" };
       geoMessagesByOperation.get(opId).set(idGeoMsg, payload);
+      persistGeoMsgUpdated(payload);
       if (payload.visibilidad === "PUBLICO") {
         socket.to(`op_${opId}`).emit("geo_msg_updated", payload);
       } else if (current.id_personal_autor) {
@@ -446,6 +450,7 @@ export function initSocket(server) {
       if (!opId || !current || !isAuthor) { if (typeof ack === "function") ack({ ok: false, mensaje: "Solo el autor puede cambiar la visibilidad" }); return; }
       const payload = { ...current, visibilidad: String(data.visibilidad || "PRIVADO").toUpperCase() === "PUBLICO" ? "PUBLICO" : "PRIVADO" };
       geoMessagesByOperation.get(opId).set(idGeoMsg, payload);
+      persistGeoMsgUpdated(payload);
       if (payload.visibilidad === "PUBLICO") {
         socket.to(`op_${opId}`).emit("geo_msg_updated", payload);
       } else {

@@ -2,22 +2,22 @@ import { dom } from "./historial.dom.js";
 import { replayState } from "./historial.state.js";
 import { renderPlaybackState, renderTimelineTime, updateChatToTime, updateEventLogToTime } from "./historial.ui.js";
 import { updateMapToTime } from "./historial.map.js";
+import { describeEvent, isRelevantEvent } from "./historial.meta.js";
 
 const TICK_MS = 250;
 
 export function initTimeline() {
   dom.playPause?.addEventListener("click", togglePlayback);
-  dom.rewind?.addEventListener("click", () => seekRelative(-10000));
   dom.prevEvent?.addEventListener("click", goToPreviousEvent);
   dom.nextEvent?.addEventListener("click", goToNextEvent);
-  dom.forward?.addEventListener("click", () => seekRelative(10000));
-  dom.reset?.addEventListener("click", () => {
-    pausePlayback();
-    setCurrentTime(replayState.startMs);
-  });
 
-  dom.speed?.addEventListener("change", () => {
-    replayState.speed = Number(dom.speed.value) || 1;
+  dom.speed?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-speed]");
+    if (!button) return;
+    replayState.speed = Number(button.dataset.speed) || 1;
+    dom.speed.querySelectorAll("[data-speed]").forEach((item) => {
+      item.classList.toggle("active", item === button);
+    });
   });
 
   dom.range?.addEventListener("input", () => {
@@ -25,6 +25,50 @@ export function initTimeline() {
     const offsetSeconds = Number(dom.range.value) || 0;
     setCurrentTime(replayState.startMs + offsetSeconds * 1000);
   });
+
+  // Atajos: espacio reproduce/pausa, flechas saltan 10 s (ignora campos de texto).
+  document.addEventListener("keydown", (event) => {
+    if (event.target.closest?.("input, select, textarea, button")) return;
+    if (event.code === "Space") {
+      event.preventDefault();
+      togglePlayback();
+    } else if (event.code === "ArrowLeft") {
+      seekRelative(-10000);
+    } else if (event.code === "ArrowRight") {
+      seekRelative(10000);
+    }
+  });
+}
+
+// Salta a un instante concreto (usado por la lista de actividad).
+export function seekTo(ms) {
+  if (!Number.isFinite(ms)) return;
+  pausePlayback();
+  setCurrentTime(ms);
+}
+
+// Marcas de eventos relevantes sobre la barra, agrupadas en cubetas de ~0.4%
+// para que miles de eventos no saturen el DOM.
+function renderTimelineMarkers() {
+  if (!dom.markers) return;
+  const duration = Math.max(1, replayState.endMs - replayState.startMs);
+  const buckets = new Map();
+
+  for (const event of replayState.events) {
+    if (!isRelevantEvent(event)) continue;
+    const ms = Date.parse(event.occurred_at);
+    if (!Number.isFinite(ms)) continue;
+    const percent = Math.min(100, Math.max(0, ((ms - replayState.startMs) / duration) * 100));
+    const bucket = Math.round(percent / 0.4);
+    if (!buckets.has(bucket)) {
+      buckets.set(bucket, { percent, ms, color: describeEvent(event).color, count: 0 });
+    }
+    buckets.get(bucket).count += 1;
+  }
+
+  dom.markers.innerHTML = [...buckets.values()].map(marker =>
+    `<i style="left:${marker.percent.toFixed(2)}%;--c:${marker.color}" data-ms="${marker.ms}"></i>`
+  ).join("");
 }
 
 export function setReplayData(replay) {
@@ -84,6 +128,7 @@ export function setReplayData(replay) {
     dom.range.value = "0";
   }
 
+  renderTimelineMarkers();
   setCurrentTime(replayState.startMs);
 }
 
@@ -117,7 +162,9 @@ function eventTimestamp(event) {
 function collectSnapshotTimes(replay) {
   const snapshots = replay?.snapshots || {};
   const groups = [
-    snapshots.pois,
+    snapshots.waypoints,
+    snapshots.blancos,
+    snapshots.geo_mensajes,
     snapshots.areas,
     snapshots.estructuras,
     snapshots.rutas_tacticas,
@@ -216,7 +263,7 @@ function setCurrentTime(value) {
     dom.range.value = String(Math.round((clampedTime - replayState.startMs) / 1000));
     const duration = Math.max(1, replayState.endMs - replayState.startMs);
     const percent = ((clampedTime - replayState.startMs) / duration) * 100;
-    dom.range.style.backgroundSize = `${Math.min(100, Math.max(0, percent))}% 100%`;
+    dom.range.style.setProperty("--progress", `${Math.min(100, Math.max(0, percent))}%`);
   }
 
   renderTimelineTime(clampedTime, replayState.endMs, replayState.events, replayState.startMs);
@@ -259,10 +306,5 @@ function goToNextEvent() {
 }
 
 function navigableEvents() {
-  return replayState.events.filter((event) => {
-    const type = String(event.tipo_evento || "").toLowerCase();
-    return !type.startsWith("tracking_") &&
-      !type.startsWith("signos_vitales") &&
-      !type.startsWith("telemetria_");
-  });
+  return replayState.events.filter(isRelevantEvent);
 }

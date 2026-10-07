@@ -1,19 +1,30 @@
 import { dom } from "./historial.dom.js";
+import { replayState } from "./historial.state.js";
+import { LAYERS, describeEvent, isRelevantEvent, isTargetPoi } from "./historial.meta.js";
 
-let lastScrolledEventMs = null;
+// Instantes (ms, ordenados) de los eventos relevantes; permite contar los ya
+// reproducidos con busqueda binaria en cada tick.
+let relevantTimes = [];
+// Elementos del feed (mismo orden que relevantTimes) y cuantos estan reproducidos.
+let eventEls = [];
+let playedCount = 0;
 
 export function renderTopbar(replay) {
   const operation = replay?.operacion || {};
   const user = JSON.parse(localStorage.getItem("user") || "null");
 
   if (dom.title) {
-    dom.title.textContent = operation.nombre || operation.codigo || `Operacion ${operation.id_operacion || ""}`;
+    dom.title.textContent = operation.nombre || operation.codigo || `Operación ${operation.id_operacion || ""}`;
+  }
+
+  if (dom.code) {
+    dom.code.textContent = operation.codigo || "";
   }
 
   if (dom.statusBadge) {
-    dom.statusBadge.textContent = dom.legacyPlaybackLayout
-      ? "Historial y Replay"
-      : operation.estado || "Historial";
+    const status = String(operation.estado || "Historial");
+    dom.statusBadge.textContent = status;
+    dom.statusBadge.dataset.status = status.toLowerCase();
   }
 
   if (dom.who) {
@@ -24,50 +35,80 @@ export function renderTopbar(replay) {
 export function renderOperationInfo(replay) {
   const operation = replay?.operacion || {};
   const timeline = replay?.timeline || {};
-  const events = timeline.eventos || [];
   const snapshots = replay?.snapshots || {};
   const assignment = replay?.asignacion || {};
   const personal = assignment.personal || replay?.personal || [];
   const vehiculos = assignment.vehiculos || replay?.vehiculos || [];
   const equipos = assignment.equipos || replay?.equipos || [];
 
+  // Respaldo para un backend anterior a la separacion waypoint / blanco.
+  const legacyPois = snapshots.pois || [];
+  const waypoints = snapshots.waypoints || legacyPois.filter(poi => !isTargetPoi(poi));
+  const blancos = snapshots.blancos || legacyPois.filter(isTargetPoi);
+
+  const stats = [
+    ["personal", personal.length],
+    ["vehiculos", vehiculos.length],
+    ["waypoints", waypoints.length],
+    ["blancos", blancos.length],
+    ["geomsg", countOf(snapshots.geo_mensajes)],
+    ["areas", countOf(snapshots.areas)],
+    ["estructuras", countOf(snapshots.estructuras)],
+    ["rutas", countOf(snapshots.rutas_tacticas) + countOf(snapshots.rutas_navegacion)],
+    ["dibujos", countOf(snapshots.dibujos)],
+  ];
+
+  const startMs = Date.parse(timeline.inicio || operation.fecha_inicio);
+  const endMs = Date.parse(timeline.fin || operation.fecha_fin);
+  const duration = Number.isFinite(startMs) && Number.isFinite(endMs)
+    ? formatClockDuration(endMs - startMs)
+    : "-";
+
   dom.infoContent.innerHTML = `
-    <section class="infoSection">
+    <section class="hCard">
       <h4>General</h4>
-      <p><strong>Codigo:</strong> ${escapeHtml(operation.codigo || "-")}</p>
-      <p><strong>Nombre:</strong> ${escapeHtml(operation.nombre || "Operacion")}</p>
-      <p><strong>Descripcion:</strong> ${escapeHtml(operation.descripcion || "Sin descripcion disponible.")}</p>
-      <p><strong>Prioridad:</strong> ${escapeHtml(operation.prioridad || "-")}</p>
-      <p><strong>Estado:</strong> <span style="color:var(--accent)">${escapeHtml(operation.estado || "Historial")}</span></p>
-      <p><strong>Inicio:</strong> ${escapeHtml(formatDateTime(timeline.inicio || operation.fecha_inicio))}</p>
-      <p><strong>Cierre:</strong> ${escapeHtml(formatDateTime(timeline.fin || operation.fecha_fin))}</p>
-      <p><strong>Eventos:</strong> ${escapeHtml(events.length)}</p>
+      <p class="hDescription">${escapeHtml(operation.descripcion || "Sin descripción disponible.")}</p>
+      <dl class="hMeta">
+        ${metaItem("Código", operation.codigo || "-")}
+        ${metaItem("Prioridad", operation.prioridad || "-")}
+        ${metaItem("Inicio", formatDateTime(timeline.inicio || operation.fecha_inicio))}
+        ${metaItem("Cierre", formatDateTime(timeline.fin || operation.fecha_fin))}
+        ${metaItem("Duración", duration)}
+        ${metaItem("Eventos", timeline.total_eventos ?? (timeline.eventos || []).length)}
+      </dl>
     </section>
-    <section class="infoSection">
-      <h4>Personal asignado</h4>
-      ${renderPersonalList(personal)}
+
+    <section class="hStats" aria-label="Resumen de elementos">
+      ${stats.map(([key, value]) => statTile(key, value)).join("")}
     </section>
-    <section class="infoSection">
-      <h4>Vehiculos</h4>
-      ${renderVehicleList(vehiculos)}
-    </section>
-    <section class="infoSection">
-      <h4>Equipos</h4>
-      ${renderEquipmentList(equipos)}
-    </section>
-    <section class="infoSection">
-      <h4>Capas guardadas</h4>
-      <p><strong>Puntos de interes:</strong> ${escapeHtml(countOf(snapshots.pois))}</p>
-      <p><strong>Areas:</strong> ${escapeHtml(countOf(snapshots.areas))}</p>
-      <p><strong>Estructuras:</strong> ${escapeHtml(countOf(snapshots.estructuras))}</p>
-      <p><strong>Rutas tacticas:</strong> ${escapeHtml(countOf(snapshots.rutas_tacticas))}</p>
-      <p><strong>Rutas navegacion:</strong> ${escapeHtml(countOf(snapshots.rutas_navegacion))}</p>
-      <p><strong>Dibujos:</strong> ${escapeHtml(countOf(snapshots.dibujos))}</p>
-    </section>
-    <section class="infoSection">
-      <h4>Grabaciones</h4>
-      ${renderRecordingList(replay?.recordings || [], replay?.recordingsError)}
-    </section>
+
+    ${accordion("Personal asignado", personal.length, renderPersonalList(personal), true)}
+    ${accordion("Vehículos", vehiculos.length, renderVehicleList(vehiculos))}
+    ${accordion("Equipos", equipos.length, renderEquipmentList(equipos))}
+    ${accordion("Grabaciones", (replay?.recordings || []).length, renderRecordingList(replay?.recordings || [], replay?.recordingsError))}
+  `;
+}
+
+function statTile(key, value) {
+  const layer = LAYERS.find(item => item.key === key);
+  return `
+    <div class="hStat${value ? "" : " empty"}" style="--c:${layer?.color || "#94A3B8"}">
+      <b>${escapeHtml(value)}</b>
+      <span>${escapeHtml(layer?.label || key)}</span>
+    </div>
+  `;
+}
+
+function metaItem(label, value) {
+  return `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
+}
+
+function accordion(title, count, body, open = false) {
+  return `
+    <details class="hAcc"${open ? " open" : ""}>
+      <summary><span>${escapeHtml(title)}</span><em>${escapeHtml(count)}</em></summary>
+      <div class="hAccBody">${body}</div>
+    </details>
   `;
 }
 
@@ -94,70 +135,46 @@ function formatDateOnly(ms) {
   });
 }
 
-export function renderTimelineTime(currentMs, endMs, events = [], startMs = currentMs) {
-  if (dom.elapsedTime) {
-    dom.elapsedTime.textContent = formatClockDuration(currentMs - startMs);
+// Cantidad de elementos de una lista ordenada que cumplen valor <= limit.
+function countUpTo(sortedValues, limit) {
+  let low = 0;
+  let high = sortedValues.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (sortedValues[mid] <= limit) low = mid + 1;
+    else high = mid;
   }
+  return low;
+}
 
-  if (dom.durationTime) {
-    dom.durationTime.textContent = formatClockDuration(endMs - startMs);
-  }
-
-  if (dom.legacyPlaybackLayout) {
-    if (dom.currentTime) dom.currentTime.textContent = formatClockDuration(currentMs - startMs);
-    if (dom.totalTime) dom.totalTime.textContent = formatClockDuration(endMs - startMs);
-    if (dom.currentDate) dom.currentDate.textContent = formatDateTime(currentMs);
-    return;
-  }
-
-  if (dom.currentTime) {
-    dom.currentTime.textContent = formatTimeOnly(currentMs);
-  }
-
-  if (dom.totalTime) {
-    dom.totalTime.textContent = formatTimeOnly(endMs);
-  }
-
-  const timeDateEl = document.getElementById("historyTimeDate");
-  if (timeDateEl) {
-    timeDateEl.textContent = formatDateOnly(currentMs);
-  }
+export function renderTimelineTime(currentMs, endMs, _events = [], startMs = currentMs) {
+  if (dom.elapsedTime) dom.elapsedTime.textContent = formatClockDuration(currentMs - startMs);
+  if (dom.durationTime) dom.durationTime.textContent = formatClockDuration(endMs - startMs);
+  if (dom.currentTime) dom.currentTime.textContent = formatTimeOnly(currentMs);
+  if (dom.totalTime) dom.totalTime.textContent = formatTimeOnly(endMs);
+  if (dom.currentDate) dom.currentDate.textContent = formatDateOnly(currentMs);
 
   if (dom.eventCounter) {
-    const visibleEvents = events.filter((event) => Date.parse(event.occurred_at) <= currentMs).length;
-    dom.eventCounter.textContent = `${visibleEvents}/${events.length} eventos`;
+    dom.eventCounter.textContent = `${countUpTo(relevantTimes, currentMs)}/${relevantTimes.length} eventos`;
   }
 }
 
 export function renderPlaybackState(isPlaying) {
-  if (dom.playPause) {
-    dom.playPause.setAttribute("aria-label", isPlaying ? "Pausar" : "Reproducir");
-    dom.playPause.innerHTML = isPlaying
-      ? `<svg class="historyControlIcon historyPauseIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M8 6h3v12H8V6Z"></path>
-          <path d="M13 6h3v12h-3V6Z"></path>
-        </svg>`
-      : `<svg class="historyControlIcon historyPlayIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M8 5v14l11-7L8 5Z"></path>
-        </svg>`;
-    return;
-  }
-  if (dom.playPause) {
-    dom.playPause.textContent = isPlaying ? "\u23f8" : "\u25b6";
-    return;
-  }
-  if (dom.playPause) {
-    dom.playPause.textContent = isPlaying ? "⏸" : "▶";
-  }
+  if (!dom.playPause) return;
+  dom.playPause.setAttribute("aria-label", isPlaying ? "Pausar" : "Reproducir");
+  dom.playPause.innerHTML = isPlaying
+    ? `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 6h3v12H8V6Z"/><path d="M13 6h3v12h-3V6Z"/></svg>`
+    : `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7L8 5Z"/></svg>`;
 }
 
 export function renderError(message) {
   if (dom.infoContent) {
-    dom.infoContent.innerHTML = `<div class="historyEmpty">${escapeHtml(message)}</div>`;
+    dom.infoContent.innerHTML = `<div class="hEmpty">${escapeHtml(message)}</div>`;
   }
 
   if (dom.statusBadge) {
     dom.statusBadge.textContent = "Error";
+    dom.statusBadge.dataset.status = "error";
   }
 }
 
@@ -185,68 +202,69 @@ function formatClockDuration(value) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
-function metaRow(label, value) {
-  return `
-    <div class="historyMetaItem">
-      <span class="historyMetaLabel">${escapeHtml(label)}</span>
-      <span class="historyMetaValue">${escapeHtml(value ?? "-")}</span>
-    </div>
-  `;
-}
-
 function countOf(value) {
   return Array.isArray(value) ? value.length : 0;
 }
 
 function renderPersonalList(items = []) {
   if (!items.length) {
-    return '<div class="historyEmpty">Sin personal registrado para esta operacion.</div>';
+    return '<div class="hEmpty">Sin personal registrado para esta operación.</div>';
   }
 
   return `
-    <div class="memberList">
+    <ul class="hMembers">
       ${items.map((person) => {
         const name = fullPersonName(person) || person.apodo || `Personal #${person.id_personal || ""}`;
         const role = person.rol_en_operacion || person.rol || "";
         const group = groupPath(person.grupo_padre_nombre, person.grupo_nombre);
-        return `<span class="memberTag">${escapeHtml([formatRole(role), name, group].filter(Boolean).join(" | "))}</span>`;
+        return memberRow(formatRole(role), name, group);
       }).join("")}
-    </div>
+    </ul>
   `;
 }
 
 function renderVehicleList(items = []) {
   if (!items.length) {
-    return '<div class="historyEmpty">Sin vehiculos registrados para esta operacion.</div>';
+    return '<div class="hEmpty">Sin vehículos registrados para esta operación.</div>';
   }
 
   return `
-    <div class="memberList">
+    <ul class="hMembers">
       ${items.map((vehicle) => {
         const name = [vehicle.tipo, vehicle.codigo_interno, vehicle.alias].filter(Boolean).join(" - ")
-          || `Vehiculo #${vehicle.id_vehiculo || ""}`;
+          || `Vehículo #${vehicle.id_vehiculo || ""}`;
         const assigned = vehiclePersonName(vehicle);
         const group = groupPath(vehicle.grupo_padre_nombre, vehicle.grupo_directo_nombre || vehicle.grupo_nombre);
-        return `<span class="memberTag">${escapeHtml([name, assigned, group].filter(Boolean).join(" | "))}</span>`;
+        return memberRow("", name, [assigned, group].filter(Boolean).join(" | "));
       }).join("")}
-    </div>
+    </ul>
   `;
 }
 
 function renderEquipmentList(items = []) {
   if (!items.length) {
-    return '<div class="historyEmpty">Sin equipos registrados para esta operacion.</div>';
+    return '<div class="hEmpty">Sin equipos registrados para esta operación.</div>';
   }
 
   return `
-    <div class="memberList">
+    <ul class="hMembers">
       ${items.map((equipment) => {
         const name = equipment.nombre || equipment.tipo_equipo || `Equipo #${equipment.id_equipo || ""}`;
         const identifier = equipment.numero_serie || "Sin identificador";
         const destination = equipmentDestination(equipment);
-        return `<span class="memberTag">${escapeHtml([name, identifier, equipment.categoria, destination].filter(Boolean).join(" | "))}</span>`;
+        return memberRow("", name, [identifier, equipment.categoria, destination].filter(Boolean).join(" | "));
       }).join("")}
-    </div>
+    </ul>
+  `;
+}
+
+function memberRow(tag, name, detail) {
+  return `
+    <li>
+      ${tag ? `<span class="hMemberTag">${escapeHtml(tag)}</span>` : ""}
+      <span class="hMemberName">${escapeHtml(name)}</span>
+      ${detail ? `<span class="hMemberDetail">${escapeHtml(detail)}</span>` : ""}
+    </li>
   `;
 }
 
@@ -268,7 +286,7 @@ function abbreviateRank(value) {
   const rank = String(value || "")
     .trim()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
 
   if (rank.includes("general de division")) return "Gral. Div.";
@@ -316,58 +334,28 @@ function formatRole(value) {
   return role ? `(${role})` : "";
 }
 
-function coordinatesText(lat, lon) {
-  const latNum = Number(lat);
-  const lonNum = Number(lon);
-  if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return "";
-  return `${latNum.toFixed(5)}, ${lonNum.toFixed(5)}`;
-}
-
-function inlineMeta(label, value) {
-  if (value == null || value === "") return "";
-  return `<span><b>${escapeHtml(label)}:</b> ${escapeHtml(value)}</span>`;
-}
-
-function statusPill(value) {
-  if (!value) return "";
-  return `<span class="historyAssignmentStatus">${escapeHtml(value)}</span>`;
-}
-
 function renderRecordingList(recordings, error) {
   if (error) {
-    return `<div class="historyEmpty">No se pudieron cargar las grabaciones: ${escapeHtml(error)}</div>`;
+    return `<div class="hEmpty">No se pudieron cargar las grabaciones: ${escapeHtml(error)}</div>`;
   }
 
   if (!recordings.length) {
-    return '<div class="historyEmpty">Sin grabaciones guardadas.</div>';
+    return '<div class="hEmpty">Sin grabaciones guardadas.</div>';
   }
 
   return `
-    <div class="memberList">
+    <div class="hRecordings">
       ${recordings.map(recording => `
-        <button class="btnSecondary historyRecordingDownload" type="button" data-recording-id="${escapeHtml(recording.id_recording)}">
-          Stream #${escapeHtml(recording.id_stream)} - ${escapeHtml(recording.stream_label || recording.stream_kind || "Grabacion")} - Descargar
+        <button class="hRecording historyRecordingDownload" type="button" data-recording-id="${escapeHtml(recording.id_recording)}">
+          <span>Stream #${escapeHtml(recording.id_stream)} · ${escapeHtml(recording.stream_label || recording.stream_kind || "Grabación")}</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
         </button>
       `).join("")}
     </div>
   `;
 }
 
-function formatBytes(value) {
-  const bytes = Number(value || 0);
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDuration(value) {
-  const ms = Number(value || 0);
-  if (!Number.isFinite(ms) || ms <= 0) return "--:--";
-  const totalSeconds = Math.round(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = String(totalSeconds % 60).padStart(2, "0");
-  return `${minutes}:${seconds}`;
-}
+// ── Chats ─────────────────────────────────────────────────
 
 let allChatEvents = [];
 let groupedChats = {};
@@ -408,12 +396,12 @@ function getPersonalChannel(msg) {
   const destTipo = String(msg.destino_tipo || "").toUpperCase();
   const directTypes = new Set(["CELL", "CET", "CUT", "PERSONAL"]);
   const recipient = String(msg.destino_label || "").trim();
-  
+
   if (msg.tipo_mensaje === "SISTEMA" || rawAutor === "Admin Principal" || rawAutor === "Sistema") {
     return null;
   }
   if (!directTypes.has(destTipo) || !recipient) return null;
-  
+
   const participants = [rawAutor.trim(), recipient]
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
@@ -433,20 +421,19 @@ function buildChatItemHtml(chatData) {
   const lastMsg = lastEvent.payload || {};
   const previewText = lastMsg.contenido || "";
   const previewRecipient = lastMsg.destino_label ? `Para ${lastMsg.destino_label}: ` : "";
-  const iconSvg = channel.type === "group" 
-    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`
-    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+  const iconSvg = channel.type === "group"
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
 
   return `
-    <div class="historyChatItem" data-channel-id="${channel.id}">
-      <div class="historyChatItemIcon">
-        ${iconSvg}
-      </div>
-      <div class="historyChatItemContent">
-        <div class="historyChatItemName">${escapeHtml(channel.name)}</div>
-        <div class="historyChatItemPreview">${escapeHtml(previewRecipient + previewText)}</div>
-      </div>
-    </div>
+    <button class="hChatItem" type="button" data-channel-id="${escapeHtml(channel.id)}">
+      <span class="hChatIcon">${iconSvg}</span>
+      <span class="hChatItemText">
+        <b>${escapeHtml(channel.name)}</b>
+        <small>${escapeHtml(previewRecipient + previewText)}</small>
+      </span>
+      <em>${events.length}</em>
+    </button>
   `;
 }
 
@@ -465,10 +452,7 @@ function selectChatChannel(channelId) {
   document.getElementById("historyChatList")?.classList.add("hidden");
   document.getElementById("historyChatActive")?.classList.remove("hidden");
 
-  // Sincronizar el chat al tiempo actual de reproducción
-  import("./historial.state.js").then(({ replayState }) => {
-    updateChatToTime(replayState.currentTimeMs);
-  });
+  updateChatToTime(replayState.currentTimeMs);
 }
 
 export function renderChatMessages(events) {
@@ -484,27 +468,22 @@ export function renderChatMessages(events) {
     .sort((left, right) => eventMs(left) - eventMs(right));
 
   groupedChats = {};
-  
+
   function ensureChannel(channel) {
     if (!groupedChats[channel.id]) {
-      groupedChats[channel.id] = {
-        channel,
-        events: []
-      };
+      groupedChats[channel.id] = { channel, events: [] };
     }
   }
 
   for (const ev of allChatEvents) {
     const msg = ev.payload || {};
-    
-    // A. Agregar al canal del grupo (si corresponde)
+
     const groupChannel = getGroupChannel(msg);
     if (groupChannel) {
       ensureChannel(groupChannel);
       groupedChats[groupChannel.id].events.push(ev);
     }
-    
-    // B. Agregar al chat personal del remitente
+
     const personalChannel = getPersonalChannel(msg);
     if (personalChannel) {
       ensureChannel(personalChannel);
@@ -518,32 +497,32 @@ export function renderChatMessages(events) {
     const directs = Object.values(groupedChats).filter(c => c.channel.type === "direct");
 
     let html = "";
-    
+
     if (groups.length > 0) {
       html += `
-        <div class="historyChatListSection">
-          <div class="historyChatListSectionTitle">Grupos y Canales</div>
+        <div class="hChatSection">
+          <div class="hChatSectionTitle">Grupos y canales</div>
           ${groups.map(c => buildChatItemHtml(c)).join("")}
         </div>
       `;
     }
-    
+
     if (directs.length > 0) {
       html += `
-        <div class="historyChatListSection">
-          <div class="historyChatListSectionTitle">Contactos</div>
+        <div class="hChatSection">
+          <div class="hChatSectionTitle">Contactos</div>
           ${directs.map(c => buildChatItemHtml(c)).join("")}
         </div>
       `;
     }
-    
+
     if (!groups.length && !directs.length) {
-      html = '<div class="historyEmpty">Sin conversaciones en el historial.</div>';
+      html = '<div class="hEmpty">Sin conversaciones en el historial.</div>';
     }
-    
+
     chatListContainer.innerHTML = html;
 
-    chatListContainer.querySelectorAll(".historyChatItem").forEach(el => {
+    chatListContainer.querySelectorAll(".hChatItem").forEach(el => {
       el.addEventListener("click", () => {
         selectChatChannel(el.dataset.channelId);
       });
@@ -561,71 +540,54 @@ export function renderChatMessages(events) {
   }
 }
 
-export function renderEventLog(events) {
-  if (!dom.eventLog) return;
-  lastScrolledEventMs = null;
+// ── Actividad ─────────────────────────────────────────────
 
-  const visibleEvents = [
-    ...events.filter(ev => ev.tipo_evento !== "chat_mensaje" && !String(ev.tipo_evento || "").startsWith("tracking_")),
-    ...trackingSummaries(events),
-  ]
+export function renderEventLog(events) {
+
+  const visibleEvents = events
+    .filter(isRelevantEvent)
     .filter(ev => Number.isFinite(eventMs(ev)))
     .sort((left, right) => eventMs(left) - eventMs(right));
 
+  relevantTimes = visibleEvents.map(eventMs);
+  if (dom.eventCounter) {
+    dom.eventCounter.textContent = `${countUpTo(relevantTimes, replayState.currentTimeMs)}/${relevantTimes.length} eventos`;
+  }
+
+  if (!dom.eventLog) return;
+
   if (!visibleEvents.length) {
-    dom.eventLog.innerHTML = '<div class="historyEmpty">Sin eventos registrados.</div>';
+    dom.eventLog.innerHTML = '<div class="hEmpty">Sin eventos registrados.</div>';
     return;
   }
 
   dom.eventLog.innerHTML = visibleEvents.map(buildEventItem).join("");
+  eventEls = [...dom.eventLog.querySelectorAll(".hEvent")];
+  playedCount = 0;
 }
 
 function buildEventItem(ev) {
-  const payload = ev.payload || {};
-  const time = formatDateTime(ev.occurred_at);
+  const info = describeEvent(ev);
   const ms = eventMs(ev);
-  const name = payload.titulo || payload.contenido || payload.descripcion || payload.nota ||
-    payload.nombre || payload.codigo || ev.entidad_tipo || ev.tipo_evento;
-  const type = ev.entidad_tipo || ev.tipo_evento;
-  const action = eventAction(ev.tipo_evento);
+  const position = info.position
+    ? ` data-lat="${info.position.lat}" data-lng="${info.position.lng}"`
+    : "";
 
   return `
-    <div class="eventItem eventPending" data-ms="${ms}">
-      <div class="eventHeader">
-        <span class="eventTime">${escapeHtml(time)}</span>
-        <span class="eventAction ${action.className}">${escapeHtml(action.label)}</span>
-      </div>
-      <div class="eventBody">
-        <span class="eventIcon" aria-hidden="true">${eventIcon(type)}</span>
-        <div class="eventInfo">
-          <div class="eventName">${escapeHtml(name)}</div>
-          <div class="eventType">${escapeHtml(eventLabel(type))}</div>
-        </div>
-      </div>
-    </div>
+    <button class="hEvent hEventPending" type="button" data-ms="${ms}"${position} style="--c:${info.color}">
+      <span class="hEventDot" aria-hidden="true"></span>
+      <span class="hEventBody">
+        <span class="hEventTop">
+          <b>${escapeHtml(info.kind)}</b>
+          <span class="hEventAction ${info.action.key}">${escapeHtml(info.action.label)}</span>
+          <time>${escapeHtml(formatTimeOnly(ms))}</time>
+        </span>
+        <span class="hEventName">${escapeHtml(info.name)}</span>
+        ${info.detail ? `<span class="hEventDetail">${escapeHtml(info.detail)}</span>` : ""}
+      </span>
+      ${info.position ? '<svg class="hEventLocate" viewBox="0 0 24 24" aria-label="Ir a la ubicación"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>' : ""}
+    </button>
   `;
-}
-
-function trackingSummaries(events) {
-  return ["tracking_personal", "tracking_vehiculo"]
-    .map((tipo) => {
-      const matches = events
-        .filter(ev => ev.tipo_evento === tipo)
-        .sort((left, right) => eventMs(left) - eventMs(right));
-
-      if (!matches.length) return null;
-
-      const label = tipo === "tracking_personal" ? "personal" : "vehiculos";
-      return {
-        tipo_evento: `${tipo}_resumen`,
-        entidad_tipo: "tracking",
-        occurred_at: matches[0].occurred_at,
-        payload: {
-          nombre: `${matches.length} posiciones de ${label}`,
-        },
-      };
-    })
-    .filter(Boolean);
 }
 
 export function updateChatToTime(currentMs) {
@@ -644,20 +606,26 @@ export function updateChatToTime(currentMs) {
 }
 
 export function updateEventLogToTime(currentMs) {
-  if (!dom.eventLog) return;
+  if (!eventEls.length) return;
 
-  let lastPlayed = null;
-  for (const el of dom.eventLog.querySelectorAll("[data-ms]")) {
-    const played = Number(el.dataset.ms) <= currentMs;
-    el.classList.toggle("eventPlayed", played);
-    el.classList.toggle("eventPending", !played);
-    if (played) lastPlayed = el;
+  // Solo se tocan los elementos entre el conteo anterior y el nuevo, en vez de
+  // recorrer todo el feed en cada tick.
+  const count = countUpTo(relevantTimes, currentMs);
+  if (count === playedCount) return;
+
+  const from = Math.min(count, playedCount);
+  const to = Math.max(count, playedCount);
+  for (let i = from; i < to; i += 1) {
+    const played = i < count;
+    eventEls[i].classList.toggle("hEventPlayed", played);
+    eventEls[i].classList.toggle("hEventPending", !played);
   }
+  playedCount = count;
 
-  const playedMs = lastPlayed ? Number(lastPlayed.dataset.ms) : null;
-  if (lastPlayed && playedMs !== lastScrolledEventMs) {
-    lastScrolledEventMs = playedMs;
-    lastPlayed.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  // Solo sigue el ultimo evento mientras se reproduce; en pausa el usuario
+  // puede desplazar la lista libremente.
+  if (count > 0 && replayState.isPlaying) {
+    eventEls[count - 1].scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 }
 
@@ -673,41 +641,29 @@ function formatChatTime(value) {
 }
 
 function getAuthorColor(name) {
-  const colors = [
-    "#38bdf8", // Celeste
-    "#a78bfa", // Violeta
-    "#fb7185", // Rosa
-    "#fb923c", // Naranja
-    "#34d399", // Esmeralda
-    "#22d3ee", // Cian
-    "#f472b6"  // Fucsia
-  ];
+  const colors = ["#38bdf8", "#a78bfa", "#fb7185", "#fb923c", "#34d399", "#22d3ee", "#f472b6"];
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const index = Math.abs(hash) % colors.length;
-  return colors[index];
+  return colors[Math.abs(hash) % colors.length];
 }
 
 function buildBubble(ev) {
   const msg = ev.payload || {};
   const rawAutor = msg.autor_nombre || msg.nombre_usuario || msg.apodo_personal || msg.nombre_personal || "Tripulacion";
-  const autor = escapeHtml(rawAutor);
   const hora = formatChatTime(ev.occurred_at);
-  const texto = escapeHtml(msg.contenido || "");
   const ms = Date.parse(ev.occurred_at);
-  const color = getAuthorColor(rawAutor);
   const recipient = msg.destino_label || destinationFallback(msg);
 
   return `
-    <div class="msg" data-ms="${ms}" style="display:none">
-      <div class="msgHeader">
-        <span class="msgAuthor" style="color:${color} !important">${autor}</span>
-        <span class="msgTime">${escapeHtml(hora)}</span>
+    <div class="hMsg" data-ms="${ms}" style="display:none">
+      <div class="hMsgHead">
+        <span class="hMsgAuthor" style="color:${getAuthorColor(rawAutor)}">${escapeHtml(rawAutor)}</span>
+        <span class="hMsgTime">${escapeHtml(hora)}</span>
       </div>
-      ${recipient ? `<div class="msgRecipient">Para: ${escapeHtml(recipient)}</div>` : ""}
-      <div class="msgText">${texto}</div>
+      ${recipient ? `<div class="hMsgTo">Para: ${escapeHtml(recipient)}</div>` : ""}
+      <div class="hMsgText">${escapeHtml(msg.contenido || "")}</div>
     </div>
   `;
 }
@@ -721,33 +677,6 @@ function destinationFallback(msg) {
   if (type === "FLOTILLA") return "Flotilla";
   if (type === "GRUPO") return "Grupo";
   return role && role !== "GLOBAL" ? role : "";
-}
-
-function eventLabel(value) {
-  return String(value || "evento")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, char => char.toUpperCase());
-}
-
-function eventAction(value) {
-  const text = String(value || "").toLowerCase();
-  if (text.includes("elimin")) {
-    return { className: "deleted", label: "ELIMINACION" };
-  }
-  if (text.includes("cread")) {
-    return { className: "created", label: "REGISTRO" };
-  }
-  return { className: "info", label: "EVENTO" };
-}
-
-function eventIcon(value) {
-  const type = String(value || "").toLowerCase();
-  if (type.includes("poi") || type.includes("punto")) return "P";
-  if (type.includes("area") || type.includes("zona")) return "Z";
-  if (type.includes("ruta")) return "R";
-  if (type.includes("dibujo")) return "D";
-  if (type.includes("tracking")) return "T";
-  return "E";
 }
 
 function eventMs(event) {
