@@ -2123,6 +2123,42 @@
       }
     };
 
+    // Desde la lista de Blancos/Waypoints: vuela al objeto y abre su ficha.
+    window.focusPoiOnMap = function (id, lat, lon, zoomMeters) {
+      try {
+        if (!viewer) return;
+        followMyLocation = false;
+        const openCard = function () {
+          const entity = viewer.entities.getById('poi_' + id);
+          if (!entity) return;
+          let screenPos = null;
+          try {
+            const cartesian = entity.position && entity.position.getValue
+              ? entity.position.getValue(viewer.clock.currentTime)
+              : null;
+            if (cartesian) screenPos = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, cartesian);
+          } catch (_) {}
+          if (!screenPos) {
+            screenPos = new Cesium.Cartesian2(viewer.canvas.clientWidth / 2, viewer.canvas.clientHeight / 2);
+          }
+          hideRoutePopup();
+          showTargetPopup(entity, screenPos);
+        };
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(
+            lon,
+            lat,
+            Math.max(Number(zoomMeters) || FOLLOW_LOCATION_ZOOM, FOLLOW_LOCATION_ZOOM)
+          ),
+          duration: 0.8,
+          complete: openCard,
+          cancel: openCard
+        });
+      } catch (e) {
+        console.error("Error en focusPoiOnMap: " + e.message);
+      }
+    };
+
     window.updateMyPosition = function (lat, lon, showMarker) {
       try {
         if (!viewer) return;
@@ -2370,10 +2406,95 @@
       return TRACKING_PERSONAL_COLOR;
     }
 
+    // Simbolo + nombre se dibujan en una sola imagen: el cuadro del nombre queda
+    // del ancho exacto del texto (Cesium Label agrega margen extra al medirlo).
+    const trackingBillboardState = new WeakMap();
+    const trackingSymbolBitmaps = new Map();
+    const trackingComposedCache = new Map();
+    const TRACKING_LABEL_FONT = "bold 12px sans-serif";
+    const TRACKING_LABEL_PAD_X = 3;
+    const TRACKING_LABEL_HEIGHT = 15;
+    const TRACKING_LABEL_GAP = 4;
+    const TRACKING_COMPOSE_RATIO = 2;
+
+    function loadTrackingSymbolBitmap(src, callback) {
+      const cached = trackingSymbolBitmaps.get(src);
+      if (cached && cached.complete && cached.naturalWidth) { callback(cached); return; }
+      const img = cached || new Image();
+      img.addEventListener("load", function () { callback(img); }, { once: true });
+      if (!cached) {
+        trackingSymbolBitmaps.set(src, img);
+        img.src = src;
+      }
+    }
+
+    function composeTrackingBillboard(img, src, text, size, withBackground, alpha) {
+      const key = [src.length, src.slice(-48), text, size, withBackground ? alpha : "n"].join("|");
+      const hit = trackingComposedCache.get(key);
+      if (hit) return hit;
+
+      const r = TRACKING_COMPOSE_RATIO;
+      const measure = document.createElement("canvas").getContext("2d");
+      measure.font = TRACKING_LABEL_FONT;
+      const labelW = Math.ceil(measure.measureText(text).width) + TRACKING_LABEL_PAD_X * 2;
+      const width = Math.max(size, labelW);
+      const height = size + TRACKING_LABEL_GAP + TRACKING_LABEL_HEIGHT;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(width * r);
+      canvas.height = Math.ceil(height * r);
+      const ctx = canvas.getContext("2d");
+      ctx.scale(r, r);
+      ctx.drawImage(img, (width - size) / 2, 0, size, size);
+
+      const labelX = (width - labelW) / 2;
+      const labelY = size + TRACKING_LABEL_GAP;
+      if (withBackground) {
+        ctx.fillStyle = "rgba(0,0,0," + alpha + ")";
+        ctx.fillRect(labelX, labelY, labelW, TRACKING_LABEL_HEIGHT);
+      }
+      ctx.font = TRACKING_LABEL_FONT;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const textY = labelY + TRACKING_LABEL_HEIGHT / 2 + 0.5;
+      if (!withBackground) {
+        ctx.lineWidth = 3;
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = "rgba(0,0,0,0.9)";
+        ctx.strokeText(text, width / 2, textY);
+      }
+      ctx.fillStyle = "#fff";
+      ctx.fillText(text, width / 2, textY);
+
+      const result = { image: canvas, width: width, height: height };
+      if (trackingComposedCache.size > 300) trackingComposedCache.clear();
+      trackingComposedCache.set(key, result);
+      return result;
+    }
+
+    function refreshTrackingBillboard(entity, kind, selected) {
+      const state = trackingBillboardState.get(entity);
+      if (!state || !entity.billboard) return false;
+      const size = selected ? TRACKING_SYMBOL_SIZE + 8 : TRACKING_SYMBOL_SIZE;
+      const withBackground = selected || kind === "personal";
+      loadTrackingSymbolBitmap(state.symbol, function (img) {
+        if (!entity.billboard) return;
+        const composed = composeTrackingBillboard(img, state.symbol, state.text, size, withBackground, selected ? 0.5 : 0.35);
+        entity.billboard.image = composed.image;
+        entity.billboard.width = composed.width;
+        entity.billboard.height = composed.height;
+        entity.billboard.verticalOrigin = Cesium.VerticalOrigin.BOTTOM;
+        entity.billboard.pixelOffset = new Cesium.Cartesian2(0, TRACKING_LABEL_GAP + TRACKING_LABEL_HEIGHT);
+      });
+      return true;
+    }
+
     function applyTrackingStyle(entity, kind, selected) {
       if (!entity) return;
 
       const markerColor = trackingColorForKind(kind, selected);
+      if (refreshTrackingBillboard(entity, kind, selected)) return;
+
       if (entity.billboard) {
         entity.billboard.width = selected ? TRACKING_SYMBOL_SIZE + 8 : TRACKING_SYMBOL_SIZE;
         entity.billboard.height = selected ? TRACKING_SYMBOL_SIZE + 8 : TRACKING_SYMBOL_SIZE;
@@ -2382,8 +2503,11 @@
       if (entity.label) {
         entity.label.showBackground = selected || kind === "personal";
         entity.label.fillColor = Cesium.Color.WHITE;
-        entity.label.backgroundColor = markerColor.withAlpha(selected ? 0.9 : 0.68);
-        entity.label.backgroundPadding = new Cesium.Cartesian2(5, 3);
+        entity.label.backgroundColor = Cesium.Color.BLACK.withAlpha(selected ? 0.5 : 0.35);
+        entity.label.backgroundPadding = new Cesium.Cartesian2(3, 1);
+        entity.label.outlineWidth = 0;
+        entity.label.style = Cesium.LabelStyle.FILL;
+        entity.label.horizontalOrigin = Cesium.HorizontalOrigin.CENTER;
       }
     }
 
@@ -3013,22 +3137,27 @@
       if (current) viewer.entities.remove(current);
       const position = Cesium.Cartesian3.fromDegrees(coords.lon, coords.lat);
 
+      const composeLabel = !!(marker.billboard && marker.billboard.image && label);
+
       const entity = viewer.entities.add({
         name: label,
         position,
         billboard: marker.billboard,
         label: label ? {
+          show: !composeLabel,
           text: mapLabel || label,
           font: "bold 12px sans-serif",
           fillColor: Cesium.Color.WHITE,
           outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 3,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          outlineWidth: 0,
+          style: Cesium.LabelStyle.FILL,
+          horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+          verticalOrigin: Cesium.VerticalOrigin.TOP,
           pixelOffset: marker.labelOffset,
           distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 50000),
           showBackground: options.kind === "personal",
-          backgroundColor: color.withAlpha(0.68),
-          backgroundPadding: new Cesium.Cartesian2(5, 3)
+          backgroundColor: Cesium.Color.BLACK.withAlpha(0.35),
+          backgroundPadding: new Cesium.Cartesian2(3, 1)
         } : undefined,
         properties: {
           trackingKind: options.kind || "",
@@ -3046,12 +3175,15 @@
       store.set(key, entity);
       upsertTrackingHeadingLine(options.trackingKey || (options.kind + ":" + key), coords.lat, coords.lon, color, options);
 
+      if (composeLabel) {
+        trackingBillboardState.set(entity, { symbol: marker.billboard.image, text: mapLabel || label });
+      }
+
+      const isSelected = selectedTrackingKind === options.kind && selectedTrackingId === String(key);
       if (isTrackingKind(options.kind)) {
-        applyTrackingStyle(
-          entity,
-          options.kind,
-          selectedTrackingKind === options.kind && selectedTrackingId === String(key)
-        );
+        applyTrackingStyle(entity, options.kind, isSelected);
+      } else {
+        refreshTrackingBillboard(entity, options.kind, isSelected);
       }
     }
 
@@ -3853,9 +3985,14 @@
         // Una edición de rumbo/velocidad devuelve también las coordenadas
         // originales de BD. Si el Blanco ya va en movimiento y ese punto no
         // cambió, continuamos desde su posición visual actual.
+        // Se compara contra las coordenadas de BD vistas la última vez (savedLat/savedLon),
+        // no contra el punto de reinicio del movimiento, que ya puede ser la posición
+        // visual: así publicar/sincronizar no devuelve el Blanco a su inicio.
+        const prevSavedLat = previousMotion ? (previousMotion.savedLat ?? previousMotion.lat) : null;
+        const prevSavedLon = previousMotion ? (previousMotion.savedLon ?? previousMotion.lon) : null;
         const isMotionOnlyUpdate = previousMotion &&
-          Math.abs(savedLat - previousMotion.lat) < 0.0000001 &&
-          Math.abs(savedLon - previousMotion.lon) < 0.0000001;
+          Math.abs(savedLat - prevSavedLat) < 0.0000001 &&
+          Math.abs(savedLon - prevSavedLon) < 0.0000001;
         if (isMotionOnlyUpdate && previousEntity && previousEntity.position) {
           const currentPosition = previousEntity.position.getValue
             ? previousEntity.position.getValue(viewer.clock.currentTime)
@@ -3874,18 +4011,8 @@
         const speedKmh = Number.isFinite(parsedSpeed) ? Math.max(0, parsedSpeed) : 0;
         const hasHeading = Number.isFinite(parsedHeading);
         const headingDeg = hasHeading ? ((parsedHeading % 360) + 360) % 360 : 0;
-        // Tras cerrar y volver a abrir Android no existe el mapa anterior,
-        // pero sí se conserva esta última posición visual en localStorage.
-        // Se usa sólo al recargar un Blanco que continúa en movimiento.
-        if (!previousEntity && speedKmh > 0) {
-          try {
-            const storedMotion = JSON.parse(localStorage.getItem('poiMotion_' + entityId) || 'null');
-            if (storedMotion && Number.isFinite(Number(storedMotion.lat)) && Number.isFinite(Number(storedMotion.lon))) {
-              lat = Number(storedMotion.lat);
-              lon = Number(storedMotion.lon);
-            }
-          } catch (_) {}
-        }
+        // La posición actual de un Blanco en movimiento ya viene calculada por el
+        // servidor (igual para todos los dispositivos); no se restaura una local.
         // En Android los Blancos se guardan como MIL; aceptamos tambiÃ©n el
         // nombre explÃ­cito para los datos recibidos de versiones anteriores.
         const normalizedPoiType = String(tipoPoi || '').trim().toUpperCase();
@@ -3999,9 +4126,11 @@
         if (isBlanco && hasHeading) {
           updatePoiHeadingArrow(entityId, Number(lat), Number(lon), headingDeg, cesiumColor);
         }
-        if (speedKmh > 0) {
+        // Un Blanco privado permanece quieto; empieza a moverse al hacerse público.
+        if (speedKmh > 0 && String(visibility || 'PRIVADO').toUpperCase() === 'PUBLICO') {
           poiMotionStates.set(entityId, {
             lat: Number(lat), lon: Number(lon), speedKmh, headingDeg,
+            savedLat: savedLat, savedLon: savedLon,
             color: cesiumColor, showHeadingArrow: isBlanco && hasHeading,
             startedAt: Date.now()
           });

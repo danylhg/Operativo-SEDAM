@@ -20,7 +20,8 @@ import {
   openGeoMsgEditModal,
   updateGeoMsg,
   deleteGeoMsg,
-  setGeoMsgVisibility
+  setGeoMsgVisibility,
+  setPoiMotion
 } from "./dashboard.tactical.js?v=20260923-geo-msg-edit-modal";
 import { addAreaVertex, updateAreaPreview } from "./dashboard.area.js";
 import { cartesianToLatLng, autoSaveTacticalData } from "./dashboard.persistence.js";
@@ -557,8 +558,9 @@ function showRouteDeletePopup(routeId, clickPosition) {
   const route = dashboardState.remoteRouteEntities.get(routeId)?.ruta || {};
   if (dom.entityPopupName) dom.entityPopupName.textContent = getRoutePopupName(routeId);
   if (dom.entityPopupDelete) {
-    dom.entityPopupDelete.textContent = "Eliminar ruta";
-    dom.entityPopupDelete.style.display = isRouteOwnedByCurrentUser(route) ? "block" : "none";
+    // El borrado se hace desde el botón "Eliminar" del cuadro; este queda oculto.
+    dom.entityPopupDelete.textContent = "Eliminar";
+    dom.entityPopupDelete.style.display = "none";
   }
   const author = [
     abbreviateRank(route.creador_puesto || route.routeCreatorRank || route.cargo),
@@ -573,6 +575,11 @@ function showRouteDeletePopup(routeId, clickPosition) {
     creator.replaceChildren("Creada por: ", highlight);
   }
 
+  // Limpia restos de otros popups (blancos/waypoints) que comparten este contenedor.
+  dom.entityPopup.querySelector(".poiPopupDetails")?.remove();
+  dom.entityPopup.querySelector(".poiPopupActions")?.remove();
+  dom.entityPopup.querySelector(".routePopupActions")?.remove();
+
   let details = dom.entityPopup.querySelector(".routePopupDetails");
   if (!details) {
     details = document.createElement("div");
@@ -581,8 +588,15 @@ function showRouteDeletePopup(routeId, clickPosition) {
   }
   const distance = Number(route.distancia_m || route.distance || 0);
   const duration = Number(route.duracion_s || route.duration || 0);
-  const lat = Number(route.destino_lat ?? route.destination_lat);
-  const lng = Number(route.destino_lon ?? route.destination_lon);
+  const formatPoint = (latValue, lngValue) => {
+    const pointLat = Number(latValue);
+    const pointLng = Number(lngValue);
+    return Number.isFinite(pointLat) && Number.isFinite(pointLng)
+      ? [`Lat: ${pointLat.toFixed(5)}`, `Lng: ${pointLng.toFixed(5)}`]
+      : null;
+  };
+  const originPoint = formatPoint(route.origen_lat ?? route.origin_lat, route.origen_lon ?? route.origin_lon);
+  const destinationPoint = formatPoint(route.destino_lat ?? route.destination_lat, route.destino_lon ?? route.destination_lon);
   const distanceText = distance > 0 ? `${(distance / 1000).toFixed(2)} km` : "No disponible";
   const durationMinutes = duration > 0 ? Math.max(1, Math.round(duration / 60)) : null;
   const durationText = durationMinutes == null
@@ -590,21 +604,40 @@ function showRouteDeletePopup(routeId, clickPosition) {
     : durationMinutes >= 60
       ? `${Math.floor(durationMinutes / 60)} h ${durationMinutes % 60} min`
       : `${durationMinutes} min`;
-  const destinationText = Number.isFinite(lat) && Number.isFinite(lng)
-    ? `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`
-    : "No disponible";
   details.replaceChildren();
-  [["Destino", destinationText], ["Distancia", distanceText], ["Duración", durationText]].forEach(([label, value]) => {
+
+  // Origen y destino: etiqueta arriba y, debajo, latitud y longitud.
+  [["Origen", originPoint], ["Destino", destinationPoint]].forEach(([label, point]) => {
+    const block = document.createElement("div");
+    block.className = "routePopupPoint";
+    const key = document.createElement("span");
+    key.textContent = label;
+    block.appendChild(key);
+    (point || ["No disponible"]).forEach((line) => {
+      const content = document.createElement("strong");
+      content.textContent = line;
+      block.appendChild(content);
+    });
+    details.appendChild(block);
+  });
+
+  [["Distancia", distanceText], ["Duración", durationText]].forEach(([label, value]) => {
     const row = document.createElement("div");
     const key = document.createElement("span");
     const content = document.createElement("strong");
     key.textContent = label;
     content.textContent = value;
-    if (label === "Destino") row.classList.add("routePopupCoords");
-    if (value !== "No disponible") content.classList.add("popupHighlight");
     row.append(key, content);
     details.appendChild(row);
   });
+
+  // Botones Editar / Eliminar al final (solo para quien creó la ruta).
+  if (isRouteOwnedByCurrentUser(route)) {
+    const actions = document.createElement("div");
+    actions.className = "routePopupActions";
+    actions.innerHTML = '<button type="button" class="routeEditButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.7 4.2 4.2-.7L19 8.5 15.5 5 4 16.5Z"></path><path d="m14.5 6 3.5 3.5"></path></svg>Editar</button><button type="button" class="poiDeleteButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>Eliminar</button>';
+    dom.entityPopup.insertBefore(actions, dom.entityPopupDelete);
+  }
 
   dom.entityPopup.dataset.action = "delete-navigation-route";
   dom.entityPopup.dataset.routeId = String(routeId);
@@ -791,6 +824,7 @@ function showGeoMsgPopup(entity, clickPosition) {
   setEntityPopupCreator("");
   dom.entityPopup.querySelector(".poiPopupDetails")?.remove();
   dom.entityPopup.querySelector(".routePopupDetails")?.remove();
+  dom.entityPopup.querySelector(".routePopupActions")?.remove();
   dom.entityPopup.querySelector(".geoMsgDetails")?.remove();
   const details = document.createElement("div");
   details.className = "geoMsgDetails";
@@ -859,6 +893,15 @@ async function setPoiVisibility(entity, isPublic) {
     if (!res.ok || !data?.ok) throw new Error(data?.mensaje || "No se pudo cambiar la visibilidad.");
     if (entity.properties?.visibilidad?.setValue) entity.properties.visibilidad.setValue(isPublic ? "PUBLICO" : "PRIVADO");
     else if (entity.properties) entity.properties.visibilidad = isPublic ? "PUBLICO" : "PRIVADO";
+    // Un Blanco privado queda quieto; al publicarlo empieza a moverse.
+    const speed = Number(getEntityProperty(entity, "velocidad_kmh"));
+    const heading = Number(getEntityProperty(entity, "rumbo_grados"));
+    const motionPoi = data.poi;
+    const startLat = Number(motionPoi?.latitud);
+    const startLng = Number(motionPoi?.longitud);
+    if (speed > 0 && Number.isFinite(heading) && Number.isFinite(startLat) && Number.isFinite(startLng)) {
+      setPoiMotion(entity, startLat, startLng, speed, heading); // sale sin movimiento si es privado
+    }
     const label = dom.entityPopup?.querySelector(".poiPopupVisibility > span");
     if (label) label.textContent = isPublic ? "Público" : "Privado";
   } catch (err) {
@@ -916,6 +959,7 @@ function showPoiInfoPopup(entity, clickPosition) {
   if (dom.entityPopupName) dom.entityPopupName.textContent = getEntityPopupName(entity);
   setEntityPopupCreator(creator);
   dom.entityPopup.querySelector(".routePopupDetails")?.remove();
+  dom.entityPopup.querySelector(".routePopupActions")?.remove();
   let details = dom.entityPopup.querySelector(".poiPopupDetails");
   if (!details) {
     details = document.createElement("div");
@@ -971,7 +1015,8 @@ function showPoiInfoPopup(entity, clickPosition) {
   }
 
   dom.entityPopup.querySelector(".poiPopupActions")?.remove();
-  if (isOwner) {
+  {
+    // Cualquier operador puede editar o eliminar un Blanco/Waypoint visible, aunque no lo haya creado.
     const actions = document.createElement("div");
     actions.className = "poiPopupActions";
     actions.innerHTML = '<button type="button" class="poiEditButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16.5-.7 4.2 4.2-.7L19 8.5 15.5 5 4 16.5Z"></path><path d="m14.5 6 3.5 3.5"></path></svg>Editar</button><button type="button" class="poiDeleteButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>Eliminar</button>';
@@ -1003,6 +1048,7 @@ function showEntityDeletePopup(entity, clickPosition) {
   if (dom.entityPopupDelete) dom.entityPopupDelete.style.display = "block";
   const routeDetails = dom.entityPopup.querySelector(".routePopupDetails");
   if (routeDetails) routeDetails.remove();
+  dom.entityPopup.querySelector(".routePopupActions")?.remove();
 
   if (dom.entityPopupName) {
     dom.entityPopupName.textContent = getEntityPopupName(entity);
@@ -1651,6 +1697,21 @@ function bindMapUiEvents() {
         }
         return;
       }
+      if (event.target.closest(".routeEditButton")) {
+        // Abre el panel de rutas con el vehículo de la ruta para modificarla.
+        const route = dashboardState.remoteRouteEntities.get(
+          [...dashboardState.remoteRouteEntities.keys()].find((id) => String(id) === String(dom.entityPopup.dataset.routeId))
+        )?.ruta;
+        dom.entityPopup.style.display = "none";
+        dom.routePanel?.classList.add("open");
+        dom.toggleRoutePanel?.classList.add("active");
+        document.querySelector('[data-route-panel-tab="route"]')?.click();
+        if (route?.id_vehiculo != null && dom.routeVehicleSelect) {
+          dom.routeVehicleSelect.value = String(route.id_vehiculo);
+          dom.routeVehicleSelect.dispatchEvent(new Event("change"));
+        }
+        return;
+      }
       if (event.target.closest(".poiEditButton") && dashboardState.selectedEntity) {
         openPointObjectEdit(dashboardState.selectedEntity);
         return;
@@ -1684,6 +1745,39 @@ function bindMapUiEvents() {
   }
 }
 
+// Reduce el costo de GPU/CPU del visor para equipos modestos: limita los
+// cuadros por segundo, apaga efectos atmosféricos que no aportan al mapa táctico
+// y baja la resolución de render cuando el equipo es de gama baja.
+function applyPerformanceProfile(viewer) {
+  try {
+    const scene = viewer.scene;
+    const lowEnd = (navigator.hardwareConcurrency || 4) <= 4 || (navigator.deviceMemory || 8) <= 4;
+
+    viewer.targetFrameRate = lowEnd ? 24 : 30;
+    viewer.useBrowserRecommendedResolution = true;
+    if (lowEnd) viewer.resolutionScale = 0.85;
+
+    scene.msaaSamples = 1;
+    if (scene.postProcessStages?.fxaa) scene.postProcessStages.fxaa.enabled = false;
+    scene.highDynamicRange = false;
+    if (scene.fog) scene.fog.enabled = false;
+    if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;
+    if (scene.sun) scene.sun.show = false;
+    if (scene.moon) scene.moon.show = false;
+    if (scene.skyBox) scene.skyBox.show = false;
+
+    const globe = scene.globe;
+    globe.enableLighting = false;
+    globe.showGroundAtmosphere = false;
+    globe.depthTestAgainstTerrain = false;
+    globe.maximumScreenSpaceError = lowEnd ? 3 : 2;
+    globe.tileCacheSize = lowEnd ? 60 : 100;
+    globe.preloadSiblings = false;
+  } catch (e) {
+    console.warn("[MAP] No se pudo aplicar el perfil de rendimiento:", e);
+  }
+}
+
 export function initCesium() {
   const viewer = new Cesium.Viewer("map", {
     timeline: false,
@@ -1701,6 +1795,7 @@ export function initCesium() {
   });
 
   dashboardState.viewer = viewer;
+  applyPerformanceProfile(viewer);
   // Configure camera controls to enable translate/pan, zoom and sensible inertias
   try {
     configureGoogleLikeCamera(viewer);

@@ -2066,7 +2066,8 @@ class MainActivity : AppCompatActivity(),
             Toast.makeText(this, "$label sin ubicacion valida.", Toast.LENGTH_SHORT).show()
             return
         }
-        cesiumWebController.centerOnLocation(lat, lon, zoom = 500, follow = false)
+        followedPersonalId = null
+        cesiumWebController.focusPoi(idPoi, lat, lon, zoom = 500)
         Toast.makeText(this, "Centrando en $label", Toast.LENGTH_SHORT).show()
     }
 

@@ -15,12 +15,15 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.operaciones.operaciones_android.R
 import com.operaciones.operaciones_android.config.ApiConfig
 import com.operaciones.operaciones_android.streaming.MediaStreamingService
+import com.operaciones.operaciones_android.ui.media.WebRtcViewerHtml
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoTrack
 
 data class CameraSlotItem(
     val id: String,
@@ -29,7 +32,10 @@ data class CameraSlotItem(
     val protocol: String,
     val playbackUrl: String? = null,
     val isLive: Boolean = false,
-    val isSelf: Boolean = false
+    val isSelf: Boolean = false,
+    val idStream: Int = 0,
+    val operationId: Int = 0,
+    val token: String = ""
 )
 
 class CameraGridAdapter(
@@ -38,9 +44,19 @@ class CameraGridAdapter(
     private val onCardDoubleTap: ((CameraSlotItem, List<CameraSlotItem>) -> Unit)? = null
 ) : RecyclerView.Adapter<CameraGridAdapter.CameraViewHolder>() {
 
+    // La lista se refresca cada pocos segundos. Con notifyDataSetChanged todas las
+    // tarjetas se reciclaban y el video remoto se reiniciaba; con DiffUtil solo se
+    // vuelve a pintar la tarjeta cuyos datos realmente cambiaron.
     fun updateSlots(newSlots: List<CameraSlotItem>) {
+        val old = slots
+        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = old.size
+            override fun getNewListSize() = newSlots.size
+            override fun areItemsTheSame(o: Int, n: Int) = old[o].id == newSlots[n].id
+            override fun areContentsTheSame(o: Int, n: Int) = old[o] == newSlots[n]
+        })
         slots = newSlots
-        notifyDataSetChanged()
+        diff.dispatchUpdatesTo(this)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CameraViewHolder {
@@ -53,6 +69,11 @@ class CameraGridAdapter(
     }
 
     override fun getItemCount(): Int = slots.size
+
+    override fun onViewRecycled(holder: CameraViewHolder) {
+        holder.release()
+        super.onViewRecycled(holder)
+    }
 
     class CameraViewHolder(
         itemView: View,
@@ -71,6 +92,34 @@ class CameraGridAdapter(
 
         private var currentSlot: CameraSlotItem? = null
         private var lastClickTime = 0L
+
+        // Lo que ya está cargado en esta tarjeta. La lista se vuelve a pintar cada
+        // pocos segundos; sin esta llave el video se reiniciaba en cada ciclo.
+        private var loadedWebKey: String? = null
+        private var selfRenderer: SurfaceViewRenderer? = null
+        private var selfTrack: VideoTrack? = null
+
+        private fun releaseSelfRenderer() {
+            selfRenderer?.let { renderer ->
+                try { selfTrack?.removeSink(renderer) } catch (_: Exception) {}
+                try { renderer.release() } catch (_: Exception) {}
+            }
+            selfRenderer = null
+            selfTrack = null
+            cardCameraPreviewContainer.removeAllViews()
+        }
+
+        private fun clearWeb() {
+            if (loadedWebKey != null) {
+                loadedWebKey = null
+                cardWebView.loadUrl("about:blank")
+            }
+        }
+
+        fun release() {
+            releaseSelfRenderer()
+            clearWeb()
+        }
 
         init {
             cardWebView.settings.javaScriptEnabled = true
@@ -148,28 +197,51 @@ class CameraGridAdapter(
                 cardWebView.visibility = View.GONE
                 cardCameraPreviewContainer.visibility = View.VISIBLE
 
-                cardCameraPreviewContainer.removeAllViews()
+                clearWeb()
 
-                val renderer = SurfaceViewRenderer(itemView.context).apply {
-                    init(eglBase.eglBaseContext, null)
-                    setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
-                    setMirror(false)
-                    setEnableHardwareScaler(true)
-                }
-
-                try {
-                    videoTrack.addSink(renderer)
-                } catch (_: Exception) {}
-
-                cardCameraPreviewContainer.addView(
-                    renderer,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
+                // Se reutiliza el mismo render mientras sea la misma pista de video.
+                if (selfRenderer == null || selfTrack !== videoTrack) {
+                    releaseSelfRenderer()
+                    val renderer = SurfaceViewRenderer(itemView.context).apply {
+                        init(eglBase.eglBaseContext, null)
+                        setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+                        setMirror(false)
+                        setEnableHardwareScaler(true)
+                    }
+                    try {
+                        videoTrack.addSink(renderer)
+                    } catch (_: Exception) {}
+                    selfRenderer = renderer
+                    selfTrack = videoTrack
+                    cardCameraPreviewContainer.addView(
+                        renderer,
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
                     )
-                )
+                }
+            } else if (!slot.isSelf && slot.isLive && slot.idStream > 0 && slot.operationId > 0 &&
+                slot.token.isNotBlank() && !slot.protocol.equals("RTMP", ignoreCase = true)
+            ) {
+                // CÁMARA REMOTA WEBRTC: se recibe el video de la otra persona en vivo
+                releaseSelfRenderer()
+                cardCameraPreviewContainer.visibility = View.GONE
+                cardWaitingContainer.visibility = View.GONE
+                cardWebView.visibility = View.VISIBLE
+
+                val key = "webrtc:${slot.operationId}:${slot.idStream}"
+                if (loadedWebKey != key) {
+                    loadedWebKey = key
+                    cardWebView.loadDataWithBaseURL(
+                        ApiConfig.BASE_URL,
+                        WebRtcViewerHtml.build(slot.operationId, slot.idStream, slot.token, "cover"),
+                        "text/html", "UTF-8", null
+                    )
+                }
             } else if (slot.isLive && hlsUrl.isNotBlank()) {
                 // RENDERIZADO REMOTO HLS (WebView)
+                releaseSelfRenderer()
                 cardCameraPreviewContainer.visibility = View.GONE
                 cardWaitingContainer.visibility = View.GONE
                 cardWebView.visibility = View.VISIBLE
@@ -242,8 +314,14 @@ class CameraGridAdapter(
                     </html>
                 """.trimIndent()
 
-                cardWebView.loadDataWithBaseURL(ApiConfig.BASE_URL, playerHtml, "text/html", "UTF-8", null)
+                val hlsKey = "hls:$hlsUrl"
+                if (loadedWebKey != hlsKey) {
+                    loadedWebKey = hlsKey
+                    cardWebView.loadDataWithBaseURL(ApiConfig.BASE_URL, playerHtml, "text/html", "UTF-8", null)
+                }
             } else {
+                releaseSelfRenderer()
+                clearWeb()
                 // INACTIVO O ESPERANDO SEÑAL
                 cardCameraPreviewContainer.visibility = View.GONE
                 cardWebView.visibility = View.GONE

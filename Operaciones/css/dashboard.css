@@ -1253,20 +1253,20 @@ circle.pttAlertWarningMark {
 .chatPanel {
   width: 420px;
   left: 390px;
-  background: rgba(20, 33, 39, 0.88);
+  background: rgba(24, 42, 62, 0.86);
   border-color: rgba(0, 255, 170, 0.22);
 }
 
 .chatAudiencePanel {
   width: 300px;
-  background: rgba(20, 33, 39, 0.90);
+  background: rgba(24, 42, 62, 0.86);
   border-color: rgba(0, 255, 170, 0.22);
 }
 
 .chatGroupMembersPanel {
   left: 824px;
   width: 270px;
-  background: rgba(20, 33, 39, 0.90);
+  background: rgba(24, 42, 62, 0.86);
   border-color: rgba(0, 255, 170, 0.22);
 }
 
@@ -1673,6 +1673,9 @@ circle.pttAlertWarningMark {
 
 /* El panel conserva sus esquinas redondeadas; solo el contenido se desplaza. */
 #infoPanel.open {
+  /* Sin backdrop-filter (desactivado por rendimiento) el fondo se veía muy
+     transparente; se compensa con un fondo casi opaco, sin llegar a negro. */
+  background: rgba(24, 42, 62, 0.86);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2732,9 +2735,7 @@ circle.pttAlertWarningMark {
   width: 416px;
   padding: 24px 18px 18px;
   border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(12, 18, 27, 0.94), rgba(7, 12, 20, 0.90)),
-    rgba(10, 15, 25, 0.88);
+  background: rgba(24, 42, 62, 0.86);
   border-color: rgba(0, 255, 170, 0.22);
 }
 
@@ -4929,7 +4930,7 @@ body {
 .chatPanel,
 .chatAudiencePanel,
 .chatGroupMembersPanel {
-  background: var(--dash-surface-strong);
+  background: rgba(24, 42, 62, 0.88);
   border-color: var(--dash-border);
   box-shadow: var(--dash-shadow);
   color: var(--dash-text);
@@ -5123,7 +5124,7 @@ body {
 }
 
 #tacticalPanel {
-  background: var(--dash-surface-strong);
+  background: rgba(24, 42, 62, 0.88);
   border-color: var(--dash-border);
 }
 
@@ -6600,6 +6601,25 @@ body {
   letter-spacing: -0.1px;
 }
 
+/* Origen/Destino: etiqueta arriba y lat/lng debajo, uno por línea. */
+.routePopupDetails .routePopupPoint {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 2px;
+}
+
+.routePopupDetails .routePopupPoint > span {
+  color: #b8c9d9;
+  font-weight: 700;
+}
+
+.routePopupDetails .routePopupPoint strong {
+  text-align: left;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
 .poiPopupDetails {
   display: grid;
   gap: 7px;
@@ -6664,13 +6684,18 @@ body {
 .poiPopupMovement { display: flex; justify-content: space-between; gap: 8px; color: #d9effd; font-size: 10px; font-variant-numeric: tabular-nums; }
 
 .poiCopyCoordinates,
+.routePopupActions button,
 .poiPopupActions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; }
 .poiCopyCoordinates { width: 22px; height: 22px; padding: 3px; color: #38bdf8; background: transparent; border: 0; }
 .poiCopyCoordinates svg,
+.routePopupActions svg,
 .poiPopupActions svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .poiCopyCoordinates.copied { color: #41e1b2; }
-.poiPopupActions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 2px; }
-.poiPopupActions button { min-height: 32px; border-radius: 7px; font-size: 11px; font-weight: 800; }
+.poiPopupActions,
+.routePopupActions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 2px; }
+.poiPopupActions button,
+.routePopupActions button { min-height: 32px; border-radius: 7px; font-size: 11px; font-weight: 800; }
+.routeEditButton,
 .poiEditButton { color: #bfefff; background: rgba(14, 116, 144, .28); border: 1px solid rgba(56, 189, 248, .6); }
 .poiDeleteButton { color: #ffd6d6; background: rgba(127, 29, 29, .34); border: 1px solid rgba(248, 113, 113, .55); }
 
@@ -7942,3 +7967,11 @@ body {
 }
 
 
+
+/* Rendimiento: el desenfoque de fondo (backdrop-filter) sobre el canvas WebGL
+   obliga a recomponer el mapa en cada cuadro y vuelve lento el panel en equipos
+   sin GPU dedicada. Se desactiva globalmente; los paneles ya son semitransparentes. */
+body *:not(#_perf1):not(#_perf2) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

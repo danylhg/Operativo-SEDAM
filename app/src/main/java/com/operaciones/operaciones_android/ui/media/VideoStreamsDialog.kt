@@ -242,6 +242,23 @@ class VideoStreamsDialog(
                     renderer,
                     FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 )
+            } else if (!slot.isSelf && slot.isLive && slot.idStream > 0 && slot.operationId > 0 &&
+                slot.token.isNotBlank() && !slot.protocol.equals("RTMP", ignoreCase = true)
+            ) {
+                containerNative.visibility = View.GONE
+                containerWaiting.visibility = View.GONE
+                containerWeb.visibility = View.VISIBLE
+                containerWeb.settings.javaScriptEnabled = true
+                containerWeb.settings.domStorageEnabled = true
+                containerWeb.settings.mediaPlaybackRequiresUserGesture = false
+                containerWeb.settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                containerWeb.webChromeClient = WebChromeClient()
+                containerWeb.webViewClient = WebViewClient()
+                containerWeb.loadDataWithBaseURL(
+                    ApiConfig.BASE_URL,
+                    WebRtcViewerHtml.build(slot.operationId, slot.idStream, slot.token, "contain"),
+                    "text/html", "UTF-8", null
+                )
             } else if (slot.isLive && !slot.playbackUrl.isNullOrBlank()) {
                 containerNative.visibility = View.GONE
                 containerWaiting.visibility = View.GONE
@@ -509,7 +526,10 @@ class VideoStreamsDialog(
                             protocol = activeStream?.protocol ?: "WEBRTC",
                             playbackUrl = playback,
                             isLive = isLiveNow,
-                            isSelf = isMe
+                            isSelf = isMe,
+                            idStream = activeStream?.idStream ?: 0,
+                            operationId = operationId,
+                            token = token
                         )
                     )
                 }
@@ -554,7 +574,10 @@ class VideoStreamsDialog(
                             protocol = activeStream?.protocol ?: "RTMP",
                             playbackUrl = playback,
                             isLive = activeStream != null,
-                            isSelf = false
+                            isSelf = false,
+                            idStream = activeStream?.idStream ?: 0,
+                            operationId = operationId,
+                            token = token
                         )
                     )
                 }

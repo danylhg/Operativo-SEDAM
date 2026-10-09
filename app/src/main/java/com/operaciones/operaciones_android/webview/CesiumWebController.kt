@@ -167,6 +167,15 @@ class CesiumWebController(
         }
     }
 
+    fun focusPoi(idPoi: Int, latitude: Double, longitude: Double, zoom: Int = 500) {
+        webView.post {
+            webView.evaluateJavascript(
+                "(function(){ if(typeof focusPoiOnMap==='function') focusPoiOnMap($idPoi, $latitude, $longitude, $zoom); })();",
+                null
+            )
+        }
+    }
+
     fun selectTrackingPersonal(idPersonal: Int) {
         webView.post {
             webView.evaluateJavascript(

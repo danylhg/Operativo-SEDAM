@@ -51,8 +51,37 @@ async function ensurePoiVisibilitySchema() {
        ADD COLUMN IF NOT EXISTS visibilidad VARCHAR(10) NOT NULL DEFAULT 'PRIVADO',
        ADD COLUMN IF NOT EXISTS editor_nombre VARCHAR(255),
        ADD COLUMN IF NOT EXISTS velocidad_kmh NUMERIC(8,2),
-       ADD COLUMN IF NOT EXISTS rumbo_grados NUMERIC(5,2)`
+       ADD COLUMN IF NOT EXISTS rumbo_grados NUMERIC(5,2),
+       ADD COLUMN IF NOT EXISTS movimiento_desde TIMESTAMPTZ`
   );
+}
+
+// Posición actual de un POI en movimiento. La BD guarda el punto de origen y
+// el instante desde el que avanza (movimiento_desde, o la creación); así todos
+// los dispositivos reciben la misma posición y no reinician el recorrido.
+// Usa la misma fórmula plana que el cliente (111320 m por grado).
+function advancedPoiPosition(poi, now = Date.now()) {
+  const lat = Number(poi?.latitud);
+  const lon = Number(poi?.longitud);
+  const speedKmh = Number(poi?.velocidad_kmh);
+  const heading = poi?.rumbo_grados == null ? NaN : Number(poi.rumbo_grados);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (!(speedKmh > 0) || !Number.isFinite(heading)) return { lat, lon };
+  // Un Blanco privado permanece quieto; solo avanza mientras es público.
+  if (String(poi?.visibilidad || "PRIVADO").toUpperCase() !== "PUBLICO") return { lat, lon };
+  const since = new Date(poi.movimiento_desde || poi.fecha_creacion || now).getTime();
+  const elapsedSeconds = Number.isFinite(since) ? Math.max(0, (now - since) / 1000) : 0;
+  const distanceM = (speedKmh / 3.6) * elapsedSeconds;
+  const rad = (heading * Math.PI) / 180;
+  return {
+    lat: lat + (Math.cos(rad) * distanceM) / 111320,
+    lon: lon + (Math.sin(rad) * distanceM) / (111320 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)))
+  };
+}
+
+function withAdvancedPoi(poi) {
+  const pos = advancedPoiPosition(poi);
+  return pos ? { ...poi, latitud: pos.lat, longitud: pos.lon } : poi;
 }
 
 function circleToPolygonCoordinates(lat, lng, radiusMeters, segments = 48) {
@@ -116,7 +145,7 @@ router.get("/ops/:id/pois", requireAuth, async (req, res) => {
     await ensurePoiVisibilitySchema();
     const owner = poiOwner(req);
     const { rows } = await pool.query(
-      `SELECT v.*, poi.visibilidad AS visibilidad, poi.velocidad_kmh, poi.rumbo_grados, p.puesto AS creador_puesto,
+      `SELECT v.*, poi.visibilidad AS visibilidad, poi.velocidad_kmh, poi.rumbo_grados, poi.movimiento_desde, p.puesto AS creador_puesto,
               COALESCE(poi.editor_nombre, '') AS editor_nombre,
               COALESCE(poi.editor_nombre, '') AS "editorLabel"
          FROM v_poi_detalle v
@@ -132,7 +161,7 @@ router.get("/ops/:id/pois", requireAuth, async (req, res) => {
     );
 
     // Responde con la lista
-    res.json({ ok: true, items: rows });
+    res.json({ ok: true, items: rows.map(withAdvancedPoi) });
   } catch (err) {
     // Manejo uniforme de error
     sendDbError(res, err, "Error obteniendo POIs");
@@ -265,14 +294,14 @@ router.patch("/ops/:id/pois/:id_poi/publicar", requireAuth, async (req, res) => 
     await ensurePoiVisibilitySchema();
     const owner = poiOwner(req);
     const { rows } = await pool.query(
-      `UPDATE puntos_interes SET visibilidad='PUBLICO'
+      `UPDATE puntos_interes SET visibilidad='PUBLICO', movimiento_desde = NOW()
        WHERE id_poi=$1 AND id_operacion=$2 AND activo=TRUE
          AND tipo_creador=$3 AND COALESCE(id_usuario,id_personal)=$4 RETURNING *`,
       [id_poi, id_operacion, owner.tipo, owner.id]
     );
     if (!rows[0]) return res.status(404).json({ ok: false, mensaje: "POI no encontrado o no te pertenece" });
     const { rows: publishedRows } = await pool.query(
-      `SELECT v.*, poi.visibilidad AS visibilidad, poi.velocidad_kmh, poi.rumbo_grados, p.puesto AS creador_puesto,
+      `SELECT v.*, poi.visibilidad AS visibilidad, poi.velocidad_kmh, poi.rumbo_grados, poi.movimiento_desde, p.puesto AS creador_puesto,
                COALESCE(NULLIF(v.personal_nombre, ''), NULLIF(v.usuario_nombre, ''), v.tipo_creador::text) AS creador_nombre
          FROM v_poi_detalle v
          JOIN puntos_interes poi ON poi.id_poi = v.id_poi
@@ -282,7 +311,7 @@ router.patch("/ops/:id/pois/:id_poi/publicar", requireAuth, async (req, res) => 
         LIMIT 1`,
       [id_poi, id_operacion]
     );
-    const publishedPoi = publishedRows[0] || rows[0];
+    const publishedPoi = withAdvancedPoi(publishedRows[0] || rows[0]);
     const io = req.app.get("io");
     if (io) emitPoiActualizado(io, id_operacion, publishedPoi);
     res.json({ ok: true, poi: publishedPoi });
@@ -298,11 +327,19 @@ router.patch("/ops/:id/pois/:id_poi/privatizar", requireAuth, async (req, res) =
   try {
     await ensurePoiVisibilitySchema();
     const owner = poiOwner(req);
+    // Al volver a privado el Blanco se congela en su posición actual.
+    const { rows: beforeRows } = await pool.query(
+      `SELECT latitud, longitud, velocidad_kmh, rumbo_grados, movimiento_desde, fecha_creacion, visibilidad
+         FROM puntos_interes WHERE id_poi=$1 AND id_operacion=$2 AND activo=TRUE`,
+      [id_poi, id_operacion]
+    );
+    const frozen = beforeRows[0] ? advancedPoiPosition(beforeRows[0]) : null;
     const { rows } = await pool.query(
-      `UPDATE puntos_interes SET visibilidad='PRIVADO'
+      `UPDATE puntos_interes SET visibilidad='PRIVADO', movimiento_desde = NOW(),
+              latitud = COALESCE($5, latitud), longitud = COALESCE($6, longitud)
        WHERE id_poi=$1 AND id_operacion=$2 AND activo=TRUE
          AND tipo_creador=$3 AND COALESCE(id_usuario,id_personal)=$4 RETURNING *`,
-      [id_poi, id_operacion, owner.tipo, owner.id]
+      [id_poi, id_operacion, owner.tipo, owner.id, frozen?.lat ?? null, frozen?.lon ?? null]
     );
     if (!rows[0]) return res.status(404).json({ ok: false, mensaje: "POI publico no encontrado o no te pertenece" });
     const io = req.app.get("io");
@@ -332,8 +369,31 @@ router.put("/ops/:id/pois/:id_poi", requireAuth, async (req, res) => {
     const values = [id_poi, id_operacion];
     let paramIndex = 3;
 
-    if (latitud != null) { setClauses.push(`latitud = $${paramIndex++}`); values.push(Number(latitud)); }
-    if (longitud != null) { setClauses.push(`longitud = $${paramIndex++}`); values.push(Number(longitud)); }
+    // Si cambia el movimiento (velocidad/rumbo) o el punto, el recorrido se
+    // reinicia desde la posición actual para que no salte ni se detenga.
+    const { rows: currentRows } = await pool.query(
+      `SELECT latitud, longitud, velocidad_kmh, rumbo_grados, movimiento_desde, fecha_creacion
+         FROM puntos_interes WHERE id_poi = $1 AND id_operacion = $2 AND activo = TRUE`,
+      [id_poi, id_operacion]
+    );
+    const current = currentRows[0];
+    const sameCoord = (a, b) => a != null && b != null && Math.abs(Number(a) - Number(b)) < 0.0000001;
+    const explicitMove = current && latitud != null && longitud != null &&
+      !(sameCoord(latitud, current.latitud) && sameCoord(longitud, current.longitud));
+    const movementTouched = velocidad_kmh !== undefined || rumbo_grados !== undefined;
+    let lat = latitud;
+    let lon = longitud;
+    if (current && !explicitMove && movementTouched) {
+      // Android reenvía el punto de origen guardado: no es un traslado.
+      const pos = advancedPoiPosition(current);
+      if (pos) { lat = pos.lat; lon = pos.lon; }
+    }
+    if (current && (explicitMove || movementTouched)) {
+      setClauses.push(`movimiento_desde = NOW()`);
+    }
+
+    if (lat != null) { setClauses.push(`latitud = $${paramIndex++}`); values.push(Number(lat)); }
+    if (lon != null) { setClauses.push(`longitud = $${paramIndex++}`); values.push(Number(lon)); }
     if (nombre !== undefined) { setClauses.push(`nombre = $${paramIndex++}`); values.push(String(nombre)); }
     if (tipo_poi !== undefined) { setClauses.push(`tipo_poi = $${paramIndex++}`); values.push(String(tipo_poi)); }
     if (color !== undefined) { setClauses.push(`color = $${paramIndex++}`); values.push(String(color)); }
@@ -1201,7 +1261,7 @@ router.get("/ops/:id/mapa", requireAuth, async (req, res) => {
       //    depender del shape de v_capas_mapa_operacion.
       // -------------------------------------------------
       pool.query(
-        `SELECT v.*, poi.visibilidad AS visibilidad, p.puesto AS creador_puesto,
+        `SELECT v.*, poi.visibilidad AS visibilidad, poi.velocidad_kmh, poi.rumbo_grados, poi.movimiento_desde, p.puesto AS creador_puesto,
                 COALESCE(poi.editor_nombre, '') AS editor_nombre,
                 COALESCE(NULLIF(v.personal_nombre, ''), NULLIF(v.usuario_nombre, ''), v.tipo_creador::text) AS creador_nombre
            FROM v_poi_detalle v
@@ -1686,14 +1746,24 @@ router.get("/ops/:id/mapa", requireAuth, async (req, res) => {
       connectedPersonalIds.has(Number(person.id_personal))
     );
 
+    // Los POIs en movimiento se entregan en su posición actual (misma para todos).
+    const advancedPois = poisRes.rows.map(withAdvancedPoi);
+    const advancedById = new Map(advancedPois.map((poi) => [Number(poi.id_poi), poi]));
+    const advancedCapas = capasRes.rows.map((capa) => {
+      const poi = String(capa.tipo_capa || "") === "POI" ? advancedById.get(Number(capa.id_elemento)) : null;
+      return poi ? { ...capa, latitud: poi.latitud, longitud: poi.longitud } : capa;
+    });
+
     // Devuelve todo el paquete de datos del mapa
     return res.json({
       ok: true,
       operacion: operacionRes.rows[0],
       zona_operacion: zonaRes.rows[0] || null,
-      capas: capasRes.rows,
-      pois: poisRes.rows,
+      capas: advancedCapas,
+      pois: advancedPois,
       personal: connectedPersonal,
+      // Todo el personal asignado (conectado o no), para directorios como el del chat.
+      personal_asignado: personalRes.rows,
       vehiculos: vehiculosRes.rows,
       equipos: equiposRes.rows,
       dispositivos: dispositivosRes.rows,

@@ -728,7 +728,7 @@ function upsertTrackingEntity(key, lat, lng, label, color, meta = {}) {
     ent.name = label;
     if (ent.label) {
       ent.label.text = mapLabel;
-      ent.label.backgroundColor = color.withAlpha(0.25);
+      ent.label.backgroundColor = Cesium.Color.BLACK.withAlpha(0.35);
       ent.label.pixelOffset = marker.labelOffset;
       ent.label.show = meta.tacticalType === "personal" || (dashboardState.selectedEntity === ent);
     }
@@ -761,7 +761,7 @@ function upsertTrackingEntity(key, lat, lng, label, color, meta = {}) {
       style: Cesium.LabelStyle.FILL_AND_OUTLINE,
       heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
       showBackground: true,
-      backgroundColor: color.withAlpha(0.25),
+      backgroundColor: Cesium.Color.BLACK.withAlpha(0.35),
       backgroundPadding: new Cesium.Cartesian2(4, 2),
       scaleByDistance: getTrackingScaleByDistance(),
       show: meta.tacticalType === "personal"

@@ -339,10 +339,13 @@ function normalizeRole(person) {
   return String(person?.rol_en_operacion || person?.rol || "").toUpperCase();
 }
 
+// Etiqueta de personal en el chat: cargo abreviado + nombre y apellido
+// (el apodo solo se usa si faltan los datos de nombre).
 function fullName(person) {
+  const name = [person?.nombre, person?.apellido].filter(Boolean).join(" ").trim();
+  if (name) return [abbreviateAlertRank(person?.puesto), name].filter(Boolean).join(" ");
   return person?.apodo ||
     person?.apodo_personal ||
-    [person?.nombre, person?.apellido].filter(Boolean).join(" ").trim() ||
     `Personal ${person?.id_personal || ""}`.trim();
 }
 
@@ -448,7 +451,10 @@ function uniqueById(items, keyFn = (item) => item?.id) {
 }
 
 function buildChatDirectory(mapaData = {}) {
-  const personal = Array.isArray(mapaData.personal) ? mapaData.personal : [];
+  // El chat lista a todo el personal asignado, esté o no conectado.
+  const personal = Array.isArray(mapaData.personal_asignado)
+    ? mapaData.personal_asignado
+    : (Array.isArray(mapaData.personal) ? mapaData.personal : []);
   const vehiculosRaw = Array.isArray(mapaData.vehiculos) ? mapaData.vehiculos : [];
   const { sub, tabla } = getMyInfo();
   const currentPersonalId = tabla === "personal" ? String(sub || "") : "";
@@ -522,6 +528,8 @@ async function loadChatDirectory() {
     const data = await res.json();
     if (!data.ok) return;
     buildChatDirectory(data);
+    if (!isChatChannelAvailable(_channelType)) setChannel("global");
+    updateChatChannelVisibility();
     updateTargetSelect();
     renderMessages();
   } catch (err) {
@@ -735,7 +743,29 @@ function channelAvatar(type = _channelType) {
   return labels[type] || "T";
 }
 
+// Un canal solo se ofrece si existe a quién escribirle (p. ej. sin grupos no
+// aparece "Grupo"). "Todos" siempre está disponible.
+function isChatChannelAvailable(type) {
+  const dir = _chatDirectory;
+  switch (type) {
+    case "vehiculo": return dir.vehiculos.length > 0;
+    case "flotilla": return dir.flotillas.length > 0;
+    case "grupo": return dir.grupos.length > 0;
+    case "cets": return Array.from(dir.personalById.values()).some((p) => normalizeRole(p) === "CET");
+    case "cet_specific": return dir.cets.length > 0;
+    case "cell_specific": return dir.cells.length > 0;
+    default: return true;
+  }
+}
+
+function updateChatChannelVisibility() {
+  document.querySelectorAll("[data-chat-channel]").forEach((btn) => {
+    btn.style.display = isChatChannelAvailable(btn.dataset.chatChannel) ? "" : "none";
+  });
+}
+
 function syncAudienceUi() {
+  updateChatChannelVisibility();
   document.querySelectorAll("[data-chat-channel]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.chatChannel === _channelType);
   });
@@ -1320,13 +1350,14 @@ function showEmergencyTopBanner(msg) {
   const status = find("#emergencyTopBannerStatus");
   if (status) {
     const deviceModel = "";
+    // El nombre del emisor ya se muestra en #emergencyTopBannerSender; aquí solo van las críticas.
     status.hidden = isShakeAlert
       ? !deviceModel
-      : !isLifeLine && !criticalAlerts.length;
+      : !criticalAlerts.length;
     status.textContent = isShakeAlert
       ? deviceModel
       : isLifeLine
-      ? `${reportedUser}${criticalAlerts.length ? ` — ⚠ ${criticalAlerts.join(" · ")}` : ""}`
+      ? (criticalAlerts.length ? `⚠ ${criticalAlerts.join(" · ")}` : "")
       : criticalAlerts.length
       ? `⚠ ${criticalAlerts.join(" · ")} — VERIFICAR DE INMEDIATO`
       : "";

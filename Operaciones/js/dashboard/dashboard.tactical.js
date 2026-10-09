@@ -676,12 +676,25 @@ function createHeadingArrowImage(headingDegrees) {
   return { image: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, pointsUpward };
 }
 
+// Coloca el nombre del Blanco del lado contrario a la flecha de rumbo para que
+// no se encimen: debajo del símbolo por defecto, y arriba si la flecha apunta al sur.
+function placePoiLabelAwayFromArrow(poiEntity, headingDegrees) {
+  if (!poiEntity?.label || !poiEntity.billboard) return;
+  const hasHeading = headingDegrees !== null && headingDegrees !== undefined && Number.isFinite(Number(headingDegrees));
+  const pointsSouth = hasHeading && Math.cos(Cesium.Math.toRadians(Number(headingDegrees))) < -0.3;
+  const symbolSize = getMilBillboardSize();
+  poiEntity.label.pixelOffset = pointsSouth
+    ? new Cesium.Cartesian2(0, -(symbolSize + 16))
+    : new Cesium.Cartesian2(0, 15);
+}
+
 function syncPoiHeadingArrow(poiEntity, poi = {}, headingDegrees) {
   const viewer = dashboardState.viewer;
   const entityId = String(poiEntity?.id || "");
   if (!viewer || !entityId) return;
   const arrowId = `${entityId}_heading`;
   let arrow = viewer.entities.getById(arrowId);
+  placePoiLabelAwayFromArrow(poiEntity, headingDegrees);
   if (headingDegrees === null || headingDegrees === undefined) {
     if (arrow) viewer.entities.remove(arrow);
     return;
@@ -782,14 +795,21 @@ function updateMovingPois() {
   });
 }
 
-function setPoiMotion(entity, lat, lng, speedKmh, headingDegrees) {
+export function isPoiPublic(entity) {
+  const value = entity?.properties?.visibilidad?.getValue?.() ?? entity?.properties?.visibilidad;
+  return String(value || "PRIVADO").toUpperCase() === "PUBLICO";
+}
+
+// Un Blanco privado permanece quieto; solo se mueve mientras es público.
+export function setPoiMotion(entity, lat, lng, speedKmh, headingDegrees, savedLat = lat, savedLng = lng) {
   const entityId = String(entity?.id || "");
   const speed = normalizeNumericInput(speedKmh, 0);
   const heading = normalizeHeading(headingDegrees);
   if (!entityId) return;
   poiMotionStates.delete(entityId);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || speed <= 0 || heading === null) return;
-  poiMotionStates.set(entityId, { lat, lng, speedKmh: speed, headingDeg: heading, startedAt: Date.now() });
+  if (!isPoiPublic(entity)) return;
+  poiMotionStates.set(entityId, { lat, lng, savedLat, savedLng, speedKmh: speed, headingDeg: heading, startedAt: Date.now() });
   if (!poiMotionInterval) poiMotionInterval = window.setInterval(updateMovingPois, 1000);
   updateMovingPois();
 }
@@ -2978,15 +2998,16 @@ function applyPoiUpdateToEntity(entity, poi) {
   // coordenadas siguen siendo el punto inicial guardado, no es un traslado:
   // conservamos la posición visual actual y desde ahí aplicamos el cambio.
   const isMotionOnlyUpdate = activeMotion
-    && Math.abs(savedLat - activeMotion.lat) < 0.0000001
-    && Math.abs(savedLng - activeMotion.lng) < 0.0000001;
+    && Math.abs(savedLat - (activeMotion.savedLat ?? activeMotion.lat)) < 0.0000001
+    && Math.abs(savedLng - (activeMotion.savedLng ?? activeMotion.lng)) < 0.0000001;
   const currentCoords = isMotionOnlyUpdate ? getEntityCurrentLatLng(entity) : null;
   const lat = currentCoords?.lat ?? savedLat;
   const lng = currentCoords?.lng ?? savedLng;
   entity.position = Cesium.Cartesian3.fromDegrees(lng, lat);
+  if (poi.visibilidad !== undefined) entity.properties?.visibilidad?.setValue?.(poi.visibilidad);
   entity.properties?.velocidad_kmh?.setValue?.(speedKmh);
   entity.properties?.rumbo_grados?.setValue?.(headingDegrees);
-  setPoiMotion(entity, lat, lng, speedKmh, headingDegrees);
+  setPoiMotion(entity, lat, lng, speedKmh, headingDegrees, savedLat, savedLng);
   const sidc = poi.sidc ?? entity.properties?.sidc?.getValue?.() ?? entity.properties?.sidc;
   if (String(sidc || "").startsWith("S")) syncPoiHeadingArrow(entity, { ...poi, sidc }, headingDegrees);
 }

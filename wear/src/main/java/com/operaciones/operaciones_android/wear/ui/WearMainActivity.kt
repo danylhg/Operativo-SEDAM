@@ -1448,7 +1448,21 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
         }
         vibrateEmergency()
         setStatus("enviando SOS")
-        phoneBridge.mirrorEmergency(operation.id, source) { sent ->
+        // Primero directo al servidor desde el reloj; el teléfono solo es respaldo,
+        // así el SOS no depende de que el teléfono esté cerca o con la app abierta.
+        val deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+        val sentDirectly = wearSocketManager?.emitShakeAlert(
+            senderName = user.nombreCompleto,
+            deviceLabel = "SMARTWATCH|$deviceModel",
+            deviceModel = deviceModel,
+            lat = lastLat,
+            lon = lastLon
+        ) == true
+        if (sentDirectly) {
+            setStatus("SOS enviado al panel")
+            return
+        }
+        phoneBridge.mirrorEmergency(operation.id, source, "SMARTWATCH", lastLat, lastLon) { sent ->
             runOnUiThread { setStatus(if (sent) "SOS enviado al panel" else "No se encontró el teléfono") }
         }
     }
@@ -2446,6 +2460,54 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
         private var edgeSwipeActive = false
         private val realtimeMarkers = mutableMapOf<String, JSONObject>()
         private var drawings = JSONArray()
+
+        // Movimiento de los Blancos: el servidor entrega la posición actual al
+        // consultar el mapa; desde ese punto se avanza con velocidad y rumbo, igual
+        // que en la app Android y el dashboard.
+        private class PoiMotion(
+            val lat: Double, val lon: Double,
+            val speedKmh: Double, val headingDeg: Double, val receivedAt: Long
+        )
+        private val poiMotion = mutableMapOf<Int, PoiMotion>()
+        private val motionTick = object : Runnable {
+            override fun run() {
+                if (poiMotion.values.any { it.speedKmh > 0.0 }) invalidate()
+                postDelayed(this, 1_000L)
+            }
+        }
+
+        private fun captureBlancoMotion(data: JSONObject) {
+            val pois = data.optJSONArray("pois") ?: return
+            val now = System.currentTimeMillis()
+            val seen = mutableSetOf<Int>()
+            for (index in 0 until pois.length()) {
+                val poi = pois.optJSONObject(index) ?: continue
+                val id = poi.optInt("id_poi", -1).takeIf { it > 0 } ?: continue
+                val speed = poi.optDouble("velocidad_kmh", Double.NaN)
+                val heading = poi.optDouble("rumbo_grados", Double.NaN)
+                val lat = poi.optDouble("latitud", Double.NaN)
+                val lon = poi.optDouble("longitud", Double.NaN)
+                if (!speed.isFinite() || !heading.isFinite() || !lat.isFinite() || !lon.isFinite()) continue
+                // Un Blanco privado permanece quieto; solo se mueve si es público.
+                if (!poi.optString("visibilidad", "PRIVADO").equals("PUBLICO", ignoreCase = true)) continue
+                seen.add(id)
+                poiMotion[id] = PoiMotion(lat, lon, speed, heading, now)
+            }
+            poiMotion.keys.retainAll(seen)
+        }
+
+        private fun currentBlancoPosition(item: JSONObject): Pair<Double, Double>? {
+            val id = item.optInt("id_poi", -1)
+            val motion = poiMotion[id] ?: return null
+            if (motion.speedKmh <= 0.0) return null
+            val elapsedSeconds = ((System.currentTimeMillis() - motion.receivedAt) / 1000.0).coerceAtLeast(0.0)
+            val distanceM = motion.speedKmh / 3.6 * elapsedSeconds
+            val rad = Math.toRadians(motion.headingDeg)
+            val lat = motion.lat + Math.cos(rad) * distanceM / 111320.0
+            val lon = motion.lon + Math.sin(rad) * distanceM /
+                (111320.0 * Math.max(0.1, Math.cos(Math.toRadians(motion.lat))))
+            return lat to lon
+        }
         private var routeOwnerType: String? = null
         private var routeOwnerId: Int? = null
 
@@ -2519,6 +2581,7 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
 
         fun setOperationData(data: JSONObject) {
             operationData = data
+            captureBlancoMotion(data)
             val personal = data.optJSONArray("personal") ?: JSONArray()
             val activePersonalIds = (0 until personal.length())
                 .mapNotNull { index ->
@@ -2556,6 +2619,13 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
         override fun onAttachedToWindow() {
             super.onAttachedToWindow()
             loadTiles()
+            removeCallbacks(motionTick)
+            postDelayed(motionTick, 1_000L)
+        }
+
+        override fun onDetachedFromWindow() {
+            removeCallbacks(motionTick)
+            super.onDetachedFromWindow()
         }
 
         private fun loadTiles() {
@@ -3131,9 +3201,13 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
 
         private fun drawMarker(canvas: Canvas, item: JSONObject, centerLat: Double, centerLon: Double) {
             if (!item.has("latitud") || !item.has("longitud")) return
-            val lat = item.optDouble("latitud", Double.NaN)
-            val lon = item.optDouble("longitud", Double.NaN)
+            var lat = item.optDouble("latitud", Double.NaN)
+            var lon = item.optDouble("longitud", Double.NaN)
             if (lat.isNaN() || lon.isNaN()) return
+            currentBlancoPosition(item)?.let { (movingLat, movingLon) ->
+                lat = movingLat
+                lon = movingLon
+            }
             val point = screenPoint(lat, lon, centerLat, centerLon)
             val isBuilding =
                 item.optString("tipo_capa").equals("EDIFICIO", ignoreCase = true) ||
@@ -3197,10 +3271,26 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                     drawHeadingArrow(canvas, point.first, point.second, heading, C_GREEN, 1.25f)
                 }
             }
-            drawMarkerLabel(canvas, point.first, point.second, item)
+            // Blancos (SIDC S...) con rumbo: flecha fuera del símbolo y el nombre del
+            // lado contrario para que no se tapen entre sí.
+            var labelAbove = false
+            val blancoHeading = item.optDouble("rumbo_grados", Double.NaN)
+            if (isPoi && explicitSidc?.startsWith("S", ignoreCase = true) == true && blancoHeading.isFinite()) {
+                val radians = Math.toRadians(blancoHeading)
+                val symbolHalf = 17f
+                val reach = 14f
+                drawHeadingArrow(
+                    canvas,
+                    point.first + (Math.sin(radians) * reach).toFloat(),
+                    point.second - symbolHalf - (Math.cos(radians) * reach).toFloat(),
+                    blancoHeading.toFloat(), Color.WHITE, 1f
+                )
+                labelAbove = Math.cos(radians) < -0.3
+            }
+            drawMarkerLabel(canvas, point.first, point.second, item, labelAbove)
         }
 
-        private fun drawMarkerLabel(canvas: Canvas, x: Float, y: Float, item: JSONObject) {
+        private fun drawMarkerLabel(canvas: Canvas, x: Float, y: Float, item: JSONObject, above: Boolean = false) {
             val label = if (item.has("id_personal")) {
                 personDisplayLabel(
                     item.optString("puesto"),
@@ -3222,7 +3312,7 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                 paint.textAlign = Paint.Align.CENTER
                 // Cuadro translúcido detrás del nombre para que se lea sobre el mapa.
                 val halfWidth = paint.measureText(text) / 2f + 4f
-                val baseline = y + 18f
+                val baseline = if (above) y - 34f - 8f else y + 18f
                 paint.color = Color.argb(150, 0, 0, 0)
                 canvas.drawRoundRect(
                     x - halfWidth, baseline - 10f, x + halfWidth, baseline + 4f,

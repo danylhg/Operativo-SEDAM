@@ -15,7 +15,7 @@ import {
   openPanel
 } from "./dashboard.ui.js?v=20261002-vehicle-panel-grouping";
 import { bindDashboardEvents } from "./dashboard.events.js?v=20261001-route-panel-tabs";
-import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20260929-life-line-location-glass";
+import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20261008-chat-chips";
 import {
   setTacticalUI,
   bindTacticalEvents,
@@ -28,7 +28,7 @@ import {
   restoreGridFromBackend,
   restoreTacticalLayersFromMapaData
 } from "./dashboard.tactical.js?v=20260923-geo-msg-edit-modal";
-import { initCesium, centerMapOnOperationZone } from "./dashboard.map.js?v=20260928-readonly-ptt-pulse";
+import { initCesium, centerMapOnOperationZone } from "./dashboard.map.js?v=20261009-route-popup";
 import { bindAreaEvents } from "./dashboard.area.js";
 import { restoreTacticalData } from "./dashboard.persistence.js";
 import {
