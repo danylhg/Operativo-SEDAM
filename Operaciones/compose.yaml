@@ -35,11 +35,17 @@ services:
       BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-10}
       DEFAULT_PASSWORD: ${DEFAULT_PASSWORD:-1234}
       WEBRTC_ICE_SERVERS: ${WEBRTC_ICE_SERVERS:-stun:stun.l.google.com:19302}
+      # Bridge SEDAM: puerto TCP donde se conecta el cliente Bridge. Vacío = deshabilitado.
+      SEDAM_BRIDGE_PORT: ${SEDAM_BRIDGE_PORT:-5908}
+      SEDAM_BRIDGE_HOST: ${SEDAM_BRIDGE_HOST:-}
+      SEDAM_BRIDGE_REMOTE_PORT: ${SEDAM_BRIDGE_REMOTE_PORT:-}
+      SEDAM_BRIDGE_SESSION: ${SEDAM_BRIDGE_SESSION:-}
     depends_on:
       db:
         condition: service_healthy
     ports:
       - "${API_PORT:-3001}:3001"
+      - "${SEDAM_BRIDGE_PORT:-5908}:${SEDAM_BRIDGE_PORT:-5908}"
     volumes:
       - api_storage:/app/api/storage
     healthcheck:

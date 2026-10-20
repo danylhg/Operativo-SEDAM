@@ -15,7 +15,7 @@ import {
   openPanel
 } from "./dashboard.ui.js?v=20261002-vehicle-panel-grouping";
 import { bindDashboardEvents } from "./dashboard.events.js?v=20261001-route-panel-tabs";
-import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20261008-chat-chips";
+import { initChat, bindChatEvents } from "./dashboard.chat.js?v=20261012-chat-space-b";
 import {
   setTacticalUI,
   bindTacticalEvents,

@@ -32,17 +32,23 @@
             android:orientation="horizontal" />
     </HorizontalScrollView>
 
-    <ScrollView
-        android:id="@+id/resourcesScroll"
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/resourcesRefresh"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <LinearLayout
-            android:id="@+id/resourcesList"
+        <ScrollView
+            android:id="@+id/resourcesScroll"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:layout_height="match_parent">
 
-    </ScrollView>
+            <LinearLayout
+                android:id="@+id/resourcesList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+        </ScrollView>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 </LinearLayout>

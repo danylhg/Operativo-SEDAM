@@ -151,6 +151,17 @@ internal class ResourcesPanelRenderer(
         }
 
         render(activeTab)
+
+        // Jalar hacia abajo para actualizar. Si el servidor no trae cambios la lista
+        // no se vuelve a dibujar, así que el indicador se oculta solo.
+        view.findViewById<androidx.swiperefreshlayout.widget.SwipeRefreshLayout>(R.id.resourcesRefresh)?.apply {
+            setColorSchemeColors(Color.parseColor("#60A5FA"))
+            setProgressBackgroundColorSchemeColor(Color.parseColor("#0d1526"))
+            setOnRefreshListener {
+                host.refreshResourcesData()
+                postDelayed({ isRefreshing = false }, 1200)
+            }
+        }
     }
 
     private fun renderTabs(tabs: LinearLayout, onTabSelected: (ResourceTab) -> Unit) {
@@ -165,7 +176,7 @@ internal class ResourcesPanelRenderer(
                 setPadding(dp(this, 12f), 0, dp(this, 12f), 0)
                 minHeight = dp(this, 32f)
                 gravity = android.view.Gravity.CENTER
-                setBackgroundColor(Color.parseColor(if (active) "#223A5C" else "#00000000"))
+                background = roundedBackground(this, if (active) "#223A5C" else "#00000000", 16f)
                 setOnClickListener { onTabSelected(tab) }
             })
         }
@@ -240,10 +251,7 @@ internal class ResourcesPanelRenderer(
 
         row.findViewById<TextView>(R.id.personalAvatar).text = person.nombre.firstOrNull()?.toString() ?: "?"
         row.findViewById<TextView>(R.id.personalNombre).text = rowLabel
-        row.findViewById<TextView>(R.id.personalRol).text = buildString {
-            append(person.rol.ifBlank { "Personal" })
-            if (person.puesto.isNotBlank()) append(" - ${abbreviateRank(person.puesto)}")
-        }
+        row.findViewById<TextView>(R.id.personalRol).text = person.rol.ifBlank { "Personal" }
 
         val live = livePersonalLocations[person.idPersonal]
         val lat = live?.lat ?: person.lat
@@ -373,14 +381,62 @@ internal class ResourcesPanelRenderer(
         val rowLabel = poi.nombre.ifBlank { if (isBlanco) "Blanco ${poi.idPoi}" else "Waypoint ${poi.idPoi}" }
         row.tag = rowLabel
 
-        row.findViewById<TextView>(R.id.equipoIcon).text = if (isBlanco) "BLC" else "WPT"
-        row.findViewById<TextView>(R.id.equipoNombre).text = rowLabel
-        val detail = buildString {
-            append("Lat: %.5f, Lng: %.5f".format(Locale.US, poi.lat, poi.lon))
-            if (poi.creatorLabel.isNotBlank()) append(" · ${poi.creatorLabel}")
+        val iconView = row.findViewById<TextView>(R.id.equipoIcon).apply {
+            text = if (isBlanco) "BLC" else "WPT"
+            textSize = 11f
+            maxLines = 1
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
-        row.findViewById<TextView>(R.id.equipoDetalle).text = detail
-        row.findViewById<TextView>(R.id.equipoTipo).text = poi.tipoPoi.ifBlank { if (isBlanco) "BLANCO" else "WAYPOINT" }.uppercase()
+        addPoiSymbol(row, iconView, poi.sidc)
+        val nameView = row.findViewById<TextView>(R.id.equipoNombre).apply {
+            text = rowLabel
+            textSize = 15f
+            setTextColor(Color.parseColor("#60A5FA"))
+        }
+        row.findViewById<TextView>(R.id.equipoTipo).visibility = View.GONE
+
+        val textColumn = nameView.parent as LinearLayout
+        val ctx = textColumn.context
+
+        // Quien creó el punto, debajo del nombre; se quita el número final (p. ej. "Campos 2").
+        val creator = poi.creatorLabel.replace(Regex("""\s+\d+$"""), "").trim()
+        if (creator.isNotBlank()) {
+            textColumn.addView(TextView(ctx).apply {
+                text = creator
+                setTextColor(Color.parseColor("#94a3b8"))
+                textSize = 11f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }, 1)
+        }
+
+        // Coordenadas con pin a la izquierda y un botón pequeño de copiar junto a ellas.
+        val coords = "%.5f, %.5f".format(Locale.US, poi.lat, poi.lon)
+        val detailView = row.findViewById<TextView>(R.id.equipoDetalle)
+        textColumn.removeView(detailView)
+        detailView.text = coords
+        detailView.setPadding(dp(detailView, 4f), 0, 0, 0)
+        textColumn.addView(LinearLayout(ctx).apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, dp(this, 2f), 0, 0)
+            addView(android.widget.ImageView(ctx).apply {
+                setImageResource(R.drawable.ic_location_pin_alert)
+                setColorFilter(Color.parseColor("#64748b"))
+            }, LinearLayout.LayoutParams(dp(this, 14f), dp(this, 14f)))
+            addView(detailView, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+            addView(android.widget.ImageView(ctx).apply {
+                setImageResource(R.drawable.ic_copy_coordinates)
+                setPadding(dp(this, 8f), dp(this, 6f), dp(this, 8f), dp(this, 6f))
+                setOnClickListener {
+                    val clipboard = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Coordenadas", coords))
+                    android.widget.Toast.makeText(ctx, "Coordenadas copiadas", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }, LinearLayout.LayoutParams(dp(this, 30f), dp(this, 28f)))
+        })
 
         val hasLocation = isValidLocation(poi.lat, poi.lon)
         if (hasLocation) {
@@ -391,21 +447,133 @@ internal class ResourcesPanelRenderer(
         }
 
         applyResourceStyle(row, false, hasLocation)
+        nameView.setTextColor(Color.parseColor("#60A5FA"))
 
-        val deleteBtn = TextView(list.context).apply {
-            text = " ✕ "
-            setTextColor(Color.parseColor("#ef4444"))
-            textSize = 16f
+        // Capa roja "Eliminando" que queda detrás de la fila y se revela al deslizar.
+        val deleteLabel = TextView(ctx).apply {
+            text = "Eliminando"
+            setTextColor(Color.WHITE)
+            textSize = 13f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(dp(this, 10f), dp(this, 6f), dp(this, 6f), dp(this, 6f))
-            setSelectableForeground(this)
-            setOnClickListener {
-                host.deletePoi(poi.idPoi, rowLabel)
+            gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
+            setPadding(0, 0, dp(this, 22f), 0)
+            background = roundedBackground(this, "#DC2626", 14f)
+            alpha = 0f
+        }
+        val wrapper = FrameLayout(ctx)
+        wrapper.layoutParams = row.layoutParams
+        row.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        wrapper.addView(deleteLabel, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        wrapper.addView(row)
+
+        enableSwipeToDelete(row, onProgress = { deleteLabel.alpha = it }) {
+            host.deletePoi(poi.idPoi, rowLabel)
+        }
+
+        list.addView(wrapper)
+    }
+
+    /**
+     * Dibuja la figura MIL-STD-2525C del punto (milsymbol) sobre el recuadro del icono.
+     * Si no hay SIDC se conserva el texto WPT/BLC. El WebView no recibe toques para no
+     * interferir con el clic ni con el deslizamiento de la fila.
+     */
+    @android.annotation.SuppressLint("SetJavaScriptEnabled")
+    private fun addPoiSymbol(row: View, iconView: TextView, sidc: String?) {
+        val safeSidc = sidc.orEmpty().trim().filter { it.isLetterOrDigit() || it == '*' || it == '-' }
+        val parent = iconView.parent as? LinearLayout ?: return
+        if (safeSidc.length < 10) return
+
+        val ctx = iconView.context
+        val web = object : android.webkit.WebView(ctx) {
+            override fun dispatchTouchEvent(event: android.view.MotionEvent) = false
+        }.apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            isClickable = false
+            isFocusable = false
+            settings.javaScriptEnabled = true
+            loadDataWithBaseURL(
+                "file:///android_asset/",
+                """
+                <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+                <script src="milsymbol.min.js"></script><style>html,body,#s{width:100%;height:100%;margin:0;background:transparent;overflow:hidden}#s{display:flex;align-items:center;justify-content:center}svg{max-width:34px;max-height:34px}</style>
+                </head><body><div id="s"></div><script>
+                try{var sidc='$safeSidc';var colors={F:'#F7FAFF',H:'#FF3347',N:'#00F53D',U:'#FFF000'};var wp=sidc.charAt(0)==='G';var o=wp?{size:46,monoColor:colors[sidc.charAt(1)]||'#FFF000',fill:false}:{size:46,colorMode:'Light',fill:true};document.getElementById('s').innerHTML=new ms.Symbol(sidc,o).asSVG()||'';}catch(x){}
+                </script></body></html>
+                """.trimIndent(),
+                "text/html",
+                "UTF-8",
+                null
+            )
+        }
+
+        val index = parent.indexOfChild(iconView)
+        parent.removeView(iconView)
+        iconView.text = ""
+        parent.addView(FrameLayout(ctx).apply {
+            addView(iconView, FrameLayout.LayoutParams(dp(this, 40f), dp(this, 40f)))
+            addView(web, FrameLayout.LayoutParams(dp(this, 40f), dp(this, 40f)))
+        }, index, LinearLayout.LayoutParams(dp(parent, 40f), dp(parent, 40f)))
+    }
+
+    /** Deslizar la fila a la izquierda dispara [onDelete]; la fila siempre vuelve a su lugar. */
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private fun enableSwipeToDelete(row: View, onProgress: (Float) -> Unit = {}, onDelete: () -> Unit) {
+        val touchSlop = android.view.ViewConfiguration.get(row.context).scaledTouchSlop
+        var downX = 0f
+        var downY = 0f
+        var swiping = false
+
+        row.setOnTouchListener { v, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX
+                    downY = event.rawY
+                    swiping = false
+                    // Evita que el ScrollView / jalar-para-actualizar se queden el gesto
+                    // por un pequeño movimiento vertical antes de decidir la dirección.
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                    false
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - downX
+                    val dy = event.rawY - downY
+                    if (!swiping) {
+                        if (Math.abs(dy) > touchSlop && Math.abs(dy) > Math.abs(dx)) {
+                            // Movimiento vertical: devuelve el gesto para desplazar la lista.
+                            v.parent?.requestDisallowInterceptTouchEvent(false)
+                        } else if (dx < -touchSlop && Math.abs(dx) > Math.abs(dy)) {
+                            swiping = true
+                            v.cancelPendingInputEvents()
+                        }
+                    }
+                    if (swiping) {
+                        v.translationX = dx.coerceAtMost(0f)
+                        onProgress((-v.translationX / (v.width * 0.35f)).coerceIn(0f, 1f))
+                    }
+                    swiping
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    if (!swiping) return@setOnTouchListener false
+                    val shouldDelete = event.actionMasked == android.view.MotionEvent.ACTION_UP &&
+                        v.translationX < -v.width * 0.35f
+                    swiping = false
+                    v.animate().translationX(0f).setDuration(180)
+                        .setUpdateListener { onProgress((-v.translationX / (v.width * 0.35f)).coerceIn(0f, 1f)) }
+                        .start()
+                    if (shouldDelete) onDelete()
+                    true
+                }
+                else -> false
             }
         }
-        (row as? LinearLayout)?.addView(deleteBtn)
-
-        list.addView(row)
     }
 
     private fun addSectionHeader(list: LinearLayout, textValue: String) {

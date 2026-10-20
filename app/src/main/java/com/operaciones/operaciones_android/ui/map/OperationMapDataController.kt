@@ -112,8 +112,17 @@ class OperationMapDataController(
 
     fun getPois(): List<PoiItem> = currentPois
 
+    /** Se invoca (en el hilo de UI) cuando cambia la lista de POIs, para refrescar Recursos. */
+    var onPoisChanged: (() -> Unit)? = null
+
+    private fun updatePois(newPois: List<PoiItem>) {
+        val changed = newPois != currentPois
+        currentPois = newPois
+        if (changed) onPoisChanged?.invoke()
+    }
+
     fun removePoi(idPoi: Int) {
-        currentPois = currentPois.filterNot { it.idPoi == idPoi }
+        updatePois(currentPois.filterNot { it.idPoi == idPoi })
     }
 
     private val pendingPoiAdditions = mutableListOf<PendingPoiAddition>()
@@ -247,7 +256,7 @@ class OperationMapDataController(
             creatorPersonalId = creatorPersonalId,
             editorLabel = editorLabel
         )
-        currentPois = currentPois.filterNot { it.idPoi == idPoi } + newItem
+        updatePois(currentPois.filterNot { it.idPoi == idPoi } + newItem)
 
         if (host.isMapDataCesiumReady()) {
             cesiumWebController.loadPois("[${poiJson(newItem)}]", replace = false)
@@ -380,7 +389,7 @@ class OperationMapDataController(
     }
 
     private fun applyMapData(data: OperationMapData) {
-        currentPois = data.pois
+        updatePois(data.pois)
         applyOperationZone(data.operationZone)
         applyOperationGrid(data.operationGrid)
 

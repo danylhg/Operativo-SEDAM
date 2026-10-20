@@ -65,6 +65,8 @@ class ChatSocketManager(
                 if (rol.isNotEmpty()) put("rol", rol)
             }
             socket?.emit("join_operacion", payload)
+            // Pide el estado actual del bridge SEDAM; después llegan solo los cambios.
+            socket?.emit("sedam_bridge_subscribe")
         }
 
         socket?.on("operacion_unida") {
@@ -149,6 +151,21 @@ class ChatSocketManager(
         socket?.on("tracking_equipo") { args ->
             val data = args.firstOrNull() as? JSONObject ?: return@on
             onTrackingEquipo?.invoke(data)
+        }
+
+        socket?.on("sedam_bridge_event") { args ->
+            val data = args.firstOrNull() as? JSONObject ?: return@on
+            onSedamBridge?.invoke(data)
+        }
+
+        socket?.on("sedam_bridge_snapshot") { args ->
+            val data = args.firstOrNull() as? JSONObject ?: return@on
+            val units = data.optJSONArray("units")
+            for (i in 0 until (units?.length() ?: 0)) units?.optJSONObject(i)?.let { onSedamBridge?.invoke(it) }
+            val aliases = data.optJSONObject("aliases")
+            aliases?.keys()?.forEach { id ->
+                onSedamBridge?.invoke(JSONObject().put("type", "alias").put("id", id).put("alias", aliases.optString(id)))
+            }
         }
 
         socket?.on("tracking_dispositivo") { args ->
@@ -474,6 +491,9 @@ class ChatSocketManager(
     }
 
     var onPttAlertUpdate: ((JSONObject) -> Unit)? = null
+
+    /** Eventos del bridge SEDAM reenviados por la API: unit, alias o gone. */
+    var onSedamBridge: ((JSONObject) -> Unit)? = null
 
     fun emitPttAlertToggle(active: Boolean, senderName: String, pttLabel: String = "PTT", lat: Double? = null, lon: Double? = null, idPersonal: Int? = null) {
         val payload = JSONObject().apply {

@@ -237,3 +237,34 @@ button:disabled {
     letter-spacing: 0;
   }
 }
+
+/* Campo de contraseña con ojo para mostrarla u ocultarla. */
+.passwordField {
+  position: relative;
+}
+
+.passwordField input {
+  padding-right: 46px;
+}
+
+.passwordField .passwordToggle {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  width: 40px;
+  height: 46px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-soft);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.passwordField .passwordToggle:hover {
+  background: transparent;
+  color: var(--text-bright);
+}

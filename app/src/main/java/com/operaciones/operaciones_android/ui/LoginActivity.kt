@@ -1,5 +1,6 @@
 package com.operaciones.operaciones_android.ui
 import com.operaciones.operaciones_android.config.ApiConfig
+import com.operaciones.operaciones_android.config.SedamNetworkConfig
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -475,6 +476,25 @@ class LoginActivity : AppCompatActivity() {
             styleServerInput()
         }
 
+        val sedam = SedamNetworkConfig.load(this)
+        val inputSedamUrl = EditText(this).apply {
+            setText(sedam.url)
+            hint = SedamNetworkConfig.DEFAULT_URL
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            isSingleLine = true
+            setSelectAllOnFocus(true)
+            styleServerInput()
+        }
+
+        val inputSedamSerial = EditText(this).apply {
+            setText(sedam.serial)
+            hint = "Número de serie (NS)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            isSingleLine = true
+            setSelectAllOnFocus(true)
+            styleServerInput()
+        }
+
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(8), dp(22), dp(8))
@@ -482,6 +502,8 @@ class LoginActivity : AppCompatActivity() {
             addLabeledInput("API", inputAddress)
             addLabeledInput("RTMP opcional", inputRtmpAddress)
             addLabeledInput("HLS opcional", inputHlsAddress)
+            addLabeledInput("Red SEDAM (socket)", inputSedamUrl)
+            addLabeledInput("NS de la red SEDAM", inputSedamSerial)
         }
 
         val dialog = AlertDialog.Builder(this)
@@ -529,6 +551,7 @@ class LoginActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
+                SedamNetworkConfig.save(this, inputSedamUrl.text.toString(), inputSedamSerial.text.toString())
                 currentCall?.cancel()
                 setLoading(false)
                 tvError.visibility = View.GONE

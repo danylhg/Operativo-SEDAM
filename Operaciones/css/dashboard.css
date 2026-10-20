@@ -1944,7 +1944,6 @@ circle.pttAlertWarningMark {
 
 .chatChannelGroup {
   padding: 10px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 
 .legacyChatSelect {
@@ -4429,6 +4428,80 @@ circle.pttAlertWarningMark {
   text-decoration: none;
 }
 
+.chatVideoPlaceholder {
+  margin-top: 8px;
+}
+
+.chatVideoPlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 120px;
+  border: 1px solid rgba(148, 190, 211, 0.3);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #f4fbff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chatVideoPlay:hover:not(:disabled) {
+  border-color: rgba(56, 189, 248, 0.7);
+  color: #38bdf8;
+}
+
+.chatVideoPlay svg {
+  width: 26px;
+  height: 26px;
+  fill: currentColor;
+}
+
+/* Coordenadas y enlace de ubicación: aparte del mensaje y en gris suave. */
+.chatLocationInfo {
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 190, 211, 0.16);
+  color: #8fa3b3;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Tras un mensaje de voz el reproductor ya deja aire abajo: se compacta el bloque. */
+.chatVoicePlayer + .chatLocationInfo {
+  margin-top: 0;
+  padding-top: 4px;
+}
+
+.chatLocationCoords {
+  color: #8fa3b3;
+}
+
+.chatLocationLink {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #8fa3b3;
+  font: inherit;
+  font-weight: 400;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.chatLocationLink:hover {
+  color: #c5d4df;
+}
+
+/* Texto (coordenadas, pie de foto) debajo de la imagen. */
+.chatAttachment + .chatBubbleText {
+  margin-top: 8px;
+}
+
 .chatAttachmentFile {
   display: inline-flex;
   margin-top: 8px;
@@ -4439,11 +4512,120 @@ circle.pttAlertWarningMark {
 .chatAttachment img,
 .chatAttachmentMedia {
   display: block;
-  width: min(260px, 100%);
-  max-height: 220px;
+  width: 100%;
+  max-height: 300px;
   border-radius: 6px;
-  object-fit: cover;
+  object-fit: contain;
   background: rgba(15, 23, 42, 0.85);
+}
+
+/* Visor de imagen del chat, sobre la misma página. */
+.chatImageViewer {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(2, 8, 16, 0.86);
+  cursor: zoom-out;
+}
+
+.chatImageViewer img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  object-fit: contain;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Barra de iconos del visor: reenviar, guardar y cerrar. */
+.chatImageViewerBar {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+}
+
+.chatImageViewerBar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid rgba(148, 190, 211, 0.35);
+  border-radius: 50%;
+  background: rgba(15, 32, 46, 0.78);
+  color: #f4fbff;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chatImageViewerBar button:hover {
+  background: rgba(56, 189, 248, 0.28);
+  border-color: rgba(56, 189, 248, 0.7);
+}
+
+.chatImageViewerBar svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Lista para elegir a qué chat reenviar la imagen. */
+.chatForwardPicker {
+  position: absolute;
+  top: 60px;
+  right: 18px;
+  z-index: 3;
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid rgba(148, 190, 211, 0.4);
+  border-radius: 10px;
+  background: rgba(15, 32, 46, 0.97);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.chatForwardPicker[hidden] {
+  display: none;
+}
+
+.chatForwardTitle {
+  padding: 2px 6px 6px;
+  color: #9fb8c8;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.chatForwardPicker button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #f4fbff;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chatForwardPicker button:hover {
+  background: rgba(56, 189, 248, 0.2);
 }
 
 .chatAttachmentImage {
@@ -4638,6 +4820,7 @@ body {
 
 #vehicleQuickMenu[data-context-type="dron"] #vehicleQuickMenuName {
   max-width: 210px !important;
+  color: #60a5fa !important;
   font-size: 12px !important;
   line-height: 1.25;
 }
@@ -4777,7 +4960,16 @@ body {
   position: absolute;
   top: 50%;
   right: 12px;
+  z-index: 2;
   transform: translateY(-50%);
+  /* Mismo color de acento de la página. */
+  background: #4aaec5;
+  color: #07333a;
+}
+
+/* El chat seleccionado se distingue solo por el color del cuadro, sin punto. */
+.chatAudienceChip.active::after {
+  display: none !important;
 }
 
 .chatToolUnreadBadge[hidden],
@@ -6547,6 +6739,23 @@ body {
   overflow-wrap: anywhere !important;
 }
 
+/* Popup de ruta de navegación: más ancho para que quepan las coordenadas en una línea. */
+#entityPopup[data-action="delete-navigation-route"] {
+  width: min(272px, calc(100vw - 24px)) !important;
+}
+
+/* Popup de ruta: título en blanco y solo el vehículo (y el creador) en azul. */
+#entityPopup[data-action="delete-navigation-route"] #entityPopupName {
+  color: #f4fbff !important;
+}
+
+#entityPopup[data-action="delete-navigation-route"] .routePopupVehicle {
+  margin-top: 2px;
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .entityPopupCreator {
   margin: -2px 0 8px !important;
   color: rgba(219, 234, 254, 0.74) !important;
@@ -6603,10 +6812,8 @@ body {
 
 /* Origen/Destino: etiqueta arriba y lat/lng debajo, uno por línea. */
 .routePopupDetails .routePopupPoint {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 2px;
+  /* Etiqueta a la izquierda y, de lado, "Lat, Lng" en una sola línea. */
+  gap: 8px;
 }
 
 .routePopupDetails .routePopupPoint > span {
@@ -6615,7 +6822,8 @@ body {
 }
 
 .routePopupDetails .routePopupPoint strong {
-  text-align: left;
+  white-space: nowrap;
+  text-align: right;
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
 }
@@ -7974,4 +8182,83 @@ body {
 body *:not(#_perf1):not(#_perf2) {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+/* Selección múltiple de mensajes del chat. */
+.chatSelectionBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 10px;
+  background: rgba(14, 116, 144, 0.28);
+  color: #f4fbff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chatSelectionBar[hidden] {
+  display: none;
+}
+
+.chatSelectionBar .chatSelectionCount {
+  flex: 1;
+}
+
+.chatSelectionBar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.chatSelectionBar button:hover {
+  background: rgba(56, 189, 248, 0.25);
+}
+
+.chatSelectionBar svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chatMessages.selecting .chatBubble {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chatBubble.selected {
+  outline: 2px solid #38bdf8;
+  outline-offset: -2px;
+  background-image: linear-gradient(rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0.16));
+}
+
+.chatForwardOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(2, 8, 16, 0.6);
+}
+
+.chatForwardOverlay .chatForwardPicker {
+  position: static;
 }

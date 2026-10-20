@@ -29,3 +29,7 @@ local.properties
 .codex-tmp/
 transcript_dump.txt
 Operaciones/api/storage/chat/
+
+# Datos operativos de la red SEDAM (certificado y catalogo de unidades): no se suben al repositorio.
+app/src/main/res/raw/sedam_ca.pem
+app/src/main/assets/sedam_units.json

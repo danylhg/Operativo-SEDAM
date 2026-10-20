@@ -400,9 +400,14 @@ class ChatAdapter(
         val locationStart = lines.indexOfFirst {
             it.trim().matches(Regex("LAT\\s*:\\s*-?\\d+(?:[.,]\\d+)?\\s*,?\\s*LON\\s*:\\s*-?\\d+(?:[.,]\\d+)?", RegexOption.IGNORE_CASE))
         }
-        return lines.take(if (locationStart >= 0) locationStart else lines.size)
+        val caption = lines.take(if (locationStart >= 0) locationStart else lines.size)
             .joinToString("\\n")
             .trim()
+        // Texto automático que pone el servidor cuando no hay pie de foto.
+        if (caption.equals("Imagen adjunta", ignoreCase = true) ||
+            caption.equals("Video adjunto", ignoreCase = true)
+        ) return ""
+        return caption
     }
 
     private fun isCallHistory(msg: ChatMessage): Boolean {
@@ -1200,7 +1205,11 @@ class ChatAdapter(
             true
         }
         runCatching {
-            player.setDataSource(fullUrl)
+            // El servidor exige el token Bearer también para los archivos de audio.
+            val audioContext = holder.itemView.context.applicationContext
+            val audioToken = AuthManager.getToken(audioContext)
+            val audioHeaders = if (audioToken.isBlank()) emptyMap() else mapOf("Authorization" to "Bearer $audioToken")
+            player.setDataSource(audioContext, Uri.parse(fullUrl), audioHeaders)
             player.prepareAsync()
         }.onFailure {
             player.release()

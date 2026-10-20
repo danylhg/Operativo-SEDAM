@@ -80,6 +80,7 @@ class MainPanelRenderer(
         fun selectPoiOnMap(idPoi: Int, lat: Double, lon: Double, label: String)
         fun deletePoi(idPoi: Int, label: String)
         fun refreshPersonalPanelIfActive()
+        fun refreshResourcesData()
     }
 
     fun selectPersonal(idPersonal: Int?) {

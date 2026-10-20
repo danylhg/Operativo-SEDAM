@@ -5,6 +5,7 @@ import { initSocket } from "./sockets/index.js";
 import { PORT } from "./config/env.js";
 import { startOperacionAutoActivator } from "./services/operacionesScheduler.service.js";
 import { ensureTrackingSchemas } from "./utils/trackingSchema.js";
+import { startSedamBridge } from "./services/sedamBridge.service.js";
 
 const getLocalIp = () => {
   const interfaces = os.networkInterfaces();
@@ -35,6 +36,7 @@ function startServer() {
     const localIp = getLocalIp();
     console.log(`API + WS en http://${localIp}:${PORT}`);
     startOperacionAutoActivator({ io });
+    startSedamBridge({ io });
 
     // El login, los catálogos y el menú no dependen del esquema de tracking.
     // Prepararlo después de escuchar evita bloquear todo el sistema al arrancar.

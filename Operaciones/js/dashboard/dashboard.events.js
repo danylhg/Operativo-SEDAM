@@ -10,7 +10,7 @@ import { togglePanel, closeAllPanels, showPersonnelDetail } from "./dashboard.ui
 import { saveTacticalData } from "./dashboard.persistence.js";
 import { clearPersonnelLiveCamera, refreshCameraPanelLayout } from "./dashboard.camera.js?v=20260922-person-camera-stream";
 import { dashboardState } from "./dashboard.state.js";
-import { markActiveChatRead, scrollChatToLatest } from "./dashboard.chat.js?v=20260728-web-alert-sound-4";
+import { markActiveChatRead, scrollChatToLatest } from "./dashboard.chat.js?v=20261012-chat-space-a";
 
 /**
  * Vincula los eventos de clic de los paneles laterales (Info, Ruta, Táctico, Chat).

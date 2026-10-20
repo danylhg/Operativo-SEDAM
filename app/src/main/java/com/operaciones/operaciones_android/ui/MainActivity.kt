@@ -94,6 +94,7 @@ import com.operaciones.operaciones_android.emergency.EmergencyMonitorService
 import com.operaciones.operaciones_android.ui.lifecycle.OperationLifecycleMonitor
 import com.operaciones.operaciones_android.ui.map.MapObjectsController
 import com.operaciones.operaciones_android.ui.map.OperationMapDataController
+import com.operaciones.operaciones_android.ui.map.SedamUnitsController
 import com.operaciones.operaciones_android.ui.media.MediaStreamController
 import com.operaciones.operaciones_android.ui.navigation.PanelNavigationController
 import com.operaciones.operaciones_android.ui.navigation.PanelNavigationController.Panel
@@ -168,6 +169,7 @@ class MainActivity : AppCompatActivity(),
     private var bluetoothController: BluetoothController? = null
 
     private var chatSocketManager: ChatSocketManager? = null
+    private var sedamUnitsController: SedamUnitsController? = null
     private val shakeAlertReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
             if (intent.action == PhoneWearListenerService.ACTION_WEAR_ALERT) {
@@ -486,7 +488,16 @@ class MainActivity : AppCompatActivity(),
             webView = webView,
             cesiumWebController = cesiumWebController,
             host = this
-        )
+        ).also { controller ->
+            // Waypoints/blancos nuevos o eliminados se reflejan en Recursos si está abierto.
+            controller.onPoisChanged = {
+                if (::panelNavigationController.isInitialized &&
+                    panelNavigationController.activePanel == Panel.PERSONAL
+                ) {
+                    inflateResourcesPanel()
+                }
+            }
+        }
 
         mapObjectsController = MapObjectsController(
             activity = this,
@@ -611,7 +622,9 @@ class MainActivity : AppCompatActivity(),
                 }
             }
         }
+        chatSocketManager?.onSedamBridge = { event -> runOnUiThread { sedamUnitsController?.handleBridgeEvent(event) } }
         chatSocketManager?.connect()
+        sedamUnitsController = SedamUnitsController(this, cesiumWebController).also { it.start() }
         startServerConnectionMonitor()
         locationHelper.requestLocationPermissionOrStart()
 
@@ -856,6 +869,7 @@ class MainActivity : AppCompatActivity(),
         stopSimulation()
         stopServerConnectionMonitor()
         chatSocketManager?.disconnect()
+        sedamUnitsController?.stop()
         if (!isChangingConfigurations) {
             stopEmergencyService()
             stopMediaStream(showToast = false)
@@ -1012,6 +1026,7 @@ class MainActivity : AppCompatActivity(),
         stopSimulation()
         stopServerConnectionMonitor()
         chatSocketManager?.disconnect()
+        sedamUnitsController?.stop()
         stopEmergencyService()
         stopMediaStream(showToast = false)
 
@@ -2067,6 +2082,8 @@ class MainActivity : AppCompatActivity(),
             return
         }
         followedPersonalId = null
+        // Sale de Recursos y muestra el mapa antes de centrar en el punto.
+        panelNavigationController.showPanel(Panel.NONE)
         cesiumWebController.focusPoi(idPoi, lat, lon, zoom = 500)
         Toast.makeText(this, "Centrando en $label", Toast.LENGTH_SHORT).show()
     }
@@ -2075,17 +2092,32 @@ class MainActivity : AppCompatActivity(),
         val operationId = currentOperation.id
         if (operationId <= 0 || idPoi <= 0) return
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Eliminar $label")
-            .setMessage("¿Estás seguro de que deseas eliminar este elemento del mapa?")
-            .setPositiveButton("Eliminar") { dialog, _ ->
-                dialog.dismiss()
-                mapObjectsController.deletePoiById(idPoi, label)
-                mapDataController.removePoi(idPoi)
-                inflateResourcesPanel()
+        val content = layoutInflater.inflate(R.layout.dialog_confirm_delete, null, false)
+        content.findViewById<TextView>(R.id.tvDeleteLabel).text = label
+        val dialog = AlertDialog.Builder(this).setView(content).create()
+
+        content.findViewById<TextView>(R.id.btnCancelDelete).setOnClickListener { dialog.dismiss() }
+        content.findViewById<TextView>(R.id.btnConfirmDelete).setOnClickListener {
+            dialog.dismiss()
+            mapObjectsController.deletePoiById(idPoi, label)
+            mapDataController.removePoi(idPoi)
+            inflateResourcesPanel()
+        }
+
+        dialog.setOnShowListener {
+            dialog.window?.apply {
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                attributes = attributes.apply { dimAmount = 0.72f }
+                val widthRatio = if (
+                    resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+                ) 0.56f else 0.90f
+                setLayout(
+                    (resources.displayMetrics.widthPixels * widthRatio).toInt(),
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
+        dialog.show()
     }
 
     override fun refreshPersonalPanelIfActive() {
@@ -2186,7 +2218,7 @@ class MainActivity : AppCompatActivity(),
         personalList.addAll(items)
 
         if (panelNavigationController.activePanel == Panel.PERSONAL) {
-            inflatePersonalPanel()
+            renderResourcesPanel()
         } else if (panelNavigationController.activePanel == Panel.CHAT) {
             refreshChatPanelIfActive()
         }
@@ -2199,6 +2231,8 @@ class MainActivity : AppCompatActivity(),
 
         if (panelNavigationController.activePanel == Panel.VEHICULOS) {
             inflateVehiculoPanel()
+        } else if (panelNavigationController.activePanel == Panel.PERSONAL) {
+            renderResourcesPanel()
         } else if (panelNavigationController.activePanel == Panel.CHAT) {
             refreshChatPanelIfActive()
         }
@@ -2224,6 +2258,8 @@ class MainActivity : AppCompatActivity(),
 
         if (panelNavigationController.activePanel == Panel.EQUIPOS) {
             inflateEquipoPanel()
+        } else if (panelNavigationController.activePanel == Panel.PERSONAL) {
+            renderResourcesPanel()
         }
         refreshEquipmentLocationsFromAssignments()
     }
@@ -2242,6 +2278,8 @@ class MainActivity : AppCompatActivity(),
 
         if (panelNavigationController.activePanel == Panel.DISPOSITIVOS) {
             inflateDispositivoPanel()
+        } else if (panelNavigationController.activePanel == Panel.PERSONAL) {
+            renderResourcesPanel()
         }
         refreshEquipmentLocationsFromAssignments()
     }
@@ -5348,8 +5386,33 @@ class MainActivity : AppCompatActivity(),
         dialog.show()
     }
 
+    /** Jalar hacia abajo en Recursos: vuelve a pedir al servidor puntos y listas. */
+    override fun refreshResourcesData() {
+        if (currentOperation.id <= 0) return
+        mapDataController.syncFromBackend(force = true)
+        fetchPersonalPanelData()
+        fetchVehiculosPanelData()
+        fetchEquiposPanelData()
+        fetchDispositivosPanelData()
+    }
+
     override fun inflateResourcesPanel() {
+        renderResourcesPanel()
+
+        // Solo al abrir el panel: pide lo que falte. Las respuestas usan renderResourcesPanel()
+        // para no volver a pedir datos si el servidor devuelve una lista vacía.
+        if (currentOperation.id > 0) {
+            if (personalList.isEmpty()) fetchPersonalPanelData()
+            if (vehiculosList.isEmpty()) fetchVehiculosPanelData()
+            if (equiposList.isEmpty()) fetchEquiposPanelData()
+            if (dispositivosList.isEmpty()) fetchDispositivosPanelData()
+        }
+    }
+
+    /** Redibuja Recursos reemplazando la vista anterior (nunca apila paneles). */
+    private fun renderResourcesPanel() {
         val previousScrollY = panelContent.findViewById<ScrollView>(R.id.resourcesScroll)?.scrollY ?: 0
+        panelContent.removeAllViews()
         applyPanelContentSize(expanded = true, keepNavigation = true)
         panelRenderer.inflateResourcesPanel(
             panelContent = panelContent,
@@ -5364,13 +5427,6 @@ class MainActivity : AppCompatActivity(),
             panelContent.findViewById<ScrollView>(R.id.resourcesScroll)
                 ?.scrollTo(0, previousScrollY)
         }
-
-        if (currentOperation.id > 0) {
-            if (personalList.isEmpty()) fetchPersonalPanelData()
-            if (vehiculosList.isEmpty()) fetchVehiculosPanelData()
-            if (equiposList.isEmpty()) fetchEquiposPanelData()
-            if (dispositivosList.isEmpty()) fetchDispositivosPanelData()
-        }
     }
 
     override fun requestLogout() {
@@ -5379,6 +5435,10 @@ class MainActivity : AppCompatActivity(),
 
     override fun onPanelChanged(panel: PanelNavigationController.Panel) {
         val expandedPanel = panel == Panel.CHAT || panel == Panel.PERSONAL
+        // El menú de herramientas es solo del mapa: se cierra al salir a otro panel.
+        if (panel != Panel.NONE) {
+            findViewById<View>(R.id.mapToolsDrawer)?.visibility = View.GONE
+        }
         if (::emergencyInboxContainer.isInitialized) {
             emergencyInboxContainer.visibility = if (panel == Panel.NONE) View.VISIBLE else View.GONE
         }

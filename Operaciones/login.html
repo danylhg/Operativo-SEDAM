@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Login - Sistema de Operaciones</title>
-  <link rel="stylesheet" href="css/login.css?v=1.1-loading" />
+  <link rel="stylesheet" href="css/login.css?v=1.2-eye" />
   <script src="js/api_config.js?v=20261002-public-api"></script>
 </head>
 <body>
@@ -27,7 +27,15 @@
 
       <div class="field">
         <label for="password">Contrase&ntilde;a</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" />
+        <div class="passwordField">
+          <input id="password" name="password" type="password" autocomplete="current-password" />
+          <button type="button" id="btnTogglePassword" class="passwordToggle" title="Mostrar contraseña" aria-label="Mostrar contraseña">
+            <svg id="eyeIcon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <button id="btnLogin" type="button">Iniciar sesi&oacute;n</button>
@@ -36,6 +44,25 @@
   </main>
 
   <script src="js/login.js?v=1.2-loading"></script>
+  <script>
+    // Ojo para mostrar u ocultar la contraseña.
+    (function () {
+      var input = document.getElementById("password");
+      var btn = document.getElementById("btnTogglePassword");
+      var icon = document.getElementById("eyeIcon");
+      if (!input || !btn || !icon) return;
+      var eye = icon.innerHTML;
+      var eyeOff = '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+      btn.addEventListener("click", function () {
+        var show = input.type === "password";
+        input.type = show ? "text" : "password";
+        icon.innerHTML = show ? eyeOff : eye;
+        btn.title = btn.ariaLabel = show ? "Ocultar contraseña" : "Mostrar contraseña";
+        btn.setAttribute("aria-label", btn.title);
+        input.focus();
+      });
+    })();
+  </script>
 </body>
 </html>
   

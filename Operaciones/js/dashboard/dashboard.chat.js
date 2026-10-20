@@ -2,6 +2,7 @@
 
 import { dom } from "./dashboard.dom.js?v=20260728-web-alert-sound-4";
 import { escapeHtml } from "./dashboard.storage.js";
+import { dashboardState } from "./dashboard.state.js";
 import { formatTime } from "./dashboard.ui.js?v=20260923-draggable-person-popup";
 import { getVehicleOccupants } from "./dashboard.tracking.clustering.js";
 import {
@@ -286,7 +287,11 @@ function isVisibleInTab(msg) {
   const destinoTipo = String(msg.destino_tipo || "").toUpperCase();
   const destinoId = String(msg.destino_id || "");
 
-  if (_channelType === "global") return destinatario === "GLOBAL" && !destinoTipo;
+  // UBICACION es solo metadato de una foto/mensaje global enviado desde Android,
+  // no un canal propio: debe verse en "Todos".
+  if (_channelType === "global") {
+    return destinatario === "GLOBAL" && (!destinoTipo || destinoTipo === "UBICACION" || destinoTipo === "GLOBAL");
+  }
   if (_channelType === "cets") {
     return destinatario === "CET" && (!destinoTipo || destinoTipo === "CETS");
   }
@@ -956,6 +961,8 @@ const VOICE_WAVE_HEIGHTS = [8, 14, 20, 11, 17, 24, 13, 19, 10, 22, 16, 26, 12, 1
 
 function buildVoicePlayerMarkup(source = "") {
   const safeSource = escapeHtml(source);
+  // Los audios del servidor exigen token Bearer: se descargan con fetch en hydrateChatImages().
+  const audioSourceAttr = /^data:/i.test(String(source)) ? `src="${safeSource}"` : `data-auth-src="${safeSource}"`;
   const bars = VOICE_WAVE_HEIGHTS
     .map((height) => `<span class="chatVoiceBar" style="height:${height}px"></span>`)
     .join("");
@@ -967,7 +974,7 @@ function buildVoicePlayerMarkup(source = "") {
         <input class="chatVoiceSeek" type="range" min="0" max="100" step="0.1" value="0" aria-label="Posici\u00f3n del audio">
         <span class="chatVoiceDuration">0:00</span>
       </div>
-      <audio class="chatVoiceAudio" preload="metadata" src="${safeSource}"></audio>
+      <audio class="chatVoiceAudio" preload="metadata" ${audioSourceAttr}></audio>
     </div>
   `;
 }
@@ -1032,10 +1039,103 @@ function setupVoicePlayers(root = document) {
   });
 }
 
+// Coordenadas que Android adjunta a una foto o mensaje ("LAT: x, LON: y / Ver ubicación").
+function parseSharedLocation(msg) {
+  const content = String(msg?.contenido || "");
+  const match = content.match(/LAT:\s*(-?\d+(?:\.\d+)?)\s*,\s*LON:\s*(-?\d+(?:\.\d+)?)/i);
+  let lat = match ? Number(match[1]) : NaN;
+  let lon = match ? Number(match[2]) : NaN;
+  if (!match && String(msg?.destino_tipo || "").toUpperCase() === "UBICACION") {
+    const [dLat, dLon] = String(msg?.destino_id || "").split(",").map(Number);
+    lat = dLat;
+    lon = dLon;
+  }
+  return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+}
+
+// Lleva el mapa al punto desde donde se envió la imagen y lo marca unos segundos.
+function focusSharedLocation(lat, lon) {
+  const viewer = dashboardState.viewer;
+  if (!viewer) return;
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(lon, lat, 900),
+    duration: 0.8
+  });
+  const marker = viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(lon, lat),
+    point: {
+      pixelSize: 16,
+      color: Cesium.Color.fromCssColorString("#38bdf8").withAlpha(0.9),
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 2,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY
+    }
+  });
+  window.setTimeout(() => viewer.entities.remove(marker), 10000);
+}
+
+document.addEventListener("click", (event) => {
+  const link = event.target.closest?.(".chatLocationLink");
+  if (!link) return;
+  // Este módulo se importa con dos versiones distintas: se atiende el clic una sola vez.
+  if (event.__chatLocationHandled) return;
+  event.__chatLocationHandled = true;
+  const lat = Number(link.dataset.lat);
+  const lon = Number(link.dataset.lon);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) focusSharedLocation(lat, lon);
+});
+
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest?.(".chatVideoPlay");
+  const holder = button?.closest(".chatVideoPlaceholder");
+  if (!holder || event.__chatVideoHandled) return;
+  event.__chatVideoHandled = true;
+  const label = button.querySelector("span");
+  button.disabled = true;
+  if (label) label.textContent = "Cargando video...";
+  try {
+    const res = await fetch(holder.dataset.authVideo, {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const video = document.createElement("video");
+    video.className = "chatAttachmentMedia";
+    video.controls = true;
+    video.playsInline = true;
+    video.src = URL.createObjectURL(await res.blob());
+    holder.replaceWith(video);
+    video.addEventListener("loadeddata", scrollChatToLatest, { once: true });
+    video.play().catch(() => {});
+  } catch (err) {
+    console.error("[CHAT] No se pudo cargar el video:", err);
+    button.disabled = false;
+    if (label) label.textContent = "No se pudo cargar. Reintentar";
+  }
+});
+
 function renderMessageContent(msg) {
   const content = msg.contenido || "";
   const attachmentKind = String(msg.attachment_kind || "").trim().toUpperCase();
   if (attachmentKind === "AUDIO" && /^mensaje de voz$/i.test(String(content).trim())) return "";
+  // Texto automático de las imágenes sin pie de foto: no se muestra.
+  if (attachmentKind === "IMAGE" && /^imagen adjunta$/i.test(String(content).trim())) return "";
+  const location = parseSharedLocation(msg);
+  if (location) {
+    // Si trae pie de foto, se conserva; las líneas de coordenadas se muestran aparte.
+    const captionOnly = content
+      .replace(/LAT:\s*-?\d+(?:\.\d+)?\s*,\s*LON:\s*-?\d+(?:\.\d+)?/i, "")
+      .replace(/Ver ubicaci[oó]n/i, "")
+      .replace(/^\s*(imagen adjunta|video adjunto|mensaje de voz|archivo adjunto)\s*$/gim, "")
+      .trim();
+    const captionHtml = captionOnly ? `<div class="chatBubbleText">${escapeHtml(captionOnly)}</div>` : "";
+    return `
+      ${captionHtml}
+      <div class="chatLocationInfo">
+        <div class="chatLocationCoords">LAT: ${location.lat.toFixed(5)}, LON: ${location.lon.toFixed(5)}</div>
+        <button type="button" class="chatLocationLink" data-lat="${location.lat}" data-lon="${location.lon}">Ver ubicación</button>
+      </div>
+    `;
+  }
   const attachment = parseAttachmentContent(content);
   if (!attachment) return `<div class="chatBubbleText">${escapeHtml(content)}</div>`;
 
@@ -1413,12 +1513,13 @@ function buildBubble(msg) {
         : `<div class="chatBubbleHeader"><span>${autor}</span><span>${hora}</span></div>`)
     : `<div class="chatBubbleTime">${hora}</div>`;
   const attachment = buildAttachmentMarkup(msg);
+  // En las imágenes, el texto (p. ej. las coordenadas) va debajo de la foto.
+  const imageFirst = Boolean(attachment) && ["IMAGE", "VIDEO", "AUDIO"].includes(String(msg.attachment_kind || "").toUpperCase());
 
   return `
-    <div class="chatBubble${mine ? " mine" : ""}${typeExtra}${rolClass}" data-id="${msg.id_mensaje ?? ""}">
+    <div class="chatBubble${mine ? " mine" : ""}${typeExtra}${rolClass}${_selectedIds.has(String(msg.id_mensaje ?? "")) ? " selected" : ""}" data-id="${msg.id_mensaje ?? ""}">
       ${header}
-      ${renderMessageContent(msg)}
-      ${attachment}
+      ${imageFirst ? attachment + renderMessageContent(msg) : renderMessageContent(msg) + attachment}
     </div>
   `;
 }
@@ -1433,11 +1534,14 @@ function buildAttachmentMarkup(msg) {
   const safeUrl = escapeHtml(absolute);
 
   if (kind === "IMAGE") {
-    return `<a class="chatAttachment" href="${safeUrl}" target="_blank" rel="noopener"><img src="${safeUrl}" alt="${name}"></a>`;
+    // El endpoint de adjuntos exige el token Bearer, que un <img src> no envía;
+    // la imagen se descarga con fetch autenticado en hydrateChatImages().
+    return `<a class="chatAttachment" href="${safeUrl}" target="_blank" rel="noopener" data-auth-src="${safeUrl}"><img alt="${name}"></a>`;
   }
 
   if (kind === "VIDEO") {
-    return `<video class="chatAttachmentMedia" src="${safeUrl}" controls playsinline></video>`;
+    // El endpoint exige token Bearer: el video se descarga con fetch al darle reproducir.
+    return `<div class="chatVideoPlaceholder" data-auth-video="${safeUrl}"><button type="button" class="chatVideoPlay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span>Reproducir video</span></button></div>`;
   }
 
   if (kind === "AUDIO") {
@@ -1445,6 +1549,370 @@ function buildAttachmentMarkup(msg) {
   }
 
   return `<a class="chatAttachmentFile" href="${safeUrl}" target="_blank" rel="noopener">${name}</a>`;
+}
+
+const VIEWER_ICON_FORWARD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 6 6-6 6"/><path d="M21 11H9a6 6 0 0 0-6 6v1"/></svg>';
+const VIEWER_ICON_SAVE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>';
+
+// Muestra la imagen ampliada sobre la misma página (sin abrir otra pestaña).
+// Barra de iconos: reenviar, guardar y cerrar.
+function openChatImageViewer(src, alt = "", msg = null) {
+  if (!src) return;
+  document.getElementById("chatImageViewer")?.remove();
+
+  const viewer = document.createElement("div");
+  viewer.id = "chatImageViewer";
+  viewer.className = "chatImageViewer";
+  viewer.innerHTML = `
+    <div class="chatImageViewerBar">
+      <button type="button" data-viewer-action="forward" title="Reenviar" aria-label="Reenviar">${VIEWER_ICON_FORWARD}</button>
+      <button type="button" data-viewer-action="save" title="Guardar imagen" aria-label="Guardar imagen">${VIEWER_ICON_SAVE}</button>
+      <button type="button" data-viewer-action="close" title="Cerrar" aria-label="Cerrar">✕</button>
+    </div>
+    <img alt="">
+    <div class="chatForwardPicker" hidden></div>`;
+  const image = viewer.querySelector("img");
+  image.src = src;
+  image.alt = alt;
+  const picker = viewer.querySelector(".chatForwardPicker");
+
+  const close = () => {
+    viewer.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (event) => { if (event.key === "Escape") close(); };
+
+  const savedName = String(msg?.attachment_name || "").trim() || "imagen.jpg";
+  const saveImage = () => {
+    const link = document.createElement("a");
+    link.href = src;
+    link.download = savedName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  const forwardTo = async (type, target = "") => {
+    try {
+      const blob = await (await fetch(src)).blob();
+      const original = String(msg?.contenido || "").trim();
+      const caption = /^imagen adjunta$/i.test(original) ? "" : original;
+      close();
+      setChannel(type, target);
+      await sendAttachment("image", blob, savedName, { caption, skipLocation: true });
+    } catch (err) {
+      console.error("[CHAT] Error reenviando imagen:", err);
+      alert("No se pudo reenviar la imagen.");
+    }
+  };
+
+  // Paso 1: elegir chat. Paso 2 (solo canales con destinatarios): elegir a quién.
+  const showTargets = (type) => {
+    const targets = getTargetsForType(type);
+    picker.innerHTML = `<div class="chatForwardTitle">${escapeHtml(channelLabel(type))}</div>` +
+      targets.map((t) => `<button type="button" data-forward-target="${escapeHtml(t.id)}">${escapeHtml(t.label)}</button>`).join("");
+    picker.dataset.channel = type;
+  };
+  const showChannels = () => {
+    const types = ["global", "cets", "vehiculo", "flotilla", "grupo", "cet_specific", "cell_specific"]
+      .filter(isChatChannelAvailable);
+    picker.innerHTML = '<div class="chatForwardTitle">Reenviar a</div>' +
+      types.map((type) => `<button type="button" data-forward-channel="${type}">${escapeHtml(channelLabel(type))}</button>`).join("");
+    delete picker.dataset.channel;
+  };
+
+  // stopPropagation: evita que el clic llegue al cierre de paneles por clic
+  // fuera (el chat se cerraría al usar el visor).
+  viewer.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const action = event.target.closest("[data-viewer-action]")?.dataset.viewerAction;
+    const channelBtn = event.target.closest("[data-forward-channel]");
+    const targetBtn = event.target.closest("[data-forward-target]");
+
+    if (action === "close" || event.target === viewer) return close();
+    if (action === "save") return saveImage();
+    if (action === "forward") {
+      showChannels();
+      picker.hidden = !picker.hidden;
+      return;
+    }
+    if (channelBtn) {
+      const type = channelBtn.dataset.forwardChannel;
+      if (getTargetsForType(type).length) showTargets(type);
+      else forwardTo(type);
+      return;
+    }
+    if (targetBtn) forwardTo(picker.dataset.channel || "global", targetBtn.dataset.forwardTarget);
+  });
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(viewer);
+}
+
+// Descarga con el token las imágenes adjuntas y las muestra como blob local.
+function hydrateChatImages(root) {
+  root?.querySelectorAll?.("audio[data-auth-src]").forEach((audio) => {
+    if (audio.dataset.authLoaded === "1") return;
+    audio.dataset.authLoaded = "1";
+    fetch(audio.dataset.authSrc, { headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` } })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        audio.src = URL.createObjectURL(blob);
+        audio.load();
+      })
+      .catch((err) => {
+        console.error("[CHAT] No se pudo cargar el audio:", err);
+        audio.dataset.authLoaded = "";
+      });
+  });
+
+  root?.querySelectorAll?.("a[data-auth-src]").forEach((link) => {
+    if (link.dataset.authLoaded === "1") return;
+    link.dataset.authLoaded = "1";
+    const img = link.querySelector("img");
+    const url = link.dataset.authSrc;
+    if (!img || !url) return;
+
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (!img.src) return;
+      const id = link.closest(".chatBubble")?.dataset.id;
+      const msg = _allMsgs.find((m) => String(m.id_mensaje) === String(id)) || null;
+      openChatImageViewer(img.src, img.alt, msg);
+    });
+
+    fetch(url, { headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` } })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        const objectUrl = URL.createObjectURL(blob);
+        img.addEventListener("load", scrollChatToLatest, { once: true });
+        img.src = objectUrl;
+        link.href = objectUrl;
+      })
+      .catch((err) => {
+        console.error("[CHAT] No se pudo cargar la imagen adjunta:", err);
+        link.dataset.authLoaded = "";
+      });
+  });
+}
+
+// ── Selección múltiple de mensajes (mantener presionado) y reenvío ──────────
+const LONG_PRESS_MS = 500;
+const _selectedIds = new Set();
+let _selectionBar = null;
+let _suppressClickUntil = 0;
+
+const SELECTION_ICON_FORWARD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 6 6-6 6"/><path d="M21 11H9a6 6 0 0 0-6 6v1"/></svg>';
+
+function isSelectingMessages() {
+  return _selectedIds.size > 0;
+}
+
+function ensureSelectionBar() {
+  if (_selectionBar || !dom.chatMessages?.parentElement) return _selectionBar;
+  const bar = document.createElement("div");
+  bar.className = "chatSelectionBar";
+  bar.hidden = true;
+  bar.innerHTML = `
+    <button type="button" data-selection-action="cancel" title="Cancelar selección" aria-label="Cancelar selección">✕</button>
+    <span class="chatSelectionCount"></span>
+    <button type="button" data-selection-action="forward" title="Reenviar mensajes" aria-label="Reenviar mensajes">${SELECTION_ICON_FORWARD}</button>`;
+  bar.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const action = event.target.closest("[data-selection-action]")?.dataset.selectionAction;
+    if (action === "cancel") clearMessageSelection();
+    if (action === "forward") openForwardDialog();
+  });
+  dom.chatMessages.parentElement.insertBefore(bar, dom.chatMessages);
+  _selectionBar = bar;
+  return bar;
+}
+
+function refreshSelectionUi() {
+  const bar = ensureSelectionBar();
+  const count = _selectedIds.size;
+  if (bar) {
+    bar.hidden = count === 0;
+    const label = bar.querySelector(".chatSelectionCount");
+    if (label) label.textContent = count === 1 ? "1 seleccionado" : `${count} seleccionados`;
+  }
+  dom.chatMessages?.classList.toggle("selecting", count > 0);
+  dom.chatMessages?.querySelectorAll(".chatBubble").forEach((bubble) => {
+    bubble.classList.toggle("selected", _selectedIds.has(String(bubble.dataset.id)));
+  });
+}
+
+function toggleMessageSelection(id) {
+  const key = String(id || "");
+  if (!key) return;
+  if (_selectedIds.has(key)) _selectedIds.delete(key);
+  else _selectedIds.add(key);
+  refreshSelectionUi();
+}
+
+function clearMessageSelection() {
+  _selectedIds.clear();
+  refreshSelectionUi();
+}
+
+function bindMessageSelection() {
+  const container = dom.chatMessages;
+  if (!container || container.dataset.selectionBound === "1") return;
+  container.dataset.selectionBound = "1";
+
+  let timer = null;
+  let startX = 0;
+  let startY = 0;
+  const cancelPress = () => { window.clearTimeout(timer); timer = null; };
+
+  container.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const bubble = event.target.closest(".chatBubble");
+    if (!bubble || event.target.closest("input, textarea")) return;
+    startX = event.clientX;
+    startY = event.clientY;
+    cancelPress();
+    timer = window.setTimeout(() => {
+      timer = null;
+      if (!_selectedIds.has(String(bubble.dataset.id))) toggleMessageSelection(bubble.dataset.id);
+      window.getSelection?.()?.removeAllRanges();
+      navigator.vibrate?.(15);
+      _suppressClickUntil = Date.now() + 500;
+    }, LONG_PRESS_MS);
+  });
+  container.addEventListener("pointermove", (event) => {
+    if (timer && Math.hypot(event.clientX - startX, event.clientY - startY) > 10) cancelPress();
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((name) => container.addEventListener(name, cancelPress));
+  // En táctil, mantener presionado abriría el menú del navegador.
+  container.addEventListener("contextmenu", (event) => {
+    if (event.target.closest(".chatBubble") && (timer || isSelectingMessages() || Date.now() < _suppressClickUntil)) {
+      event.preventDefault();
+    }
+  });
+
+  // En fase de captura: con la selección activa, tocar un mensaje lo marca o desmarca
+  // sin activar imágenes, videos ni enlaces dentro del mensaje.
+  container.addEventListener("click", (event) => {
+    const bubble = event.target.closest(".chatBubble");
+    if (!bubble) return;
+    if (Date.now() < _suppressClickUntil) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (!isSelectingMessages()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    toggleMessageSelection(bubble.dataset.id);
+  }, true);
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isSelectingMessages() && !document.getElementById("chatForwardOverlay")) {
+      clearMessageSelection();
+    }
+  });
+}
+
+// Diálogo para elegir a qué chat reenviar (y a quién, en canales con destinatarios).
+function openForwardDialog() {
+  if (!isSelectingMessages()) return;
+  document.getElementById("chatForwardOverlay")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "chatForwardOverlay";
+  overlay.className = "chatForwardOverlay";
+  overlay.innerHTML = '<div class="chatForwardPicker"></div>';
+  const picker = overlay.querySelector(".chatForwardPicker");
+  const count = _selectedIds.size;
+
+  const showChannels = () => {
+    const types = ["global", "cets", "vehiculo", "flotilla", "grupo", "cet_specific", "cell_specific"]
+      .filter(isChatChannelAvailable);
+    picker.innerHTML = `<div class="chatForwardTitle">Reenviar ${count === 1 ? "1 mensaje" : `${count} mensajes`} a</div>` +
+      types.map((type) => `<button type="button" data-forward-channel="${type}">${escapeHtml(channelLabel(type))}</button>`).join("");
+    delete picker.dataset.channel;
+  };
+  const showTargets = (type) => {
+    picker.innerHTML = `<div class="chatForwardTitle">${escapeHtml(channelLabel(type))}</div>` +
+      getTargetsForType(type).map((t) => `<button type="button" data-forward-target="${escapeHtml(t.id)}">${escapeHtml(t.label)}</button>`).join("");
+    picker.dataset.channel = type;
+  };
+
+  const onKey = (event) => {
+    if (event.key !== "Escape") return;
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  overlay.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const channelBtn = event.target.closest("[data-forward-channel]");
+    const targetBtn = event.target.closest("[data-forward-target]");
+    if (event.target === overlay) {
+      overlay.remove();
+      document.removeEventListener("keydown", onKey);
+      return;
+    }
+    if (channelBtn) {
+      const type = channelBtn.dataset.forwardChannel;
+      if (getTargetsForType(type).length) {
+        showTargets(type);
+      } else {
+        overlay.remove();
+        document.removeEventListener("keydown", onKey);
+        forwardSelectedMessages(type);
+      }
+      return;
+    }
+    if (targetBtn) {
+      const type = picker.dataset.channel || "global";
+      overlay.remove();
+      document.removeEventListener("keydown", onKey);
+      forwardSelectedMessages(type, targetBtn.dataset.forwardTarget);
+    }
+  });
+  document.addEventListener("keydown", onKey);
+  showChannels();
+  document.body.appendChild(overlay);
+}
+
+// Reenvía en orden cronológico los mensajes seleccionados al chat elegido.
+async function forwardSelectedMessages(type, target = "") {
+  const ids = new Set(_selectedIds);
+  const messages = _allMsgs.filter((msg) => ids.has(String(msg.id_mensaje)));
+  clearMessageSelection();
+  if (!messages.length) return;
+
+  setChannel(type, target);
+  const isDefaultText = (text) => /^(imagen adjunta|video adjunto|mensaje de voz|archivo adjunto)$/i.test(String(text || "").trim());
+  try {
+    for (const msg of messages) {
+      if (msg.attachment_url) {
+        const res = await fetch(normalizeAttachmentUrl(msg.attachment_url), {
+          headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const original = String(msg.contenido || "").trim();
+        await sendAttachment(
+          String(msg.attachment_kind || "FILE"),
+          blob,
+          String(msg.attachment_name || "").trim(),
+          { caption: isDefaultText(original) ? "" : original, skipLocation: true }
+        );
+      } else {
+        await sendChatContent(msg.contenido);
+      }
+    }
+  } catch (err) {
+    console.error("[CHAT] Error reenviando mensajes:", err);
+    alert("No se pudieron reenviar todos los mensajes.");
+  }
 }
 
 // ── Re-renderiza todos los mensajes visibles ────────────────
@@ -1457,6 +1925,7 @@ function renderMessages() {
     dom.chatMessages.insertAdjacentHTML("beforeend", buildBubble(msg));
   });
   setupVoicePlayers(dom.chatMessages);
+  hydrateChatImages(dom.chatMessages);
   dom.chatMessages.querySelectorAll("img").forEach((image) => {
     if (!image.complete) image.addEventListener("load", scrollChatToLatest, { once: true });
   });
@@ -1499,6 +1968,7 @@ function appendMessage(msg) {
 
   dom.chatMessages.insertAdjacentHTML("beforeend", buildBubble(msg));
   setupVoicePlayers(dom.chatMessages);
+  hydrateChatImages(dom.chatMessages);
 
   if (atBottom) dom.chatMessages.scrollTop = dom.chatMessages.scrollHeight;
   return true;
@@ -1579,8 +2049,21 @@ async function sendMessage() {
   await sendChatContent(text, { clearText: true, restoreText: text });
 }
 
-async function sendAttachment(kind, source, name = "") {
-  const caption = dom.chatInput?.value.trim() || "";
+// Ubicación del navegador; devuelve null si se niega, no hay GPS o tarda demasiado.
+function getBrowserLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+    );
+  });
+}
+
+async function sendAttachment(kind, source, name = "", options = {}) {
+  // options.caption / options.skipLocation: usados al reenviar una imagen existente.
+  const caption = options.caption ?? (dom.chatInput?.value.trim() || "");
   if (!_opId) return;
 
   const destinoPayload = getDestinoPayload();
@@ -1594,12 +2077,21 @@ async function sendAttachment(kind, source, name = "") {
     destinatario_rol: getDestinatarioRol()
   });
 
-  if (caption) params.set("contenido", caption);
+  // Imagen o video: se adjunta la ubicación desde donde se envía (si el navegador la da).
+  let contenido = caption;
+  if (!options.skipLocation && (attachmentKind === "IMAGE" || attachmentKind === "VIDEO")) {
+    const here = await getBrowserLocation();
+    if (here) {
+      const locationText = `LAT: ${here.lat.toFixed(5)}, LON: ${here.lon.toFixed(5)}\nVer ubicación`;
+      contenido = caption ? `${caption}\n${locationText}` : locationText;
+    }
+  }
+  if (contenido) params.set("contenido", contenido);
   Object.entries(destinoPayload).forEach(([key, value]) => {
     if (value != null && String(value).trim()) params.set(key, String(value));
   });
 
-  if (dom.chatInput) dom.chatInput.value = "";
+  if (options.caption === undefined && dom.chatInput) dom.chatInput.value = "";
   if (dom.sendChatBtn) dom.sendChatBtn.disabled = true;
 
   try {
@@ -1796,6 +2288,7 @@ export function initChat(opId, socket) {
 
 // ── Público: enlaza eventos de UI ───────────────────────────
 export function bindChatEvents() {
+  bindMessageSelection();
   if (dom.chatChannelType) {
     dom.chatChannelType.addEventListener("change", () => {
       setChannel(dom.chatChannelType.value || "global");

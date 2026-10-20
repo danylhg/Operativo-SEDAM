@@ -315,6 +315,7 @@
     const trackingVehiculoEntities = new Map();
     const trackingEquipoEntities = new Map();
     const trackingDispositivoEntities = new Map();
+    const sedamUnitEntities = new Map();
     const trackingHeadingEntities = new Map();
     const trackingDispositivoLatest = new Map();
     const requestedDispositivoTrackingIds = new Set();
@@ -1755,8 +1756,6 @@
       let savedBaseLayer = "osm";
       try {
         savedBaseLayer = localStorage.getItem("sedam_android_map_layer") || "osm";
-        // Algunos WebView muestran teselas satelitales grises sin reportar error.
-        if (savedBaseLayer === "satellite" || savedBaseLayer === "hybrid") savedBaseLayer = "osm";
       } catch (_) {}
       setBaseLayer(savedBaseLayer);
       if (viewer.scene && viewer.scene.postRender) {
@@ -3333,6 +3332,35 @@
       } catch (e) {
         console.error("Error en updateTrackingEquipo: " + e.message);
       }
+    };
+
+    // Unidades de la red SEDAM (socket cifrado): vehiculos, buques y puestos que ve el dashboard web.
+    window.updateSedamUnit = function (key, lat, lon, label, meta) {
+      try {
+        const id = String(key || "");
+        if (!id) return;
+        const options = Object.assign({}, meta || {}, {
+          kind: "sedam",
+          trackingKey: "S:" + id,
+          tacticalType: "sedam",
+          active: true
+        });
+        upsertTrackingEntity(sedamUnitEntities, id, lat, lon, label || id, TRACKING_DISPOSITIVO_COLOR, options);
+      } catch (e) {
+        console.error("Error en updateSedamUnit: " + e.message);
+      }
+    };
+
+    window.removeSedamUnit = function (key) {
+      const id = String(key || "");
+      const entity = sedamUnitEntities.get(id);
+      if (entity) viewer.entities.remove(entity);
+      sedamUnitEntities.delete(id);
+      removeTrackingHeadingLine("S:" + id);
+    };
+
+    window.clearSedamUnits = function () {
+      Array.from(sedamUnitEntities.keys()).forEach(window.removeSedamUnit);
     };
 
     window.updateTrackingDispositivo = function (idDispositivo, lat, lon, label, meta) {

@@ -307,8 +307,17 @@ function showQuickMenuForEntity(entity, clickPosition) {
     return false;
   }
 
+  // Dron: solo el identificador (p. ej. "DRN-001"), sin descripción ni "(Dron)".
+  const droneShortName = context.type === "dron"
+    ? String(context.name || "").split(" - ")[0].trim() || context.name
+    : context.name;
+
   if (dom.vehicleQuickMenuName) {
-    dom.vehicleQuickMenuName.textContent = context.type === "vehiculo" ? context.name : `${context.name} (${context.label})`;
+    dom.vehicleQuickMenuName.textContent = context.type === "vehiculo"
+      ? context.name
+      : context.type === "dron"
+        ? droneShortName
+        : `${context.name} (${context.label})`;
   }
 
   const trackingKey = String(getEntityProperty(entity, "trackingKey") || "");
@@ -429,7 +438,7 @@ function showQuickMenuForEntity(entity, clickPosition) {
       });
       detailsContainer.style.display = "grid";
       dom.vehicleQuickMenu.dataset.equipmentId = equipmentId;
-      void renderEquipmentLiveCamera(droneCamera, equipmentId, context.name);
+      void renderEquipmentLiveCamera(droneCamera, equipmentId, droneShortName);
     } else {
       detailsContainer.style.display = "none";
       dom.vehicleQuickMenu.dataset.equipmentId = "";
@@ -530,17 +539,21 @@ function openSelectedEntityRoute() {
   if (dom.vehicleQuickMenu) dom.vehicleQuickMenu.style.display = "none";
 }
 
-function getRoutePopupName(routeId) {
+// Nombre del vehículo de la ruta, sin prefijos como "Ruta:" ni "Vehículo:".
+function getRoutePopupVehicleName(routeId) {
   const entry = dashboardState.remoteRouteEntities.get(routeId);
   const ruta = entry?.ruta || {};
-  if (ruta.nombre) return ruta.nombre;
+  const stripPrefixes = (text) => String(text || "")
+    .replace(/^\s*Ruta:\s*/i, "")
+    .replace(/^\s*Veh[ií]culo:\s*/i, "")
+    .trim();
+  if (ruta.nombre) return stripPrefixes(ruta.nombre);
   if (ruta.id_vehiculo != null) {
     const selectEl = document.getElementById("routeVehicleSelect");
     const option = [...(selectEl?.options || [])].find((opt) => String(opt.value) === String(ruta.id_vehiculo));
-    const vehicleName = option?.textContent?.replace(/^Vehiculo:\s*/i, "").trim();
-    return vehicleName ? `Ruta: ${vehicleName}` : "Ruta de vehiculo";
+    return stripPrefixes(option?.textContent);
   }
-  return "Ruta General";
+  return "";
 }
 
 function showRouteDeletePopup(routeId, clickPosition) {
@@ -556,7 +569,17 @@ function showRouteDeletePopup(routeId, clickPosition) {
   if (dom.vehicleQuickMenu) dom.vehicleQuickMenu.style.display = "none";
 
   const route = dashboardState.remoteRouteEntities.get(routeId)?.ruta || {};
-  if (dom.entityPopupName) dom.entityPopupName.textContent = getRoutePopupName(routeId);
+  if (dom.entityPopupName) {
+    // Título "Ruta" y, debajo, el nombre del vehículo resaltado en azul.
+    const vehicleName = getRoutePopupVehicleName(routeId);
+    dom.entityPopupName.textContent = "Ruta";
+    if (vehicleName) {
+      const vehicleLine = document.createElement("div");
+      vehicleLine.className = "routePopupVehicle";
+      vehicleLine.textContent = vehicleName;
+      dom.entityPopupName.appendChild(vehicleLine);
+    }
+  }
   if (dom.entityPopupDelete) {
     // El borrado se hace desde el botón "Eliminar" del cuadro; este queda oculto.
     dom.entityPopupDelete.textContent = "Eliminar";
@@ -606,18 +629,22 @@ function showRouteDeletePopup(routeId, clickPosition) {
       : `${durationMinutes} min`;
   details.replaceChildren();
 
-  // Origen y destino: etiqueta arriba y, debajo, latitud y longitud.
-  [["Origen", originPoint], ["Destino", destinationPoint]].forEach(([label, point]) => {
+  // Las rutas sin vehículo (tipo Google, que se van consumiendo al avanzar)
+  // solo muestran el destino; el origen aplica a las rutas de vehículo.
+  const hasVehicle = Boolean(getRoutePopupVehicleName(routeId));
+  const pointRows = hasVehicle
+    ? [["Origen", originPoint], ["Destino", destinationPoint]]
+    : [["Destino", destinationPoint]];
+  pointRows.forEach(([label, point]) => {
     const block = document.createElement("div");
     block.className = "routePopupPoint";
     const key = document.createElement("span");
     key.textContent = label;
     block.appendChild(key);
-    (point || ["No disponible"]).forEach((line) => {
-      const content = document.createElement("strong");
-      content.textContent = line;
-      block.appendChild(content);
-    });
+    // Latitud y longitud en una sola línea.
+    const content = document.createElement("strong");
+    content.textContent = (point || ["No disponible"]).join(", ");
+    block.appendChild(content);
     details.appendChild(block);
   });
 
