@@ -143,7 +143,6 @@ function ensureHlsScript() {
 
   const sources = [
     "/Operaciones/vendor/hls.min.js",
-    "https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js",
   ];
 
   hlsScriptPromise = new Promise((resolve, reject) => {

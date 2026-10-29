@@ -292,7 +292,7 @@ class VideoStreamsDialog(
                             body, html { margin:0; padding:0; background:#060C17; width:100%; height:100%; display:flex; justify-content:center; align-items:center; overflow:hidden; }
                             video { width:100%; height:100%; object-fit:contain; background:#000; }
                         </style>
-                        <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+                        <script src="${com.operaciones.operaciones_android.config.ApiConfig.BASE_URL}/vendor/hls.min.js"></script>
                     </head>
                     <body>
                         <video id="video" controls autoplay playsinline muted></video>

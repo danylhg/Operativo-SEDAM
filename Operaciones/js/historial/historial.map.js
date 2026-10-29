@@ -52,6 +52,7 @@ export function initHistoryMap(initialZone = null) {
   Cesium.Ion.defaultAccessToken = localStorage.getItem("CESIUM_TOKEN") || "";
 
   replayState.viewer = new Cesium.Viewer(dom.map, {
+    baseLayer: false,
     animation: false,
     timeline: false,
     baseLayerPicker: false,
@@ -1381,24 +1382,18 @@ function finiteNumber(...values) {
 // ── Helpers ───────────────────────────────────────────────
 
 function addHybridLayer(viewer) {
-  const satellite = viewer.imageryLayers.addImageryProvider(
-    new Cesium.UrlTemplateImageryProvider({
-      url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      maximumLevel: 19,
-    })
-  );
+  // Teselas locales de la API + mapa mundial incluido en Cesium (sin internet).
+  viewer.imageryLayers.removeAll();
+  viewer.imageryLayers.addImageryProvider(OfflineMap.world());
+  viewer.imageryLayers.addImageryProvider(OfflineMap.osm());
+
+  const satellite = viewer.imageryLayers.addImageryProvider(OfflineMap.satellite());
   satellite.brightness = 0.78;
   satellite.contrast = 1.35;
   satellite.saturation = 1.15;
   satellite.gamma = 0.9;
 
-  const reference = viewer.imageryLayers.addImageryProvider(
-    new Cesium.UrlTemplateImageryProvider({
-      url: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-      maximumLevel: 19,
-      credit: "Esri Reference",
-    })
-  );
+  const reference = viewer.imageryLayers.addImageryProvider(OfflineMap.reference());
   reference.alpha = 0.78;
 }
 

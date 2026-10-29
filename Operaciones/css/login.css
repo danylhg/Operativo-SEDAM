@@ -238,6 +238,45 @@ button:disabled {
   }
 }
 
+/* Enlace secundario (cambiar contraseña / volver). */
+button.linkBtn {
+  height: auto;
+  margin-top: 14px;
+  padding: 4px;
+  background: transparent;
+  color: var(--accent-hi);
+  font: 700 13px/1.3 var(--font);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+button.linkBtn:hover {
+  background: transparent;
+  color: var(--text-bright);
+  transform: none;
+}
+
+.pwInfo {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--text-bright);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.pwHint {
+  margin: -4px 0 6px;
+  color: rgba(168, 182, 207, 0.82);
+  font-size: 12px;
+}
+
+.msg.ok {
+  color: #86efac;
+}
+
 /* Campo de contraseña con ojo para mostrarla u ocultarla. */
 .passwordField {
   position: relative;

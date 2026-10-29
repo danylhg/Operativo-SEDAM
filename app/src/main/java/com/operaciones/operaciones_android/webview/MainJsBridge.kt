@@ -14,6 +14,10 @@ class MainJsBridge(
     private val activity: MainActivity
 ) {
 
+    // El mapa pide sus teselas al servidor local (sin internet): /tiles/<capa>/z/x/y.png
+    @JavascriptInterface
+    fun getApiBase(): String = com.operaciones.operaciones_android.config.ApiConfig.BASE_URL
+
     @JavascriptInterface
     fun getCurrentUserLabel(): String = activity.getMapDataCurrentUserLabel()
 

@@ -716,6 +716,32 @@ select option{ background: #ffffff; color: #0b1220; }
 }
 .badge.ok{ color: #86efac; background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.25); }
 .badge.no{ color: #fca5a5; background: rgba(239,68,68,.10); border-color: rgba(239,68,68,.22); }
+.badge.warn{ color: #fcd34d; background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.25); }
+
+/* ===== Código de acceso temporal ===== */
+.accessCodeLead{ margin: 0 0 12px; color: var(--muted); line-height: 1.5; }
+.accessCodeData{
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 0 0 14px;
+}
+.accessCodeData dt{ color: var(--muted); font-weight: 700; }
+.accessCodeData dd{ margin: 0; color: var(--text); font-weight: 700; }
+.accessCodeActions{
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--stroke2);
+  gap: 10px;
+}
+.accessCodeActions .btn{ min-width: 110px; justify-content: center; }
+.accessCodeValue{
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 20px;
+  letter-spacing: 2px;
+  color: var(--accent-hi) !important;
+  user-select: all;
+}
 
 /* ===== Modal ===== */
 .modal{

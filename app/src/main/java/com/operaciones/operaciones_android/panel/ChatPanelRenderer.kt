@@ -447,11 +447,18 @@ internal class ChatPanelRenderer(
         onBack: () -> Unit,
         unreadCountFor: (ChatChannelSelection) -> Int = { 0 },
         lastMessageFor: (ChatChannelSelection) -> String = { "Sin mensajes todavía" },
+        onChannelsListed: (List<ChatChannelSelection>) -> Unit = {},
         onContactSelected: (ChatChannelSelection) -> Unit
     ) {
         val context = panelContent.context
         val density = context.resources.displayMetrics.density
         val channelDefs = buildChannelDefs(currentUser, personalList, vehiculosList)
+        onChannelsListed(
+            channelDefs.flatMap { channel ->
+                if (channel.targets.isEmpty()) listOf(selectionFor(channel, 0))
+                else channel.targets.indices.map { selectionFor(channel, it) }
+            }
+        )
 
         val root = RelativeLayout(context).apply {
             setBackgroundColor(Color.parseColor("#07111F"))
@@ -477,7 +484,7 @@ internal class ChatPanelRenderer(
         }
         header.addView(ImageButton(context).apply {
             setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-            setColorFilter(Color.parseColor("#A7B6CA"))
+            setColorFilter(Color.parseColor("#8FA4BF"))
             setBackgroundColor(Color.TRANSPARENT)
             contentDescription = "Cerrar chat"
             setOnClickListener { onBack() }
@@ -486,7 +493,7 @@ internal class ChatPanelRenderer(
         header.addView(TextView(context).apply {
             text = "Mensajes"
             setTextColor(Color.parseColor("#EAF2FF"))
-            textSize = 16f
+            textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
             setPadding(dp(density, 6), 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(
@@ -497,13 +504,80 @@ internal class ChatPanelRenderer(
         })
         val searchButton = ImageButton(context).apply {
             setImageResource(android.R.drawable.ic_menu_search)
-            setColorFilter(Color.parseColor("#69B4FF"))
+            setColorFilter(Color.parseColor("#8FA4BF"))
             setBackgroundColor(Color.TRANSPARENT)
             contentDescription = "Buscar conversaciones"
             layoutParams = LinearLayout.LayoutParams(dp(density, 40), dp(density, 40))
         }
         header.addView(searchButton)
         root.addView(header)
+
+        // Pestañas: Todos / Grupos (canales colectivos) / Personal (chats individuales).
+        val groupChannelTypes = setOf("GLOBAL", "CETS", "CUTS", "FLOTILLA", "GRUPO", "VEHICULO")
+        var activeTab = "TODOS"
+        var refreshContacts: () -> Unit = {}
+        val tabsId = View.generateViewId()
+        // Pestañas con subrayado: Todos / Grupos (canales colectivos) / Personal (chats individuales).
+        fun contactCount(channel: ChannelDef) = if (channel.targets.isEmpty()) 1 else channel.targets.size
+        val tabCounts = mapOf(
+            "TODOS" to channelDefs.sumOf { contactCount(it) },
+            "GRUPOS" to channelDefs.filter { it.type in groupChannelTypes }.sumOf { contactCount(it) },
+            "PERSONAL" to channelDefs.filter { it.type !in groupChannelTypes }.sumOf { contactCount(it) }
+        )
+        val tabLabels = mutableMapOf<String, TextView>()
+        val tabIndicators = mutableMapOf<String, View>()
+        fun styleTabs() {
+            tabLabels.forEach { (key, label) ->
+                val selected = key == activeTab
+                label.setTextColor(Color.parseColor(if (selected) "#69B4FF" else "#8FA4BF"))
+                tabIndicators[key]?.setBackgroundColor(Color.parseColor(if (selected) "#69B4FF" else "#00000000"))
+            }
+        }
+        val tabs = LinearLayout(context).apply {
+            id = tabsId
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#0D1B2E"))
+            layoutParams = RelativeLayout.LayoutParams(
+                RelativeLayout.LayoutParams.MATCH_PARENT,
+                RelativeLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                addRule(RelativeLayout.BELOW, headerId)
+            }
+        }
+        listOf("TODOS" to "Todos", "GRUPOS" to "Grupos", "PERSONAL" to "Personal").forEach { (key, title) ->
+            val label = TextView(context).apply {
+                text = "$title  ${tabCounts[key] ?: 0}"
+                gravity = android.view.Gravity.CENTER
+                textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(density, 40)
+                )
+            }
+            val indicator = View(context).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(density, 3)
+                )
+            }
+            tabLabels[key] = label
+            tabIndicators[key] = indicator
+            tabs.addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                isClickable = true
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(label)
+                addView(indicator)
+                setOnClickListener {
+                    activeTab = key
+                    styleTabs()
+                    refreshContacts()
+                }
+            })
+        }
+        styleTabs()
+        root.addView(tabs)
 
         val searchBarId = View.generateViewId()
         val searchBar = LinearLayout(context).apply {
@@ -517,7 +591,7 @@ internal class ChatPanelRenderer(
                 RelativeLayout.LayoutParams.MATCH_PARENT,
                 RelativeLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                addRule(RelativeLayout.BELOW, headerId)
+                addRule(RelativeLayout.BELOW, tabsId)
             }
         }
         val searchInput = EditText(context).apply {
@@ -533,7 +607,7 @@ internal class ChatPanelRenderer(
         searchBar.addView(searchInput)
         searchBar.addView(ImageButton(context).apply {
             setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-            setColorFilter(Color.parseColor("#A7B6CA"))
+            setColorFilter(Color.parseColor("#8FA4BF"))
             setBackgroundColor(Color.TRANSPARENT)
             contentDescription = "Cerrar búsqueda"
             layoutParams = LinearLayout.LayoutParams(dp(density, 40), dp(density, 40)).apply {
@@ -560,13 +634,19 @@ internal class ChatPanelRenderer(
         }
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(density, 12), dp(density, 10), dp(density, 12), dp(density, 18))
+            setPadding(0, dp(density, 4), 0, dp(density, 18))
         }
 
         fun renderContacts(query: String = "") {
             list.removeAllViews()
             val normalizedQuery = query.trim().lowercase()
-            channelDefs.forEach { channel ->
+            channelDefs.filter { channel ->
+                when (activeTab) {
+                    "GRUPOS" -> channel.type in groupChannelTypes
+                    "PERSONAL" -> channel.type !in groupChannelTypes
+                    else -> true
+                }
+            }.forEach { channel ->
                 val style = contactStyle(channel.type)
                 if (channel.targets.isEmpty()) {
                     val label = channel.fixedLabel ?: channel.label
@@ -590,10 +670,10 @@ internal class ChatPanelRenderer(
                     if (visibleTargets.isNotEmpty()) {
                         list.addView(TextView(context).apply {
                             text = channel.label.uppercase()
-                            setTextColor(Color.parseColor(style.accentColor))
-                            textSize = 10f
+                            setTextColor(Color.parseColor("#69B4FF"))
+                            textSize = 12f
                             typeface = Typeface.DEFAULT_BOLD
-                            setPadding(dp(density, 6), dp(density, 12), dp(density, 6), dp(density, 6))
+                            setPadding(dp(density, 16), dp(density, 16), dp(density, 16), dp(density, 6))
                         })
                     }
                     visibleTargets.forEach { (index, target) ->
@@ -614,6 +694,8 @@ internal class ChatPanelRenderer(
                 })
             }
         }
+
+        refreshContacts = { renderContacts(searchInput.text?.toString().orEmpty()) }
 
         searchButton.setOnClickListener {
             searchBar.visibility = View.VISIBLE
@@ -644,28 +726,35 @@ internal class ChatPanelRenderer(
     ): View {
         val context = host.getLayoutInflater().context
         val density = context.resources.displayMetrics.density
-        return LinearLayout(context).apply {
+        // Fila plana tipo WhatsApp/Telegram: avatar circular, nombre, último mensaje y divisor.
+        val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            background = roundedDrawable(context, style.rowColor, 8)
-            setPadding(dp(density, 10), dp(density, 8), dp(density, 10), dp(density, 8))
+            setPadding(dp(density, 16), dp(density, 10), dp(density, 16), dp(density, 10))
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
+            context.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).also {
+                foreground = it.getDrawable(0)
+                it.recycle()
+            }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(density, 6) }
+            )
 
             addView(TextView(context).apply {
                 text = label.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
                 gravity = android.view.Gravity.CENTER
                 setTextColor(Color.parseColor(style.accentColor))
-                textSize = 13f
+                textSize = 18f
                 typeface = Typeface.DEFAULT_BOLD
-                background = roundedDrawable(context, style.avatarColor, 16)
-                layoutParams = LinearLayout.LayoutParams(dp(density, 34), dp(density, 34)).apply {
-                    rightMargin = dp(density, 10)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(Color.parseColor(style.avatarColor))
+                }
+                layoutParams = LinearLayout.LayoutParams(dp(density, 48), dp(density, 48)).apply {
+                    rightMargin = dp(density, 14)
                 }
             })
             addView(LinearLayout(context).apply {
@@ -675,17 +764,17 @@ internal class ChatPanelRenderer(
                 addView(TextView(context).apply {
                     text = label
                     setTextColor(Color.parseColor("#EAF2FF"))
-                    textSize = 13f
-                    typeface = Typeface.DEFAULT_BOLD
+                    textSize = 16f
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
                 })
                 addView(TextView(context).apply {
                     text = lastMessage
-                    setTextColor(Color.parseColor("#9FB0C5"))
-                    textSize = 11f
+                    setTextColor(if (unreadCount > 0) Color.parseColor("#C5D3E6") else Color.parseColor("#8FA4BF"))
+                    textSize = 13f
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(0, dp(density, 2), 0, 0)
                 })
             })
             if (unreadCount > 0) {
@@ -693,7 +782,7 @@ internal class ChatPanelRenderer(
                     text = if (unreadCount > 99) "99+" else unreadCount.toString()
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.parseColor("#F2FAF8"))
-                    textSize = 11f
+                    textSize = 12f
                     typeface = Typeface.DEFAULT_BOLD
                     minWidth = dp(density, 22)
                     minHeight = dp(density, 22)
@@ -702,6 +791,21 @@ internal class ChatPanelRenderer(
                     contentDescription = "$unreadCount mensajes nuevos"
                 })
             }
+        }
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            addView(row)
+            addView(View(context).apply {
+                setBackgroundColor(Color.parseColor("#152A43"))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(density, 1)
+                ).apply { marginStart = dp(density, 78) }
+            })
         }
     }
 
@@ -751,7 +855,7 @@ internal class ChatPanelRenderer(
             }.orEmpty()
             if (byId.isNotEmpty()) byId else {
                 val cetName = person.cetNombre.trim()
-                cets.filter { cetName.isNotBlank() && it.label.equals(cetName, ignoreCase = true) }
+                cets.filter { cetName.isNotBlank() && it.label.endsWith(cetName, ignoreCase = true) }
             }
         }.orEmpty()
         val ownFlotilla = currentPerson?.let { flotillaTarget(it) }?.let(::listOf).orEmpty()
@@ -776,7 +880,7 @@ internal class ChatPanelRenderer(
                             else -> false
                         }
                 }
-                .map { TargetEntry(it.idPersonal.toString(), personName(it)) }
+                .map { TargetEntry(it.idPersonal.toString(), personLabel(it)) }
                 .sortedBy { it.label }
         }.orEmpty()
 
@@ -1183,7 +1287,7 @@ internal class ChatPanelRenderer(
     private fun roleTargets(personalList: List<PersonalItem>, rol: String): List<TargetEntry> =
         personalList
             .filter { it.rol.equals(rol, ignoreCase = true) }
-            .map { TargetEntry(it.idPersonal.toString(), personName(it)) }
+            .map { TargetEntry(it.idPersonal.toString(), personLabel(it)) }
             .sortedBy { it.label }
 
     private fun flotillaTargets(personalList: List<PersonalItem>): List<TargetEntry> =
@@ -1254,6 +1358,48 @@ internal class ChatPanelRenderer(
         return fullName.ifBlank { person.apodo }
     }
 
+    /** Nombre con el cargo abreviado delante, por ejemplo "Tte. Teresa Mora". */
+    private fun personLabel(person: PersonalItem): String {
+        val rank = abbreviateRank(person.puesto)
+        val name = personName(person)
+        return if (rank.isBlank()) name else "$rank $name"
+    }
+
+    private fun abbreviateRank(value: String): String {
+        val r = value.trim().lowercase()
+        return when {
+            r.contains("capitán de navío") || r.contains("capitan de navio") -> "Cap. Nav."
+            r.contains("capitán de fragata") || r.contains("capitan de fragata") -> "Cap. Frag."
+            r.contains("capitán de corbeta") || r.contains("capitan de corbeta") -> "Cap. Corb."
+            r.contains("capitán 1/o") || r.contains("capitan 1/o") || r.contains("capitán primero") -> "Cap. 1/o"
+            r.contains("capitán 2/o") || r.contains("capitan 2/o") || r.contains("capitán segundo") -> "Cap. 2/o"
+            r.contains("capitán") || r.contains("capitan") || r == "cap" || r == "cap." -> "Cap."
+            r.contains("teniente de navío") || r.contains("teniente de navio") -> "Tte. Nav."
+            r.contains("teniente de fragata") -> "Tte. Frag."
+            r.contains("teniente de corbeta") -> "Tte. Corb."
+            r.contains("primer teniente") || r.contains("1er teniente") -> "1er. Tte."
+            r.contains("segundo teniente") || r.contains("2do teniente") -> "2do. Tte."
+            r.contains("subteniente") || r == "subtte" || r == "subtte." -> "Subtte."
+            r.contains("teniente") || r == "tte" || r == "tte." -> "Tte."
+            r.contains("sargento 1/o") || r.contains("sargento primero") -> "Sgto. 1/o"
+            r.contains("sargento 2/o") || r.contains("sargento segundo") -> "Sgto. 2/o"
+            r.contains("sargento") || r == "sgto" || r == "sgto." -> "Sgto."
+            r.contains("cabo") || r == "cbo" || r == "cbo." -> "Cbo."
+            r.contains("marinero") || r == "mro" || r == "mro." -> "Mro."
+            r.contains("soldado") || r == "sld" || r == "sld." -> "Sld."
+            r.contains("general de división") || r.contains("general de division") -> "Gral. Div."
+            r.contains("general de brigada") -> "Gral. Brig."
+            r.contains("general brigadier") -> "Gral. Bgda."
+            r.contains("general") || r == "gral" || r == "gral." -> "Gral."
+            r.contains("vicealmirante") || r == "valm" || r == "valm." -> "Valm."
+            r.contains("contralmirante") || r == "calm" || r == "calm." -> "Calm."
+            r.contains("almirante") || r == "alm" || r == "alm." -> "Alm."
+            r.contains("coronel") || r == "cnel" || r == "cnel." -> "Cnel."
+            r.contains("mayor") || r == "my" || r == "my." -> "My."
+            else -> ""
+        }
+    }
+
     private fun vehicleName(vehicle: VehiculoItem): String {
         val codigo = vehicle.codigoInterno.trim()
         val alias = vehicle.alias.trim()
@@ -1261,9 +1407,8 @@ internal class ChatPanelRenderer(
         val tipo = vehicle.tipo.trim()
 
         return when {
-            codigo.isNotBlank() && alias.isNotBlank() -> "$codigo - $alias"
-            codigo.isNotBlank() -> codigo
             alias.isNotBlank() -> alias
+            codigo.isNotBlank() -> codigo
             nombre.isNotBlank() -> nombre
             tipo.isNotBlank() -> tipo
             else -> "Vehiculo ${vehicle.idVehiculo}"

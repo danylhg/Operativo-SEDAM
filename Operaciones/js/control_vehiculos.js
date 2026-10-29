@@ -293,7 +293,9 @@
       estado: v.estado ?? "DISPONIBLE",
       capacidad: v.capacidad ?? "",
       fecha_registro: v.fecha_registro ?? "",
-    }));
+    }))
+      // Lo más reciente arriba (el ID crece con cada alta).
+      .sort((a, b) => (Number(b.id_vehiculo) || 0) - (Number(a.id_vehiculo) || 0));
   }
 
   /* =========================

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Control de Personal</title>
   <script src="js/api_config.js?v=20261002-public-api"></script>
-  <script src="js/auth_check.js"></script>
-  <link rel="stylesheet" href="css/control_personal.css?v=1.3" />
+  <script src="js/auth_check.js?v=2-admin"></script>
+  <link rel="stylesheet" href="css/control_personal.css?v=1.5" />
 </head>
 <body>
 
@@ -190,7 +190,7 @@
             <div class="field">
               <label>Contraseña</label>
               <div class="passwordInputContainer" style="position: relative; display: flex; align-items: center; width: 100%;">
-                <input id="fPassword" type="password" required maxlength="60" style="padding-right: 40px; width: 100%;" />
+                <input id="fPassword" type="password" maxlength="60" style="padding-right: 40px; width: 100%;" />
                 <button type="button" id="btnTogglePassword" style="position: absolute; right: 10px; background: none; border: none; color: #94a3b8; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; outline: none;" title="Mostrar contraseña" aria-label="Mostrar contraseña">
                   <svg id="eyeIcon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -213,9 +213,17 @@
               <input id="fLastAccess" type="text" placeholder="Se llena automáticamente si lo dejas vacío" />
               <div class="miniHelp">Formato sugerido: YYYY-MM-DD HH:mm</div>
             </div>
+
+            <div class="field full" id="accessInfoField">
+              <label>Acceso</label>
+              <div class="miniHelp" id="accessInfoText">Al guardar se generará un código de acceso válido por 30 días. Con él, la persona elegirá su propia contraseña en su primer inicio de sesión.</div>
+            </div>
           </div>
 
           <div class="modalActions">
+            <button type="button" id="btnResetAccess" class="btn soft" title="Genera un nuevo código de acceso de 30 días">
+              Restablecer acceso
+            </button>
             <button type="button" id="btnDeleteModal" class="btn danger">
               <span class="btnIcon" aria-hidden="true" data-emoji="×">
                 <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -260,8 +268,37 @@
       </div>
     </div>
 
+    <!-- Código de acceso temporal (cuenta nueva o acceso restablecido) -->
+    <div id="accessCodeModal" class="modal hidden" aria-hidden="true">
+      <div class="modalBackdrop" data-close="true"></div>
+      <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="accessCodeTitle">
+        <div class="modalHead">
+          <div class="modalTitle" id="accessCodeTitle">Código de acceso</div>
+          <button class="iconBtn" id="btnCloseAccessCode" title="Cerrar" aria-label="Cerrar" data-emoji="×">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M6 6l12 12M18 6l-12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modalBody">
+          <dl class="accessCodeData">
+            <dt>Usuario</dt>
+            <dd id="accessCodeUser"></dd>
+            <dt>Código de acceso</dt>
+            <dd id="accessCodeValue" class="accessCodeValue"></dd>
+            <dt>Vence</dt>
+            <dd id="accessCodeExpira"></dd>
+          </dl>
+          <div class="modalActions accessCodeActions">
+            <button type="button" id="btnCopyAccessCode" class="btn soft">Copiar</button>
+            <button type="button" id="btnAcceptAccessCode" class="btn primary">Aceptar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
 
-  <script src="js/control_personal.js?v=1.7-assignment"></script>
+  <script src="js/control_personal.js?v=2.3-recientes"></script>
 </body>
 </html>

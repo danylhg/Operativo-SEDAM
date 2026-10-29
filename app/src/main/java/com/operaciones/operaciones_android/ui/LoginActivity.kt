@@ -15,6 +15,8 @@ import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
@@ -92,6 +94,11 @@ class LoginActivity : AppCompatActivity() {
         }
         btnLogin.setOnClickListener { attemptLogin() }
         btnTogglePassword.setOnClickListener { togglePasswordVisibility() }
+        findViewById<TextView>(R.id.btnChangePassword).setOnClickListener {
+            currentCall?.cancel()
+            setLoading(false)
+            showPasswordDialog(inputUsername.text.toString().trim(), "", required = false)
+        }
         btnApiAddress.setOnClickListener {
             // La dirección debe poder corregirse incluso si una petición quedó
             // esperando respuesta; de otro modo el botón parece no responder.
@@ -193,6 +200,7 @@ class LoginActivity : AppCompatActivity() {
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 if (call.isCanceled()) return
+                android.util.Log.e("LoginActivity", "Fallo de red al iniciar sesión: ${call.request().url}", e)
                 runOnUiThread {
                     setLoading(false)
                     showError("No se pudo conectar.")
@@ -212,6 +220,15 @@ class LoginActivity : AppCompatActivity() {
                         when {
                             response.isSuccessful && json.optBoolean("ok") ->
                                 handleLoginSuccess(json)
+                            // Cuenta nueva o restablecida: entró con su código de
+                            // acceso de 30 días y debe elegir su contraseña.
+                            json.optString("codigo") == "CAMBIO_PASSWORD_REQUERIDO" ->
+                                showPasswordDialog(
+                                    username,
+                                    password,
+                                    required = true,
+                                    expira = json.optString("expira", "")
+                                )
                             else -> {
                                 val msg = json.optString("mensaje", "").ifBlank {
                                     if (response.code == 403) "Acceso no autorizado para este dispositivo o usuario."
@@ -299,8 +316,8 @@ class LoginActivity : AppCompatActivity() {
         val rolStr = u.optString("rol", "CELL").uppercase()
         val rol = try { UserRole.valueOf(rolStr) } catch (_: Exception) { UserRole.CELL }
 
-        // Solo CET y CELL usan la app móvil
-        if (rol == UserRole.ADMIN || rol == UserRole.CUT) {
+        // CET y CELL operan; ADMIN entra como supervisor. CUT solo usa la web.
+        if (rol == UserRole.CUT) {
             showError("Este rol solo tiene acceso a la plataforma web.")
             return
         }
@@ -330,6 +347,10 @@ class LoginActivity : AppCompatActivity() {
     // ── Paso 2: consultar operación asignada ──────────────────────────────────
 
     private fun fetchOperacionYNavegar(user: User) {
+        if (user.esSupervisor) {
+            fetchOperacionesSupervision(user)
+            return
+        }
         currentCall?.cancel()
         setLoading(true)
         val baseUrl = ApiConfig.BASE_URL
@@ -346,6 +367,7 @@ class LoginActivity : AppCompatActivity() {
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 if (call.isCanceled()) return
+                android.util.Log.e("LoginActivity", "Fallo de red al consultar la operación asignada: ${call.request().url}", e)
                 runOnUiThread {
                     setLoading(false)
                     showError("No se pudo obtener la operación asignada.\nVerifica tu conexión.")
@@ -373,6 +395,92 @@ class LoginActivity : AppCompatActivity() {
                 }
             }
         })
+    }
+
+    // ── Supervisor: elegir operación activa ───────────────────────────────────
+
+    private fun fetchOperacionesSupervision(user: User) {
+        currentCall?.cancel()
+        setLoading(true)
+
+        val req = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/ops/supervision")
+            .get()
+            .addHeader("Authorization", "Bearer ${AuthManager.getToken(this)}")
+            .build()
+
+        val call = http.newCall(req)
+        currentCall = call
+
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (call.isCanceled()) return
+                android.util.Log.e("LoginActivity", "Fallo de red al listar operaciones de supervisión", e)
+                runOnUiThread {
+                    setLoading(false)
+                    salirDeSupervision("No se pudieron obtener las operaciones activas.\nVerifica tu conexión.")
+                }
+            }
+            override fun onResponse(call: Call, response: Response) {
+                if (call.isCanceled()) return
+                val bodyStr = response.body?.string() ?: ""
+                runOnUiThread {
+                    setLoading(false)
+                    try {
+                        if (!response.isSuccessful) {
+                            salirDeSupervision("Error del servidor (${response.code}).\nIntenta de nuevo.")
+                            return@runOnUiThread
+                        }
+                        val items = JSONObject(bodyStr).optJSONArray("items")
+                        val operaciones = (0 until (items?.length() ?: 0))
+                            .mapNotNull { items?.optJSONObject(it) }
+                            .map { parseOperacion(it) }
+                        if (operaciones.isEmpty()) {
+                            salirDeSupervision("No hay operaciones activas para supervisar.")
+                        } else {
+                            showOperacionPicker(user, operaciones)
+                        }
+                    } catch (_: Exception) {
+                        salirDeSupervision("Error al procesar la respuesta del servidor.")
+                    }
+                }
+            }
+        })
+    }
+
+    private fun showOperacionPicker(user: User, operaciones: List<Operation>) {
+        val labels = operaciones.map { op ->
+            if (op.codigo.isNotBlank()) "${op.nombre}  ·  ${op.codigo}" else op.nombre
+        }
+        // El fondo del diálogo es oscuro: el texto de cada fila se fija en claro.
+        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, labels) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
+                super.getView(position, convertView, parent).also { view ->
+                    (view as? TextView)?.apply {
+                        setTextColor(Color.parseColor("#F3F7FF"))
+                        textSize = 15f
+                        setPadding(dp(24), dp(14), dp(24), dp(14))
+                    }
+                }
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Supervisar operación")
+            .setAdapter(adapter) { _, which -> navegarConOperacion(user, operaciones[which]) }
+            .setNegativeButton("Cerrar sesión") { _, _ -> salirDeSupervision(null) }
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnShowListener { styleDarkDialog(dialog) }
+        dialog.show()
+    }
+
+    // Cierra la sesión del supervisor y vuelve a mostrar el login. Se recrea la
+    // actividad porque al reutilizar sesión onCreate no conecta los botones.
+    private fun salirDeSupervision(mensaje: String?) {
+        AuthManager.logout(this)
+        if (mensaje != null) Toast.makeText(this, mensaje, Toast.LENGTH_LONG).show()
+        recreate()
     }
 
     private fun parseOperacion(o: JSONObject): Operation {
@@ -515,24 +623,7 @@ class LoginActivity : AppCompatActivity() {
             .create()
 
         dialog.setOnShowListener {
-            dialog.window?.setBackgroundDrawableResource(R.drawable.bg_server_dialog)
-            val alertTitleId = resources.getIdentifier("alertTitle", "id", "android")
-            dialog.findViewById<TextView>(alertTitleId)?.apply {
-                setTextColor(Color.parseColor("#F3F7FF"))
-                textSize = 20f
-            }
-            dialog.findViewById<TextView>(android.R.id.message)?.apply {
-                setTextColor(Color.parseColor("#B8C8DF"))
-                textSize = 14f
-            }
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).apply {
-                setTextColor(Color.parseColor("#A8B6CF"))
-                background = null
-            }
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
-                setTextColor(Color.parseColor("#69B4FF"))
-                background = null
-            }
+            styleDarkDialog(dialog)
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val urls = try {
                     ApiConfig.saveServerUrls(
@@ -566,6 +657,174 @@ class LoginActivity : AppCompatActivity() {
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
         )
         inputAddress.requestFocus()
+    }
+
+    private fun styleDarkDialog(dialog: AlertDialog) {
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_server_dialog)
+        val alertTitleId = resources.getIdentifier("alertTitle", "id", "android")
+        dialog.findViewById<TextView>(alertTitleId)?.apply {
+            setTextColor(Color.parseColor("#F3F7FF"))
+            textSize = 20f
+        }
+        dialog.findViewById<TextView>(android.R.id.message)?.apply {
+            setTextColor(Color.parseColor("#B8C8DF"))
+            textSize = 14f
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).apply {
+            setTextColor(Color.parseColor("#A8B6CF"))
+            background = null
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
+            setTextColor(Color.parseColor("#69B4FF"))
+            background = null
+        }
+    }
+
+    // ── Elegir / cambiar contraseña ───────────────────────────────────────────
+
+    // required = la cuenta entró con su código de acceso (vigencia de 30 días)
+    // y debe definir su contraseña antes de continuar. Sin required, es un
+    // cambio voluntario con la contraseña actual.
+    private fun showPasswordDialog(
+        username: String,
+        actual: String,
+        required: Boolean,
+        expira: String = ""
+    ) {
+        hideKeyboard()
+
+        fun passwordInput(hintText: String) = EditText(this).apply {
+            hint = hintText
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            isSingleLine = true
+            styleServerInput()
+        }
+
+        val inputUser = EditText(this).apply {
+            setText(username)
+            inputType = InputType.TYPE_CLASS_TEXT
+            isSingleLine = true
+            styleServerInput()
+        }
+        val inputActual = passwordInput("").apply { setText(actual) }
+        val inputNueva = passwordInput("Mínimo 8, con letras y números")
+        val inputConfirmar = passwordInput("")
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(8), dp(22), dp(8))
+            if (!required) {
+                addLabeledInput("USUARIO", inputUser)
+                addLabeledInput("CONTRASEÑA ACTUAL", inputActual)
+            }
+            addLabeledInput("NUEVA CONTRASEÑA", inputNueva)
+            addLabeledInput("CONFIRMAR CONTRASEÑA", inputConfirmar)
+        }
+
+        val vence = formatFechaIso(expira)
+        val message = if (required) {
+            "Es tu primer acceso con código temporal. Define una contraseña propia" +
+                (if (vence.isNotEmpty()) " antes del $vence" else "") +
+                "; la seguirás usando hasta que decidas cambiarla."
+        } else {
+            "Ingresa tu contraseña actual y la nueva."
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(if (required) "Elige tu contraseña" else "Cambiar contraseña")
+            .setMessage(message)
+            .setView(content)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Guardar", null)
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnShowListener {
+            styleDarkDialog(dialog)
+            val btnSave = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            btnSave.setOnClickListener {
+                val user = inputUser.text.toString().trim()
+                val passActual = inputActual.text.toString()
+                val nueva = inputNueva.text.toString()
+                val confirmar = inputConfirmar.text.toString()
+
+                when {
+                    user.isEmpty() -> { inputUser.error = "Ingresa tu usuario"; return@setOnClickListener }
+                    passActual.isEmpty() -> { inputActual.error = "Ingresa tu contraseña actual"; return@setOnClickListener }
+                    nueva.length < 8 || !nueva.any { it.isLetter() } || !nueva.any { it.isDigit() } -> {
+                        inputNueva.error = "Mínimo 8 caracteres, con letras y números"
+                        return@setOnClickListener
+                    }
+                    nueva != confirmar -> { inputConfirmar.error = "Las contraseñas no coinciden"; return@setOnClickListener }
+                }
+
+                btnSave.isEnabled = false
+                submitPasswordChange(user, passActual, nueva) { error ->
+                    btnSave.isEnabled = true
+                    if (error != null) {
+                        inputNueva.error = error
+                        return@submitPasswordChange
+                    }
+                    dialog.dismiss()
+                    inputUsername.setText(user)
+                    if (required) {
+                        // Entra directamente con la contraseña recién elegida.
+                        inputPassword.setText(nueva)
+                        attemptLogin()
+                    } else {
+                        inputPassword.setText("")
+                        tvError.visibility = View.GONE
+                        Toast.makeText(this, "Contraseña actualizada. Inicia sesión con tu nueva contraseña.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+
+        dialog.show()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        (if (!required && username.isEmpty()) inputUser else if (required) inputNueva else inputActual).requestFocus()
+    }
+
+    // onDone recibe null si se guardó, o el mensaje de error del servidor.
+    private fun submitPasswordChange(
+        username: String,
+        actual: String,
+        nueva: String,
+        onDone: (String?) -> Unit
+    ) {
+        val body = JSONObject().apply {
+            put("username", username)
+            put("password_actual", actual)
+            put("nueva_password", nueva)
+        }.toString().toRequestBody("application/json".toMediaType())
+
+        val req = try {
+            Request.Builder().url("${ApiConfig.load(this)}/auth/password").post(body).build()
+        } catch (_: IllegalArgumentException) {
+            onDone("La dirección del servidor no es válida.")
+            return
+        }
+
+        http.newCall(req).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                android.util.Log.e("LoginActivity", "Fallo de red al cambiar contraseña", e)
+                runOnUiThread { onDone("No se pudo conectar.") }
+            }
+            override fun onResponse(call: Call, response: Response) {
+                val bodyStr = response.body?.string() ?: ""
+                val json = try { JSONObject(bodyStr) } catch (_: Exception) { null }
+                runOnUiThread {
+                    if (response.isSuccessful && json?.optBoolean("ok") == true) onDone(null)
+                    else onDone(json?.optString("mensaje", "")?.ifBlank { null } ?: "No se pudo cambiar la contraseña.")
+                }
+            }
+        })
+    }
+
+    // "2026-11-25T18:00:00.000Z" -> "25/11/2026"
+    private fun formatFechaIso(value: String): String {
+        val parts = value.take(10).split("-")
+        return if (parts.size == 3 && parts[0].length == 4) "${parts[2]}/${parts[1]}/${parts[0]}" else ""
     }
 
     private fun EditText.styleServerInput() {

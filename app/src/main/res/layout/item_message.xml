@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:paddingHorizontal="14dp"
-    android:paddingVertical="2dp">
+    android:paddingVertical="3dp">
 
     <TextView
         android:id="@+id/msgSelectionIndicator"
@@ -25,9 +25,9 @@
         android:layout_gravity="start"
         android:orientation="vertical"
         android:background="@drawable/bg_bubble_recv"
-        android:paddingHorizontal="4dp"
+        android:paddingHorizontal="10dp"
         android:paddingTop="6dp"
-        android:paddingBottom="2dp">
+        android:paddingBottom="6dp">
 
         <TextView
             android:id="@+id/msgMeta"

@@ -5,9 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Historial de Operaciones</title>
   <script src="js/api_config.js?v=20261002-public-api"></script>
-  <script src="js/auth_check.js"></script>
-  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/Widgets/widgets.css"/>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Outfit:wght@600;700&display=swap"/>
+  <script src="js/auth_check.js?v=2-admin"></script>
+  <link rel="stylesheet" href="vendor/cesium/Widgets/widgets.css"/>
   <link rel="stylesheet" href="css/historial.css?v=20261007-historial-redesign"/>
 </head>
 <body>
@@ -112,8 +111,11 @@
     </div>
   </section>
 
-  <script src="https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/Cesium.js"></script>
-  <script src="https://unpkg.com/milsymbol@2.2.0/dist/milsymbol.js"></script>
+  <script src="js/canvas_noise_fix.js?v=20261028-2"></script>
+  <script>window.CESIUM_BASE_URL = "vendor/cesium/";</script>
+  <script src="vendor/cesium/Cesium.js"></script>
+  <script src="js/libs/milsymbol.min.js"></script>
+  <script src="js/offline_tiles.js"></script>
   <script type="module" src="js/historial/main.js?v=20261007-historial-redesign"></script>
 </body>
 </html>

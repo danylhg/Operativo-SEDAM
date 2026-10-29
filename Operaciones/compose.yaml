@@ -37,9 +37,15 @@ services:
       WEBRTC_ICE_SERVERS: ${WEBRTC_ICE_SERVERS:-stun:stun.l.google.com:19302}
       # Bridge SEDAM: puerto TCP donde se conecta el cliente Bridge. Vacío = deshabilitado.
       SEDAM_BRIDGE_PORT: ${SEDAM_BRIDGE_PORT:-5908}
+      # Opcional: IP de un Bridge que acepte conexiones, si en vez de esperarlo hay que ir a buscarlo.
       SEDAM_BRIDGE_HOST: ${SEDAM_BRIDGE_HOST:-}
-      SEDAM_BRIDGE_REMOTE_PORT: ${SEDAM_BRIDGE_REMOTE_PORT:-}
+      SEDAM_BRIDGE_REMOTE_PORT: ${SEDAM_BRIDGE_REMOTE_PORT:-5908}
       SEDAM_BRIDGE_SESSION: ${SEDAM_BRIDGE_SESSION:-}
+      # Socket de SEDAM Móvil: la API entra como un dispositivo más (igual que la app y el sistema web).
+      # Sin serie queda deshabilitado. La serie debe estar registrada en SEDAM y no usarla ningún celular.
+      SEDAM_SOCKET_URL: ${SEDAM_SOCKET_URL:-https://10.255.255.66:3000}
+      SEDAM_SOCKET_SERIAL: ${SEDAM_SOCKET_SERIAL:-}
+      SEDAM_SOCKET_INSECURE: ${SEDAM_SOCKET_INSECURE:-}
     depends_on:
       db:
         condition: service_healthy

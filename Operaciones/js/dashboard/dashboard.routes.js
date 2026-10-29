@@ -5,7 +5,6 @@ import { dom } from "./dashboard.dom.js";
 import { setRouteInfo } from "./dashboard.ui.js?v=20260923-draggable-person-popup";
 import { renderMilSymbolImage } from "./dashboard.tactical.js";
 
-const OSRM_BASE = "https://router.project-osrm.org";
 const API_BASE = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
 
 const ROUTE_COLOR_HEX = [
@@ -357,14 +356,33 @@ function updateTrackingMarker(key, lat, lon, labelText, color) {
 
 // ── OSRM ────────────────────────────────────────────────────
 
+// Distancia en metros entre dos puntos (Haversine).
+function haversineM(a, b) {
+  const R = 6371000, rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Ruta por calles vía la API (OSRM propio si OSRM_URL está configurado). Sin servicio de
+// rutas disponible (sin internet) se traza una línea directa para no bloquear la operación.
 async function getOsrmRoute(start, end) {
-  const url = `${OSRM_BASE}/route/v1/driving/` +
-    `${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error("OSRM no disponible");
-  const data = await r.json();
-  if (!data.routes?.length) throw new Error("Sin ruta disponible");
-  return data.routes[0];
+  try {
+    const q = new URLSearchParams({ startLon: start.lng, startLat: start.lat, endLon: end.lng, endLat: end.lat });
+    const r = await apiFetch(`/route/osrm?${q}`);
+    if (r.ok) {
+      const data = await r.json();
+      if (data.routes?.length) return data.routes[0];
+    }
+  } catch (_) { /* cae a línea directa */ }
+
+  console.warn("[RUTAS] Servicio de rutas no disponible; se usa línea directa.");
+  const distance = haversineM(start, end);
+  return {
+    distance,
+    duration: distance / (40 / 3.6),
+    geometry: { type: "LineString", coordinates: [[start.lng, start.lat], [end.lng, end.lat]] }
+  };
 }
 
 // ── Guardar ruta en DB ────────────────────────────────────────

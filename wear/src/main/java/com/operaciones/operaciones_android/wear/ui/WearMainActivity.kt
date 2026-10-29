@@ -2637,7 +2637,7 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
             Thread {
                 for (x in centerX - 1..centerX + 1) for (y in centerY - 1..centerY + 1) {
                     if (!imageryTiles.containsKey(x to y)) runCatching {
-                        URL("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/$tileZoom/$y/$x").openConnection().apply {
+                        URL(com.operaciones.operaciones_android.wear.config.WearApiConfig.absoluteUrl("tiles/satellite/$tileZoom/$x/$y.png")).openConnection().apply {
                             connectTimeout = 5000
                             readTimeout = 5000
                             setRequestProperty("User-Agent", "SEDAM-Wear/1.0")
@@ -2649,7 +2649,7 @@ class WearMainActivity : Activity(), SensorEventListener, MessageClient.OnMessag
                         }
                     }
                     if (!labelTiles.containsKey(x to y)) runCatching {
-                        URL("https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/$tileZoom/$y/$x").openConnection().apply {
+                        URL(com.operaciones.operaciones_android.wear.config.WearApiConfig.absoluteUrl("tiles/reference/$tileZoom/$x/$y.png")).openConnection().apply {
                             connectTimeout = 5000
                             readTimeout = 5000
                             setRequestProperty("User-Agent", "SEDAM-Wear/1.0")

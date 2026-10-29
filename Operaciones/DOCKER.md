@@ -80,3 +80,31 @@ docker compose --env-file .env.docker down
 ```
 
 Los datos quedan en los volúmenes. Para borrarlos intencionalmente junto con la base de datos, usa `docker compose --env-file .env.docker down -v`.
+
+## Mapas sin internet
+
+Web, app Android y reloj piden las teselas del mapa a la propia API
+(`/tiles/<capa>/<z>/<x>/<y>.png`, carpeta `api/storage/tiles/<capa>/...`).
+Capas: `satellite` (imagen), `reference` (etiquetas) y `osm` (calles, opcional: sin ella "Normal" usa el satélite).
+OpenStreetMap bloquea la descarga masiva de tile.openstreetmap.org (devuelve una imagen "Access blocked"); para `osm` usa tu propio servidor o paquete con `--url`.
+Si falta una tesela de zoom alto, el servidor amplía la del nivel inferior (sharp), así nunca queda un hueco al acercarse; fuera de la cobertura se ve el mapa mundial local de Cesium.
+
+Preparar el paquete UNA vez en una máquina con internet (respeta los términos del proveedor;
+hay tope de 20 000 teselas por corrida, para áreas grandes usa un servidor/paquete propio):
+
+```bash
+cd Operaciones/api
+node scripts/download-tiles.js --bbox=-103.60,25.40,-103.30,25.65 --zoom=8-16 --layer=satellite
+node scripts/download-tiles.js --bbox=-103.60,25.40,-103.30,25.65 --zoom=8-16 --layer=reference
+```
+
+(`--bbox=oeste,sur,este,norte`). Con Docker copia la carpeta al volumen:
+`docker compose cp api/storage/tiles api:/app/api/storage/`. Comprobar: `GET /tiles/info`.
+
+Rutas por calles: define `OSRM_URL` (p. ej. un OSRM propio en la red local) en el `.env`
+de la API. Sin servicio de rutas, la web y la app trazan una línea directa.
+
+Caché automático de mapas: si la API tiene internet, las teselas que se miran y no están en el
+paquete (hasta zoom 17) se piden al proveedor y se guardan en `storage/tiles`; desde entonces
+funcionan sin internet. Sin internet no se intenta (pausa de 60 s tras un fallo). Para
+desactivarlo: `TILE_PROXY=0` en el `.env` de la API.

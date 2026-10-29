@@ -28,7 +28,7 @@ import {
   restoreGridFromBackend,
   restoreTacticalLayersFromMapaData
 } from "./dashboard.tactical.js?v=20260923-geo-msg-edit-modal";
-import { initCesium, centerMapOnOperationZone } from "./dashboard.map.js?v=20261009-route-popup";
+import { initCesium, centerMapOnOperationZone } from "./dashboard.map.js?v=20261021-vehicle-drag";
 import { bindAreaEvents } from "./dashboard.area.js";
 import { restoreTacticalData } from "./dashboard.persistence.js";
 import {
@@ -40,6 +40,7 @@ import { loadTrackingFromBackend, loadTrackingFromMapaData, initTrackingSocket, 
 import { bindDrawingEvents, loadDrawingsFromBackend, initDrawingSocket } from "./dashboard.drawing.js";
 import { initCameraFeeds } from "./dashboard.camera.js?v=20260922-person-camera-stream";
 import { initPttAlerts } from "./dashboard.ptt.js?v=20260928-pulse-follow-person";
+import { initSedamLayer } from "./dashboard.sedam.js?v=20261027-estado";
 
 const API_BASE = localStorage.getItem("API_BASE") || `http://${window.location.hostname}:3001`;
 const CONNECTION_LOST_MESSAGE = "Se perdio la conexion con el servidor.";
@@ -99,7 +100,7 @@ function showMapFallback(message) {
 
 async function loadCesiumToken() {
   if (!hasCesiumRuntime()) {
-    setServerConnectionState(false, "No se pudo cargar Cesium. Revisa la conexion a internet o el CDN.");
+    setServerConnectionState(false, "No se pudo cargar Cesium. Revisa que el servidor tenga la carpeta vendor/cesium.");
     showMapFallback("No se pudo cargar Cesium. La informacion de la operacion sigue disponible.");
     return false;
   }
@@ -323,17 +324,33 @@ async function loadDashboardFromBD() {
       vehicle?.nombre
     ].filter((value) => value != null && String(value).trim() !== "")
       .map((value) => String(value).trim().toLowerCase());
+    // Las filas del servidor se conservan todas: un vehículo puede tener varias
+    // (una por persona asignada) y unificarlas dejaba solo a la primera.
+    const mergedVehicles = vehiculos.filter((vehicle) => vehicleKeys(vehicle).length);
     const vehicleIndexes = new Map();
-    const mergedVehicles = [];
-    [...vehiculos, ...storedVehicles].forEach((vehicle) => {
+    mergedVehicles.forEach((vehicle, index) => {
+      vehicleKeys(vehicle).forEach((key) => {
+        if (!vehicleIndexes.has(key)) vehicleIndexes.set(key, []);
+        vehicleIndexes.get(key).push(index);
+      });
+    });
+    // Los vehículos guardados solo completan datos o se agregan si el servidor no los trae.
+    storedVehicles.forEach((vehicle) => {
       const keys = vehicleKeys(vehicle);
       if (!keys.length) return;
-      const existingIndex = keys.map((key) => vehicleIndexes.get(key)).find((index) => index != null);
-      const index = existingIndex ?? mergedVehicles.length;
-      mergedVehicles[index] = existingIndex == null
-        ? vehicle
-        : { ...vehicle, ...mergedVehicles[index] };
-      keys.forEach((key) => vehicleIndexes.set(key, index));
+      const matches = new Set(keys.flatMap((key) => vehicleIndexes.get(key) || []));
+      if (matches.size) {
+        matches.forEach((index) => {
+          mergedVehicles[index] = { ...vehicle, ...mergedVehicles[index] };
+        });
+        return;
+      }
+      const index = mergedVehicles.length;
+      mergedVehicles.push(vehicle);
+      keys.forEach((key) => {
+        if (!vehicleIndexes.has(key)) vehicleIndexes.set(key, []);
+        vehicleIndexes.get(key).push(index);
+      });
     });
     vehiculos = mergedVehicles;
 
@@ -705,6 +722,7 @@ async function initDashboard() {
         runDashboardStep("iniciar POIs", () => initPoiSocket(socket));
         runDashboardStep("iniciar tracking socket", () => initTrackingSocket(socket));
         runDashboardStep("iniciar dibujo socket", () => initDrawingSocket(socket));
+        runDashboardStep("iniciar red SEDAM", () => initSedamLayer(socket));
       }
       runDashboardStep("iniciar camaras socket", () => initCameraFeeds(opId, socket));
     }

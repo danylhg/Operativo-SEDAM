@@ -70,6 +70,7 @@
      Catálogos (UI)
   ========================= */
   const ROLES_UI = [
+    "Administrador",
     "Comandante de Unidad de Trabajo",
     "Comandante de Equipo de trabajo",
     "Celulas",
@@ -94,11 +95,12 @@
     "Almirante",
   ];
 
-  const VALID_API_ROLES = ["CUT", "CET", "CELL"];
+  const VALID_API_ROLES = ["ADMIN", "CUT", "CET", "CELL"];
 
   function uiRolToApi(uiRol) {
     const r = (uiRol || "").toString().trim().toLowerCase();
 
+    if (r === "administrador") return "ADMIN";
     if (r === "comandante de unidad de trabajo") return "CUT";
     if (r === "comandante de equipo de trabajo") return "CET";
     if (r === "celulas") return "CELL";
@@ -109,6 +111,7 @@
   function apiRolToUi(apiRol) {
     const r = (apiRol || "").toString().trim().toUpperCase();
 
+    if (r === "ADMIN") return "Administrador";
     if (r === "CUT") return "Comandante de Unidad de Trabajo";
     if (r === "CET") return "Comandante de Equipo de trabajo";
     if (r === "CELL") return "Celulas";
@@ -509,17 +512,19 @@
     updateButtons();
 
     try {
-      const [cut, cet, cell] = await Promise.all([
+      const [admin, cut, cet, cell] = await Promise.all([
+        api("/catalog/personal?rol=ADMIN"),
         api("/catalog/personal?rol=CUT"),
         api("/catalog/personal?rol=CET"),
         api("/catalog/personal?rol=CELL"),
       ]);
 
+      const adminItems = Array.isArray(admin?.items) ? admin.items : [];
       const cutItems = Array.isArray(cut?.items) ? cut.items : [];
       const cetItems = Array.isArray(cet?.items) ? cet.items : [];
       const cellItems = Array.isArray(cell?.items) ? cell.items : [];
 
-      const all = [...cutItems, ...cetItems, ...cellItems];
+      const all = [...adminItems, ...cutItems, ...cetItems, ...cellItems];
 
       const byId = new Map();
       all.forEach((p) => {
@@ -528,7 +533,9 @@
         }
       });
 
-      const unique = [...byId.values()];
+      // Lo más reciente arriba (el ID crece con cada alta), sin agrupar por rol.
+      const unique = [...byId.values()]
+        .sort((a, b) => (Number(b.id_personal) || 0) - (Number(a.id_personal) || 0));
 
       personal = unique.map((p) => {
         const rolApi = (p?.rol || "").toString().trim().toUpperCase();
@@ -547,6 +554,8 @@
           username: p?.username ?? "",
           activo: p?.activo !== false,
           ultimo_acceso: p?.ultimo_acceso ?? "",
+          debe_cambiar_password: p?.debe_cambiar_password === true,
+          password_temporal_expira: p?.password_temporal_expira ?? null,
         };
       });
     } finally {
@@ -591,6 +600,129 @@
     if (btnAdd) btnAdd.disabled = isLoading || isSaving || isDeleting;
   }
 
+  /* =========================
+     Código de acceso (30 días)
+  ========================= */
+  function formatFecha(value) {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  function codigoVencido(p) {
+    if (!p?.debe_cambiar_password) return false;
+    const expira = p.password_temporal_expira ? new Date(p.password_temporal_expira).getTime() : NaN;
+    return !Number.isFinite(expira) || expira <= Date.now();
+  }
+
+  function renderEstadoPassword(p) {
+    if (!p.debe_cambiar_password) return `<span class="badge ok">Definida</span>`;
+    if (codigoVencido(p)) return `<span class="badge no" title="Usa Restablecer acceso para generar otro código">Código vencido</span>`;
+    const vence = formatFecha(p.password_temporal_expira);
+    return `<span class="badge warn" title="La persona aún no elige su contraseña">Pendiente${vence ? ` · vence ${escapeHtml(vence)}` : ""}</span>`;
+  }
+
+  function describirAcceso(p) {
+    if (!p) return "";
+    if (!p.debe_cambiar_password) {
+      return "La persona ya eligió su contraseña. Si la olvidó, usa “Restablecer acceso” para generarle un código nuevo de 30 días.";
+    }
+    if (codigoVencido(p)) {
+      return "El código de acceso venció sin que la persona eligiera contraseña. Usa “Restablecer acceso” para generar uno nuevo.";
+    }
+    return `Pendiente: la persona aún no elige su contraseña. Su código vence el ${formatFecha(p.password_temporal_expira)}.`;
+  }
+
+  const accessCodeModal = document.getElementById("accessCodeModal");
+  const accessCodeUser = document.getElementById("accessCodeUser");
+  const accessCodeValue = document.getElementById("accessCodeValue");
+  const accessCodeExpira = document.getElementById("accessCodeExpira");
+  const accessInfoText = document.getElementById("accessInfoText");
+  const btnResetAccess = document.getElementById("btnResetAccess");
+  const btnCopyAccessCode = document.getElementById("btnCopyAccessCode");
+
+  function showAccessCode(username, codigo, expira) {
+    if (!accessCodeModal) {
+      alert(`Usuario: ${username}\nCódigo de acceso: ${codigo}\nVence: ${formatFecha(expira)}`);
+      return;
+    }
+    accessCodeUser.textContent = username;
+    accessCodeValue.textContent = codigo;
+    accessCodeExpira.textContent = formatFecha(expira);
+    if (btnCopyAccessCode) btnCopyAccessCode.textContent = "Copiar";
+    accessCodeModal.classList.remove("hidden");
+    accessCodeModal.setAttribute("aria-hidden", "false");
+  }
+
+  function closeAccessCode() {
+    accessCodeModal?.classList.add("hidden");
+    accessCodeModal?.setAttribute("aria-hidden", "true");
+  }
+
+  document.getElementById("btnCloseAccessCode")?.addEventListener("click", closeAccessCode);
+  document.getElementById("btnAcceptAccessCode")?.addEventListener("click", closeAccessCode);
+  accessCodeModal?.addEventListener("click", (e) => {
+    if (e.target?.dataset?.close === "true") closeAccessCode();
+  });
+  // navigator.clipboard solo existe en HTTPS/localhost; la página se sirve por
+  // http en la red local, así que se usa execCommand con un textarea temporal.
+  function copiarTexto(text) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    accessCodeModal.appendChild(area);
+    area.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    area.remove();
+    return ok;
+  }
+
+  btnCopyAccessCode?.addEventListener("click", async () => {
+    const text = `Usuario: ${accessCodeUser.textContent}\nCódigo de acceso: ${accessCodeValue.textContent}\nVence: ${accessCodeExpira.textContent}`;
+    let ok = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      } catch {
+        ok = false;
+      }
+    }
+    if (!ok) ok = copiarTexto(text);
+
+    btnCopyAccessCode.textContent = ok ? "Copiado ✓" : "No se pudo copiar";
+    setTimeout(() => { btnCopyAccessCode.textContent = "Copiar"; }, 2000);
+  });
+
+  btnResetAccess?.addEventListener("click", async () => {
+    const p = personal.find((x) => x.id_personal === selectedId);
+    if (!p) return;
+    const name = `${p.nombre || ""} ${p.apellido || ""}`.trim() || p.username;
+    if (!confirm(`¿Generar un nuevo código de acceso para ${name}?\nSu contraseña actual dejará de funcionar y deberá elegir una nueva en los próximos 30 días.`)) {
+      return;
+    }
+
+    btnResetAccess.disabled = true;
+    try {
+      const data = await api(`/catalog/personal/${p.id_personal}/codigo-acceso`, { method: "POST" });
+      closeModal();
+      await loadFromApi();
+      renderTable();
+      showAccessCode(data?.item?.username || p.username, data.codigoAcceso, data.expira);
+    } catch (e) {
+      alert(e.message || "No se pudo restablecer el acceso.");
+    } finally {
+      btnResetAccess.disabled = false;
+    }
+  });
+
   function renderTable() {
     if (!tbody) return;
 
@@ -625,7 +757,7 @@
               : `<span class="assignmentEmpty">Sin asignar</span>`
           }</td>
           <td>${escapeHtml(p.username)}</td>
-          <td style="color: rgba(11,18,32,.45);">—</td>
+          <td>${renderEstadoPassword(p)}</td>
           <td>${p.activo ? `<span class="badge ok">Sí</span>` : `<span class="badge no">No</span>`}</td>
           <td>${escapeHtml(p.ultimo_acceso || "Sin acceso")}</td>
         `;
@@ -713,12 +845,16 @@
         setFieldVisible(fUsername, true);
       }
 
+      // La contraseña ya no la define el administrador: el backend genera un
+      // código de acceso de 30 días y la persona elige la suya al entrar.
       if (fPassword) {
         fPassword.value = "";
-        fPassword.disabled = false;
-        fPassword.placeholder = "";
-        delete fPassword.dataset.editadoManual;
-        setFieldVisible(fPassword, true);
+        fPassword.dataset.editadoManual = "1";
+        setFieldVisible(fPassword, false);
+      }
+      if (btnResetAccess) btnResetAccess.style.display = "none";
+      if (accessInfoText) {
+        accessInfoText.textContent = "Al guardar se generará un código de acceso válido por 30 días. Con él, la persona elegirá su propia contraseña en su primer inicio de sesión.";
       }
 
       if (fActivo) {
@@ -772,10 +908,10 @@
 
     if (fPassword) {
       fPassword.value = "********";
-      fPassword.disabled = false;
-      fPassword.placeholder = "";
-      setFieldVisible(fPassword, true);
+      setFieldVisible(fPassword, false);
     }
+    if (btnResetAccess) btnResetAccess.style.display = "inline-flex";
+    if (accessInfoText) accessInfoText.textContent = describirAcceso(p);
 
     if (fActivo) {
       fActivo.value = String(!!p.activo);
@@ -788,7 +924,7 @@
       setFieldVisible(fLastAccess, false);
     }
 
-    fRol.disabled = true;
+    fRol.disabled = false;
     fApodo.focus();
   }
 
@@ -919,6 +1055,7 @@
     if (isSaving) return;
     isSaving = true;
     updateButtons();
+    let createdAccess = null;
 
     try {
       const apodo = (fApodo.value || "").trim();
@@ -934,8 +1071,9 @@
       const errApellido = validarNombreCampo(apellido, "Apellido", { min: 2, max: 80 });
       const errPuesto = validarPuesto(puesto);
       const errUsername = validarUsername(username);
-      // password requerida en add, opcional en edit (y si es dummy, no se valida porque no se enviará)
-      const errPassword = isDummy ? "" : validarPassword(password, mode === "add");
+      // En alta no se envía contraseña (se genera código de acceso); en edición
+      // solo se valida si alguien escribió una distinta al marcador.
+      const errPassword = (mode === "add" || isDummy) ? "" : validarPassword(password, false);
 
       if (errApodo) { alert(errApodo); fApodo.focus(); return; }
       if (errNombre) { alert(errNombre); fNombre.focus(); return; }
@@ -977,10 +1115,9 @@
           apellido,
           puesto,
           username,
-          password,
         };
 
-        await api("/catalog/personal", { method: "POST", body });
+        createdAccess = await api("/catalog/personal", { method: "POST", body });
       } else if (mode === "edit") {
         if (!selectedId) {
           alert("No hay personal seleccionado.");
@@ -993,8 +1130,8 @@
           return;
         }
 
-        const exists = personal.some((x) => x.id_personal === selectedId);
-        if (!exists) {
+        const actual = personal.find((x) => x.id_personal === selectedId);
+        if (!actual) {
           alert("El registro seleccionado ya no existe.");
           selectedId = null;
           renderTable();
@@ -1002,7 +1139,25 @@
           return;
         }
 
+        const rol = uiRolToApi((fRol.value || "").trim());
+        if (!rol) {
+          alert("Rol inválido.");
+          fRol.focus();
+          return;
+        }
+        if (rol !== actual.rol_api) {
+          const aviso = rol === "ADMIN"
+            ? "\nTendrá acceso al sistema de control y en la app móvil entrará como supervisor (solo observación)."
+            : actual.rol_api === "ADMIN"
+              ? "\nPerderá el acceso al sistema de control."
+              : "";
+          if (!confirm(`¿Cambiar el rol de ${actual.nombre} ${actual.apellido} de "${actual.rol_ui}" a "${apiRolToUi(rol)}"?${aviso}`)) {
+            return;
+          }
+        }
+
         const body = {
+          rol,
           apodo,
           nombre,
           apellido,
@@ -1030,6 +1185,10 @@
       }
 
       renderTable();
+
+      if (createdAccess?.codigoAcceso) {
+        showAccessCode(createdAccess.item?.username || username, createdAccess.codigoAcceso, createdAccess.expira);
+      }
     } catch (e2) {
       alert(e2.message || "Ocurrió un error al guardar.");
     } finally {

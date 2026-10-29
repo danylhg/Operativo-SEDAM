@@ -263,7 +263,7 @@ class CameraGridAdapter(
                             .badge { background:rgba(0,229,240,0.15); border:1px solid #00E5F0; color:#00E5F0; font-size:11px; font-weight:bold; padding:5px 12px; border-radius:16px; }
                             .subtext { font-size:10px; color:#64748B; margin-top:6px; }
                         </style>
-                        <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+                        <script src="${com.operaciones.operaciones_android.config.ApiConfig.BASE_URL}/vendor/hls.min.js"></script>
                     </head>
                     <body>
                         <div id="loader" class="loader">

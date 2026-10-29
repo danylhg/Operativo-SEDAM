@@ -725,7 +725,7 @@ router.get("/route/osrm", requireAuth, async (req, res) => {
 
   // Arma URL del servicio OSRM público
   const osrmUrl =
-    `https://router.project-osrm.org/route/v1/driving/` +
+    `${(process.env.OSRM_URL || "https://router.project-osrm.org").replace(/\/+$/, "")}/route/v1/driving/` +
     `${sLon},${sLat};${eLon},${eLat}` +
     `?overview=full&geometries=geojson&steps=false`;
 

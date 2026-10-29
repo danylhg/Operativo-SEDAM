@@ -8,6 +8,25 @@ import {
   usernameExists,
   generateUniqueApodo,
 } from "../utils/usernames.js";
+import { ensureCredencialesSchema, prepararCodigoAcceso } from "../utils/credenciales.js";
+
+// ADMIN = administrador con acceso al sistema de control (solo web).
+const ROLES_PERSONAL = ["ADMIN", "CUT", "CET", "CELL"];
+let personalRolSchemaReady = null;
+
+// El enum original solo tenía CUT/CET/CELL. ADD VALUE no puede usarse en la
+// misma transacción en la que se crea, por eso se ejecuta aparte y antes.
+function ensurePersonalRolSchema() {
+  if (!personalRolSchemaReady) {
+    personalRolSchemaReady = pool
+      .query(`ALTER TYPE rol_personal_enum ADD VALUE IF NOT EXISTS 'ADMIN'`)
+      .catch((err) => {
+        personalRolSchemaReady = null;
+        throw err;
+      });
+  }
+  return personalRolSchemaReady;
+}
 
 const TIPOS_DISPOSITIVO = ["TELEFONO", "TABLET", "SMARTWATCH", "LORA", "LAPTOP", "RADIO", "GPS", "OTRO"];
 const ESTADOS_DISPOSITIVO = ["DISPONIBLE", "ASIGNADO", "MANTENIMIENTO", "BAJA"];
@@ -74,7 +93,8 @@ async function ensureDispositivoSchema() {
   await pool.query(`
     ALTER TABLE dispositivo
       ADD COLUMN IF NOT EXISTS imagen_disp TEXT,
-      ADD COLUMN IF NOT EXISTS identificador_app TEXT;
+      ADD COLUMN IF NOT EXISTS identificador_app TEXT,
+      ADD COLUMN IF NOT EXISTS sesion_trabajo TEXT;
 
     CREATE UNIQUE INDEX IF NOT EXISTS uq_dispositivo_identificador_app
       ON dispositivo(identificador_app)
@@ -117,12 +137,14 @@ export async function listPersonal(req, res) {
     // El catalogo se consulta por rol operativo: CUT, CET o CELL.
     const rol = (req.query.rol || "").toString().toUpperCase();
 
-    if (!["CUT", "CET", "CELL"].includes(rol)) {
-      return res.status(400).json({ ok: false, mensaje: "rol inválido (CUT|CET|CELL)" });
+    if (!ROLES_PERSONAL.includes(rol)) {
+      return res.status(400).json({ ok: false, mensaje: "rol inválido (ADMIN|CUT|CET|CELL)" });
     }
 
     // Operación a excluir del chequeo de ocupación (modo edición)
     const excludeOp = req.query.exclude_op ? Number(req.query.exclude_op) : null;
+    await ensurePersonalRolSchema();
+    await ensureCredencialesSchema();
 
     // LEFT JOIN LATERAL calcula, por cada persona, si esta en otra
     // operacion ACTIVA o PLANIFICADA distinta de excludeOp.
@@ -130,6 +152,7 @@ export async function listPersonal(req, res) {
       `SELECT
          p.id_personal, p.rol, p.apodo, p.nombre, p.apellido,
          p.puesto, p.username, p.activo, p.ultimo_acceso,
+         p.debe_cambiar_password, p.password_temporal_expira,
          -- Indica si ya está asignado a otra operación activa/planificada
          CASE WHEN opa.id_operacion IS NOT NULL THEN TRUE ELSE FALSE END AS en_operacion,
          opa.nombre AS nombre_operacion
@@ -180,6 +203,25 @@ export async function listVehiculos(req, res) {
   }
 }
 
+async function resolveCreadoPor(req) {
+  const sub = Number(req.user?.sub);
+  if (req.user?.tabla !== "personal" && isInt(sub)) {
+    const { rows } = await pool.query(
+      `SELECT id_usuario FROM usuario WHERE id_usuario = $1 AND activo = TRUE LIMIT 1`,
+      [sub]
+    );
+    if (rows[0]) return rows[0].id_usuario;
+  }
+
+  const { rows } = await pool.query(
+    `SELECT id_usuario FROM usuario
+     WHERE rol = 'ADMIN' AND activo = TRUE
+     ORDER BY id_usuario ASC
+     LIMIT 1`
+  );
+  return rows[0]?.id_usuario ?? null;
+}
+
 // Crea personal operativo con username/apodo unicos y password inicial.
 export async function createPersonal(req, res) {
   try {
@@ -190,8 +232,8 @@ export async function createPersonal(req, res) {
     const puesto = (req.body?.puesto || "").toString().trim() || null;
     const apodoIn = (req.body?.apodo || "").toString().trim();
 
-    if (!["CUT", "CET", "CELL"].includes(rol)) {
-      return res.status(400).json({ ok: false, mensaje: "rol inválido (CUT|CET|CELL)" });
+    if (!ROLES_PERSONAL.includes(rol)) {
+      return res.status(400).json({ ok: false, mensaje: "rol inválido (ADMIN|CUT|CET|CELL)" });
     }
     if (!nombre) {
       return res.status(400).json({ ok: false, mensaje: "Falta nombre" });
@@ -200,11 +242,15 @@ export async function createPersonal(req, res) {
       return res.status(400).json({ ok: false, mensaje: "Falta apellido" });
     }
 
-    // El usuario autenticado queda como responsable de la creacion.
-    const creado_por = Number(req.user.sub);
+    // creado_por referencia usuario, no personal. Si quien crea es personal
+    // (p. ej. un CUT), se registra al administrador activo que lo respalda.
+    const creado_por = await resolveCreadoPor(req);
     if (!isInt(creado_por)) {
-      return res.status(401).json({ ok: false, mensaje: "Usuario inválido" });
+      return res.status(409).json({ ok: false, mensaje: "No hay un usuario administrador activo para registrar la creación." });
     }
+
+    await ensurePersonalRolSchema();
+    await ensureCredencialesSchema();
 
     // La transaccion mantiene atomica la creacion y las validaciones de unicidad.
     const client = await pool.connect();
@@ -245,21 +291,22 @@ export async function createPersonal(req, res) {
         ? requestedUsername
         : await generateUniqueUsername(requestedUsername, client);
 
-      // Si no se envia password, se genera una temporal para entregar al usuario.
-      const passwordIn = (req.body?.password || "").toString();
-      const tempPassword = passwordIn || `Temp-${Math.floor(100000 + Math.random() * 900000)}`;
-      const password_hash = await bcrypt.hash(tempPassword, 10);
+      // La cuenta nueva recibe un código de acceso de 30 días; con él la
+      // persona elige su propia contraseña en el primer inicio de sesión.
+      const { codigo, password_hash, expira } = await prepararCodigoAcceso();
 
       const { rows } = await client.query(
-        `INSERT INTO personal (rol, apodo, nombre, apellido, puesto, username, password_hash, creado_por)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         RETURNING id_personal, rol, apodo, nombre, apellido, puesto, activo, fecha_creacion, username, ultimo_acceso`,
-        [rol, apodo, nombre, apellido, puesto, finalUsername, password_hash, creado_por]
+        `INSERT INTO personal (rol, apodo, nombre, apellido, puesto, username, password_hash, creado_por,
+                               debe_cambiar_password, password_temporal_expira)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9)
+         RETURNING id_personal, rol, apodo, nombre, apellido, puesto, activo, fecha_creacion, username, ultimo_acceso,
+                   debe_cambiar_password, password_temporal_expira`,
+        [rol, apodo, nombre, apellido, puesto, finalUsername, password_hash, creado_por, expira]
       );
 
       await client.query("COMMIT");
 
-      return res.json({ ok: true, item: rows[0], tempPassword });
+      return res.json({ ok: true, item: rows[0], codigoAcceso: codigo, expira });
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;
@@ -278,6 +325,17 @@ export async function updatePersonal(req, res) {
   if (!isInt(id_personal)) {
     return res.status(400).json({ ok: false, mensaje: "id inválido" });
   }
+
+  const rolIn = req.body?.rol != null ? String(req.body.rol).trim().toUpperCase() : null;
+  if (rolIn !== null && !ROLES_PERSONAL.includes(rolIn)) {
+    return res.status(400).json({ ok: false, mensaje: "rol inválido (ADMIN|CUT|CET|CELL)" });
+  }
+  // Evita que un administrador se quite a sí mismo el acceso al sistema de control.
+  const esMismaCuenta = req.user?.tabla === "personal" && Number(req.user?.sub) === id_personal;
+  if (rolIn !== null && rolIn !== "ADMIN" && esMismaCuenta) {
+    return res.status(400).json({ ok: false, mensaje: "No puedes quitarte a ti mismo el rol de Administrador." });
+  }
+  if (rolIn === "ADMIN") await ensurePersonalRolSchema();
 
   // La transaccion protege la lectura actual, validaciones y UPDATE final.
   const client = await pool.connect();
@@ -338,6 +396,11 @@ export async function updatePersonal(req, res) {
     const vals = [];
     let i = 1;
 
+    if (rolIn !== null && rolIn !== String(current.rol).toUpperCase()) {
+      sets.push(`rol = $${i++}`);
+      vals.push(rolIn);
+    }
+
     if (apodo !== null) {
       const apodoUnique = await generateUniqueApodo(apodo, client, id_personal);
       sets.push(`apodo = $${i++}`);
@@ -387,10 +450,16 @@ export async function updatePersonal(req, res) {
     }
 
     if (passwordIn) {
-      // Solo actualiza password cuando llega uno nuevo en el body.
+      // Una contraseña puesta por el administrador es temporal: la persona
+      // debe reemplazarla por la suya dentro de los 30 días de vigencia.
+      await ensureCredencialesSchema();
       const newHash = await bcrypt.hash(passwordIn, 10);
+      const { expira } = await prepararCodigoAcceso();
       sets.push(`password_hash = $${i++}`);
       vals.push(newHash);
+      sets.push(`debe_cambiar_password = TRUE`);
+      sets.push(`password_temporal_expira = $${i++}`);
+      vals.push(expira);
     }
 
     if (sets.length === 0) {
@@ -420,6 +489,37 @@ export async function updatePersonal(req, res) {
 }
 
 // Elimina personal: por default desactiva; con ?hard=1 intenta borrado fisico.
+// Genera un nuevo código de acceso de 30 días para una persona que olvidó su
+// contraseña o dejó vencer el anterior. La contraseña previa deja de servir.
+export async function resetCodigoAccesoPersonal(req, res) {
+  const id_personal = Number(req.params.id);
+  if (!isInt(id_personal)) {
+    return res.status(400).json({ ok: false, mensaje: "id inválido" });
+  }
+
+  try {
+    await ensureCredencialesSchema();
+    const { codigo, password_hash, expira } = await prepararCodigoAcceso();
+    const { rows } = await pool.query(
+      `UPDATE personal
+          SET password_hash = $1,
+              debe_cambiar_password = TRUE,
+              password_temporal_expira = $2
+        WHERE id_personal = $3
+        RETURNING id_personal, username, debe_cambiar_password, password_temporal_expira`,
+      [password_hash, expira, id_personal]
+    );
+
+    if (!rows[0]) {
+      return res.status(404).json({ ok: false, mensaje: "Personal no existe" });
+    }
+
+    return res.json({ ok: true, item: rows[0], codigoAcceso: codigo, expira });
+  } catch (err) {
+    return sendDbError(res, err, "Error restableciendo acceso");
+  }
+}
+
 export async function deletePersonal(req, res) {
   const id_personal = Number(req.params.id);
   if (!isInt(id_personal)) {
@@ -480,6 +580,7 @@ export async function listDispositivos(req, res) {
         d.numero_serie,
         d.sistema_operativo,
         d.identificador_app,
+        d.sesion_trabajo,
         CASE
           WHEN od.id_operacion IS NOT NULL THEN 'ASIGNADO'
           ELSE d.estado::text
@@ -509,7 +610,7 @@ export async function listDispositivos(req, res) {
       ) od ON TRUE
       LEFT JOIN personal p ON p.id_personal = od.id_personal
       LEFT JOIN operacion o ON o.id_operacion = od.id_operacion
-      ORDER BY d.tipo, d.marca, d.modelo, d.numero_serie NULLS LAST
+      ORDER BY d.fecha_creacion DESC, d.id_dispositivo DESC
     `);
 
     return res.json({ ok: true, items: rows });
@@ -531,6 +632,7 @@ export async function createDispositivo(req, res) {
     const numero_serie = cleanOptionalText(req.body?.numero_serie);
     const sistema_operativo = cleanOptionalText(req.body?.sistema_operativo);
     const identificador_app = cleanOptionalText(req.body?.identificador_app);
+    const sesion_trabajo = cleanOptionalText(req.body?.sesion_trabajo);
     const estado = cleanText(req.body?.estado || "DISPONIBLE").toUpperCase();
     const detalles = cleanOptionalText(req.body?.detalles);
 
@@ -562,6 +664,7 @@ export async function createDispositivo(req, res) {
       numero_serie,
       sistema_operativo,
       identificador_app,
+      sesion_trabajo,
       estado,
       detalles,
     });
@@ -575,10 +678,10 @@ export async function createDispositivo(req, res) {
     const { rows } = await pool.query(
       `INSERT INTO dispositivo
          (imagen_disp, tipo, marca, modelo, numero_telefono, imei, numero_serie,
-          sistema_operativo, identificador_app, estado, detalles)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          sistema_operativo, identificador_app, sesion_trabajo, estado, detalles)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING id_dispositivo, imagen_disp, tipo, marca, modelo, numero_telefono, imei,
-                 numero_serie, sistema_operativo, identificador_app, estado, detalles,
+                 numero_serie, sistema_operativo, identificador_app, sesion_trabajo, estado, detalles,
                  fecha_creacion AS fecha_registro`,
       [
         item.imagen_disp,
@@ -590,6 +693,7 @@ export async function createDispositivo(req, res) {
         item.numero_serie,
         item.sistema_operativo,
         item.identificador_app,
+        item.sesion_trabajo,
         item.estado,
         item.detalles,
       ]
@@ -630,6 +734,7 @@ export async function updateDispositivo(req, res) {
       "numero_serie",
       "sistema_operativo",
       "identificador_app",
+      "sesion_trabajo",
       "estado",
       "detalles",
     ].some(fieldName => hasOwn(body, fieldName));
@@ -647,6 +752,7 @@ export async function updateDispositivo(req, res) {
     const numero_serie = hasOwn(body, "numero_serie") ? cleanOptionalText(body.numero_serie) : undefined;
     const sistema_operativo = hasOwn(body, "sistema_operativo") ? cleanOptionalText(body.sistema_operativo) : undefined;
     const identificador_app = hasOwn(body, "identificador_app") ? cleanOptionalText(body.identificador_app) : undefined;
+    const sesion_trabajo = hasOwn(body, "sesion_trabajo") ? cleanOptionalText(body.sesion_trabajo) : undefined;
     const estado = hasOwn(body, "estado") ? cleanText(body.estado).toUpperCase() : null;
     const detalles = hasOwn(body, "detalles") ? cleanOptionalText(body.detalles) : undefined;
 
@@ -674,7 +780,7 @@ export async function updateDispositivo(req, res) {
 
     const { rows: currentRows } = await pool.query(
       `SELECT tipo, marca, modelo, numero_telefono, imei, numero_serie,
-              sistema_operativo, identificador_app, estado, detalles, imagen_disp
+              sistema_operativo, identificador_app, sesion_trabajo, estado, detalles, imagen_disp
        FROM dispositivo
        WHERE id_dispositivo = $1`,
       [id_dispositivo]
@@ -695,6 +801,7 @@ export async function updateDispositivo(req, res) {
       numero_serie: numero_serie !== undefined ? numero_serie : current.numero_serie,
       sistema_operativo: sistema_operativo !== undefined ? sistema_operativo : current.sistema_operativo,
       identificador_app: identificador_app !== undefined ? identificador_app : current.identificador_app,
+      sesion_trabajo: sesion_trabajo !== undefined ? sesion_trabajo : current.sesion_trabajo,
       estado: estado !== null ? estado : current.estado,
       detalles: detalles !== undefined ? detalles : current.detalles,
     });
@@ -716,11 +823,12 @@ export async function updateDispositivo(req, res) {
            numero_serie = $7,
            sistema_operativo = $8,
            identificador_app = $9,
-           estado = $10,
-           detalles = $11
-       WHERE id_dispositivo = $12
+           sesion_trabajo = $10,
+           estado = $11,
+           detalles = $12
+       WHERE id_dispositivo = $13
        RETURNING id_dispositivo, imagen_disp, tipo, marca, modelo, numero_telefono, imei,
-                 numero_serie, sistema_operativo, identificador_app, estado, detalles,
+                 numero_serie, sistema_operativo, identificador_app, sesion_trabajo, estado, detalles,
                  fecha_creacion AS fecha_registro`,
       [
         item.imagen_disp,
@@ -732,6 +840,7 @@ export async function updateDispositivo(req, res) {
         item.numero_serie,
         item.sistema_operativo,
         item.identificador_app,
+        item.sesion_trabajo,
         item.estado,
         item.detalles,
         id_dispositivo,

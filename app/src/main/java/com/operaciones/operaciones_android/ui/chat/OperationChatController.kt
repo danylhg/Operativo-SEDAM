@@ -88,6 +88,20 @@ class OperationChatController(
 
     fun totalUnreadCount(): Int = unreadMessages.size
 
+    /**
+     * Descarta los "no leídos" que no pertenecen a ninguna conversación de la lista:
+     * no hay forma de abrirlos para leerlos y dejarían el contador pegado.
+     */
+    fun clearUnreadOutside(listed: List<ChatChannelSelection>) {
+        mainHandler.post {
+            val orphans = unreadMessages.filter { msg -> listed.none { isVisibleInChatFilter(msg, it) } }
+            if (orphans.isEmpty()) return@post
+            unreadMessages.removeAll(orphans.toSet())
+            rememberMessagesAsRead(orphans)
+            host.onChatUnreadCountsChanged()
+        }
+    }
+
     fun markActiveSelectionRead() {
         val readNow = unreadMessages.filter { isVisibleInActiveChatFilter(it) }
         val removed = unreadMessages.removeAll(readNow.toSet())
@@ -95,7 +109,14 @@ class OperationChatController(
         if (removed) host.onChatUnreadCountsChanged()
     }
 
+    /** Aviso automático del servidor al activar/cerrar la operación; no debe verse en el chat. */
+    private fun isOperationStatusNotice(msg: ChatMessage): Boolean =
+        msg.type == MessageType.SYSTEM &&
+            msg.text.trimStart().startsWith("OPERACION ", ignoreCase = true) &&
+            msg.text.contains("Hora oficial", ignoreCase = true)
+
     fun addMessage(msg: ChatMessage) {
+        if (isOperationStatusNotice(msg)) return
         mainHandler.post {
             val exists = msg.id != null && messages.any { it.id == msg.id }
             if (exists) return@post
@@ -297,6 +318,7 @@ class OperationChatController(
                     for (i in 0 until items.length()) {
                         val item = items.optJSONObject(i) ?: continue
                         val message = parseChatMessage(item)
+                        if (isOperationStatusNotice(message)) continue
                         messages.add(message)
                         val visibleInOpenConversation = conversationOpen && isVisibleInActiveChatFilter(message)
                         if (!message.isMine && message.type != MessageType.SYSTEM && message.type != MessageType.ALERT &&

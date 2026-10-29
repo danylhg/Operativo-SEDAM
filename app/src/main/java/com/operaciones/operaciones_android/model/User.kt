@@ -21,6 +21,9 @@ data class User(
 ) {
     val nombreCompleto get() = "$nombre $apellido"
     val puedeAsignarEstructuras get() = rol == UserRole.CET
+    // Administrador en la app: entra a cualquier operación activa sin estar
+    // asignado y solo observa (no publica ubicación, emergencias ni video).
+    val esSupervisor get() = rol == UserRole.ADMIN
 }
 
 // Operación táctica (datos de la BD)

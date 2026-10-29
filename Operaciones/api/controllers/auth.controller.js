@@ -3,6 +3,12 @@ import jwt from "jsonwebtoken";
 import { pool } from "../db.js";
 import { JWT_SECRET } from "../config/env.js";
 import { sendDbError } from "../utils/dbErrors.js";
+import {
+  CODIGO_ACCESO_DIAS,
+  codigoAccesoVencido,
+  ensureCredencialesSchema,
+  validarNuevaPassword,
+} from "../utils/credenciales.js";
 
 const MOBILE_LOGIN_ROLES = new Set(["CET", "CELL"]);
 
@@ -467,6 +473,37 @@ async function fetchAssignedOperationForPersonal(idPersonal, db = pool) {
   };
 }
 
+// Busca la cuenta primero en usuarios del sistema y luego en personal operativo.
+async function findCuentaPorUsername(username) {
+  await ensureCredencialesSchema();
+
+  {
+    const { rows } = await pool.query(
+      `SELECT id_usuario AS id, username, password_hash, rol, nombre, apellido, activo,
+              debe_cambiar_password, password_temporal_expira
+       FROM usuario WHERE LOWER(username) = LOWER($1) LIMIT 1`,
+      [username]
+    );
+    if (rows[0]) return { row: rows[0], tabla: "usuario" };
+  }
+
+  const { rows } = await pool.query(
+    `SELECT id_personal AS id, username, password_hash, rol, nombre, apellido, activo, puesto,
+            debe_cambiar_password, password_temporal_expira
+     FROM personal WHERE LOWER(username) = LOWER($1) LIMIT 1`,
+    [username]
+  );
+  return rows[0] ? { row: rows[0], tabla: "personal" } : { row: null, tabla: null };
+}
+
+function codigoVencidoResponse(res) {
+  return res.status(403).json({
+    ok: false,
+    codigo: "CODIGO_ACCESO_VENCIDO",
+    mensaje: `Tu código de acceso venció (vigencia de ${CODIGO_ACCESO_DIAS} días). Solicita uno nuevo al administrador.`,
+  });
+}
+
 // Inicia sesion para usuarios administrativos o personal operativo.
 export async function login(req, res) {
   try {
@@ -477,29 +514,7 @@ export async function login(req, res) {
       return res.status(400).json({ ok: false, mensaje: "Faltan credenciales" });
     }
 
-    let row = null;
-    let tabla = "usuario";
-
-    // Primero intenta autenticar contra la tabla de usuarios del sistema.
-    {
-      const { rows } = await pool.query(
-        `SELECT id_usuario AS id, username, password_hash, rol, nombre, apellido, activo
-         FROM usuario WHERE LOWER(username) = LOWER($1) LIMIT 1`,
-        [normalizedUsername]
-      );
-      if (rows.length > 0) row = rows[0];
-    }
-
-    // Si no existe como usuario, intenta autenticarlo como personal operativo.
-    if (!row) {
-      tabla = "personal";
-      const { rows } = await pool.query(
-        `SELECT id_personal AS id, username, password_hash, rol, nombre, apellido, activo, puesto
-         FROM personal WHERE LOWER(username) = LOWER($1) LIMIT 1`,
-        [normalizedUsername]
-      );
-      if (rows.length > 0) row = rows[0];
-    }
+    const { row, tabla } = await findCuentaPorUsername(normalizedUsername);
 
     if (!row) {
       return res.status(401).json({ ok: false, mensaje: "Usuario o contraseña incorrectos" });
@@ -525,7 +540,13 @@ export async function login(req, res) {
       });
     }
 
-    if (androidLogin && !MOBILE_LOGIN_ROLES.has(String(row.rol || "").trim().toUpperCase())) {
+    // Un Administrador de personal entra a la app como supervisor: observa
+    // cualquier operación activa sin estar asignado ni tener dispositivo.
+    const supervisorLogin = androidLogin
+      && tabla === "personal"
+      && String(row.rol || "").trim().toUpperCase() === "ADMIN";
+
+    if (androidLogin && !supervisorLogin && !MOBILE_LOGIN_ROLES.has(String(row.rol || "").trim().toUpperCase())) {
       return res.status(403).json({
         ok: false,
         codigo: "ROL_SOLO_WEB",
@@ -533,7 +554,19 @@ export async function login(req, res) {
       });
     }
 
-    const deviceValidation = androidLogin && tabla === "personal"
+    // Una cuenta con código de acceso no recibe sesión: primero debe elegir su
+    // contraseña con POST /auth/password mientras el código siga vigente.
+    if (row.debe_cambiar_password) {
+      if (codigoAccesoVencido(row)) return codigoVencidoResponse(res);
+      return res.status(403).json({
+        ok: false,
+        codigo: "CAMBIO_PASSWORD_REQUERIDO",
+        mensaje: "Ingresaste con tu código de acceso. Elige tu contraseña para continuar.",
+        expira: row.password_temporal_expira,
+      });
+    }
+
+    const deviceValidation = androidLogin && tabla === "personal" && !supervisorLogin
       ? await validatePersonalDeviceAccess(row, req)
       : null;
 
@@ -546,7 +579,7 @@ export async function login(req, res) {
       });
     }
 
-    if (androidLogin && !deviceValidation?.ok) {
+    if (androidLogin && !supervisorLogin && !deviceValidation?.ok) {
       return res.status(403).json({
         ok: false,
         codigo: "DISPOSITIVO_NO_VALIDADO",
@@ -573,10 +606,59 @@ export async function login(req, res) {
     return res.json({
       ok: true,
       token,
-      usuario: publicUser(row, tabla, deviceValidation),
+      usuario: { ...publicUser(row, tabla, deviceValidation), supervisor: supervisorLogin },
     });
   } catch (err) {
     return sendDbError(res, err, "Error interno");
+  }
+}
+
+// Define la contraseña propia de una cuenta. Sirve para dos casos con el mismo
+// formulario: activar una cuenta con su código de acceso (dentro de los 30 días)
+// o cambiar voluntariamente una contraseña ya definida.
+export async function cambiarPassword(req, res) {
+  try {
+    const { username, password_actual, nueva_password } = req.body ?? {};
+    const normalizedUsername = String(username || "").trim();
+    const actual = String(password_actual ?? "");
+    const nueva = String(nueva_password ?? "");
+
+    if (!normalizedUsername || !actual || !nueva) {
+      return res.status(400).json({ ok: false, mensaje: "Faltan datos para cambiar la contraseña" });
+    }
+
+    const { row, tabla } = await findCuentaPorUsername(normalizedUsername);
+    if (!row || !(await bcrypt.compare(actual, row.password_hash))) {
+      return res.status(401).json({ ok: false, mensaje: "Usuario o contraseña actual incorrectos" });
+    }
+    if (!row.activo) {
+      return res.status(403).json({ ok: false, mensaje: "Usuario inactivo" });
+    }
+    if (codigoAccesoVencido(row)) return codigoVencidoResponse(res);
+
+    const errorPassword = validarNuevaPassword(nueva);
+    if (errorPassword) {
+      return res.status(400).json({ ok: false, mensaje: errorPassword });
+    }
+    if (nueva === actual) {
+      return res.status(400).json({ ok: false, mensaje: "La nueva contraseña debe ser distinta a la actual." });
+    }
+
+    const hash = await bcrypt.hash(nueva, 10);
+    const idColumn = tabla === "usuario" ? "id_usuario" : "id_personal";
+    await pool.query(
+      `UPDATE ${tabla}
+          SET password_hash = $1,
+              debe_cambiar_password = FALSE,
+              password_temporal_expira = NULL,
+              password_actualizado = NOW()
+        WHERE ${idColumn} = $2`,
+      [hash, row.id]
+    );
+
+    return res.json({ ok: true, mensaje: "Contraseña actualizada." });
+  } catch (err) {
+    return sendDbError(res, err, "Error cambiando contraseña");
   }
 }
 

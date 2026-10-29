@@ -5,7 +5,7 @@ import { Router } from "express";
 import { pool } from "../db.js";
 
 // Middleware que exige autenticación antes de acceder a las rutas
-import { requireAuth } from "../middlewares/auth.js";
+import { requireAuth, requireRole } from "../middlewares/auth.js";
 
 // Helper para responder errores de BD/backend de forma uniforme
 import { sendDbError } from "../utils/dbErrors.js";
@@ -19,6 +19,7 @@ import {
   listVehiculos,
   createPersonal,
   updatePersonal,
+  resetCodigoAccesoPersonal,
   deletePersonal,
   listDispositivos,
   createDispositivo,
@@ -83,7 +84,7 @@ router.get("/catalog/vehiculos", requireAuth, listVehiculos);
 // Nota:
 //   La lógica real está delegada al controller createPersonal.
 // =========================================================
-router.post("/catalog/personal", requireAuth, createPersonal);
+router.post("/catalog/personal", requireAuth, requireRole("ADMIN"), createPersonal);
 
 // =========================================================
 // PUT /catalog/personal/:id
@@ -92,7 +93,15 @@ router.post("/catalog/personal", requireAuth, createPersonal);
 // Nota:
 //   La lógica real está delegada al controller updatePersonal.
 // =========================================================
-router.put("/catalog/personal/:id", requireAuth, updatePersonal);
+router.put("/catalog/personal/:id", requireAuth, requireRole("ADMIN"), updatePersonal);
+
+// =========================================================
+// POST /catalog/personal/:id/codigo-acceso
+// Qué hace:
+//   Genera un nuevo código de acceso de 30 días. La persona lo usa para
+//   elegir de nuevo su contraseña (olvido o código anterior vencido).
+// =========================================================
+router.post("/catalog/personal/:id/codigo-acceso", requireAuth, requireRole("ADMIN"), resetCodigoAccesoPersonal);
 
 // =========================================================
 // DELETE /catalog/personal/:id
@@ -101,7 +110,7 @@ router.put("/catalog/personal/:id", requireAuth, updatePersonal);
 // Nota:
 //   La lógica real está delegada al controller deletePersonal.
 // =========================================================
-router.delete("/catalog/personal/:id", requireAuth, deletePersonal);
+router.delete("/catalog/personal/:id", requireAuth, requireRole("ADMIN"), deletePersonal);
 
 
 // ===============================
@@ -110,9 +119,9 @@ router.delete("/catalog/personal/:id", requireAuth, deletePersonal);
 
 // Catálogo de teléfonos, tablets, smart watch, LoRa y otros dispositivos.
 router.get("/catalog/dispositivos", requireAuth, listDispositivos);
-router.post("/catalog/dispositivos", requireAuth, createDispositivo);
-router.put("/catalog/dispositivos/:id", requireAuth, updateDispositivo);
-router.delete("/catalog/dispositivos/:id", requireAuth, deleteDispositivo);
+router.post("/catalog/dispositivos", requireAuth, requireRole("ADMIN"), createDispositivo);
+router.put("/catalog/dispositivos/:id", requireAuth, requireRole("ADMIN"), updateDispositivo);
+router.delete("/catalog/dispositivos/:id", requireAuth, requireRole("ADMIN"), deleteDispositivo);
 
 
 // ===============================
@@ -185,7 +194,7 @@ router.get("/catalog/equipos", requireAuth, async (req, res) => {
 //   - categoria obligatoria
 //   - categoria solo puede ser COMUNICACION o TACTICO
 // =========================================================
-router.post("/catalog/equipos", requireAuth, async (req, res) => {
+router.post("/catalog/equipos", requireAuth, requireRole("ADMIN"), async (req, res) => {
   // Obtiene conexión manual porque aquí se usa transacción
   const client = await pool.connect();
   try {
@@ -314,7 +323,7 @@ router.post("/catalog/equipos", requireAuth, async (req, res) => {
 //   - numero_serie, nombre y categoria obligatorios
 //   - categoria solo puede ser COMUNICACION o TACTICO
 // =========================================================
-router.put("/catalog/equipos/:id", requireAuth, async (req, res) => {
+router.put("/catalog/equipos/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
   // Convierte id a número
   const id_equipo = Number(req.params.id);
 
@@ -430,7 +439,7 @@ router.put("/catalog/equipos/:id", requireAuth, async (req, res) => {
 // Manejo especial:
 //   - si el equipo está referenciado por otras tablas, responde 409
 // =========================================================
-router.delete("/catalog/equipos/:id", requireAuth, async (req, res) => {
+router.delete("/catalog/equipos/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
   // Convierte id a número
   const id_equipo = Number(req.params.id);
 
@@ -726,7 +735,7 @@ router.post("/ops/:id/equipos", requireAuth, async (req, res) => {
 // Manejo especial:
 //   - si codigo_interno ya existe, responde 409
 // =========================================================
-router.post("/catalog/vehiculos", requireAuth, async (req, res) => {
+router.post("/catalog/vehiculos", requireAuth, requireRole("ADMIN"), async (req, res) => {
   try {
     // Normaliza campos del body
     const codigo_interno = (req.body?.codigo_interno || "").toString().trim();
@@ -795,7 +804,7 @@ router.post("/catalog/vehiculos", requireAuth, async (req, res) => {
 // Manejo especial:
 //   - si codigo_interno ya existe, responde 409
 // =========================================================
-router.put("/catalog/vehiculos/:id", requireAuth, async (req, res) => {
+router.put("/catalog/vehiculos/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
   // Convierte id a número
   const id_vehiculo = Number(req.params.id);
 
@@ -890,7 +899,7 @@ router.put("/catalog/vehiculos/:id", requireAuth, async (req, res) => {
 // Manejo especial:
 //   - si está referenciado en operaciones/grupos, responde 409
 // =========================================================
-router.delete("/catalog/vehiculos/:id", requireAuth, async (req, res) => {
+router.delete("/catalog/vehiculos/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
   // Convierte id a número
   const id_vehiculo = Number(req.params.id);
 

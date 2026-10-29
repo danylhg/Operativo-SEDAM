@@ -42,22 +42,11 @@ const logAlert = (message) => {
   if (message) console.warn(message);
 };
 
+// Teselas servidas por la propia API (sin internet); ver js/offline_tiles.js
 const providers = {
-  osm: () => new Cesium.UrlTemplateImageryProvider({
-    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    maximumLevel: 19,
-    credit: "OpenStreetMap"
-  }),
-  satellite: () => new Cesium.UrlTemplateImageryProvider({
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    maximumLevel: 19,
-    credit: "Esri World Imagery"
-  }),
-  reference: () => new Cesium.UrlTemplateImageryProvider({
-    url: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-    maximumLevel: 19,
-    credit: "Esri Reference"
-  })
+  osm: () => OfflineMap.osm(),
+  satellite: () => OfflineMap.satellite(),
+  reference: () => OfflineMap.reference()
 };
 
 const BASE_LAYER_LABELS = {
@@ -81,6 +70,8 @@ function addImageryLayer(providerFactory, options = {}) {
   const provider = providerFactory();
   let failed = false;
   provider.errorEvent?.addEventListener?.((error) => {
+    // Una tesela faltante (404) es normal: Cesium amplía la del nivel inferior. No cambiar de capa.
+    return;
     if (failed || options.fallback === false) return;
     failed = true;
     console.warn("[MAP] Capa de mapa no disponible, usando mapa normal:", error?.message || error);
@@ -160,9 +151,11 @@ export function setBaseLayer(key, options = {}) {
   dashboardState.baseLayerKey = key;
   updateLayerControl(key);
   viewer.imageryLayers.removeAll();
+  // Mapa mundial local debajo de todo: el globo nunca queda vacío.
+  viewer.imageryLayers.addImageryProvider(OfflineMap.world());
 
   if (key === "hybrid") {
-    addImageryLayer(providers.osm, { fallback: false });
+    if (OfflineMap.hasOsm()) addImageryLayer(providers.osm, { fallback: false });
     const satelliteLayer = addImageryLayer(providers.satellite, options);
     if (!satelliteLayer) return;
     satelliteLayer.brightness = 0.78;
@@ -177,7 +170,7 @@ export function setBaseLayer(key, options = {}) {
 
   const createProvider = providers[key] || providers.satellite;
   if (key === "satellite" || !providers[key]) {
-    addImageryLayer(providers.osm, { fallback: false });
+    if (OfflineMap.hasOsm()) addImageryLayer(providers.osm, { fallback: false });
   }
   const layer = addImageryLayer(createProvider, options);
   if (!layer) return;
@@ -297,9 +290,51 @@ function getEntityLatLng(entity) {
   };
 }
 
+let quickMenuDragBound = false;
+
+// Permite mover el cuadro arrastrándolo por su encabezado (nombre del vehículo).
+function bindQuickMenuDrag() {
+  const menu = dom.vehicleQuickMenu;
+  const handle = menu?.firstElementChild;
+  if (!menu || !handle || quickMenuDragBound) return;
+  quickMenuDragBound = true;
+  handle.style.cursor = "grab";
+  handle.style.touchAction = "none";
+  handle.style.userSelect = "none";
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest("button")) return;
+    event.preventDefault();
+    const rect = menu.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    // left/top son relativos al contenedor posicionado, no a la ventana.
+    const parentRect = (menu.offsetParent || document.body).getBoundingClientRect();
+    handle.setPointerCapture?.(event.pointerId);
+    handle.style.cursor = "grabbing";
+
+    const move = (moveEvent) => {
+      const left = Math.max(8, Math.min(moveEvent.clientX - offsetX, window.innerWidth - menu.offsetWidth - 8));
+      const top = Math.max(8, Math.min(moveEvent.clientY - offsetY, window.innerHeight - menu.offsetHeight - 8));
+      menu.style.left = `${left - parentRect.left}px`;
+      menu.style.top = `${top - parentRect.top}px`;
+    };
+    const finish = () => {
+      handle.style.cursor = "grab";
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  });
+}
+
 function showQuickMenuForEntity(entity, clickPosition) {
   const context = getQuickMenuContext(entity);
   if (!dom.vehicleQuickMenu) return false;
+  bindQuickMenuDrag();
 
   if (!context) {
     clearEmbeddedCamera(document.getElementById("droneQuickMenuCamera"));
@@ -331,12 +366,23 @@ function showQuickMenuForEntity(entity, clickPosition) {
       const bdData = getCurrentOperation() || {};
       const personas = Array.isArray(bdData.personal) ? bdData.personal : [];
       const vehicleId = trackingKey.replace(/^V:/, "");
-      const assignedOccupants = (Array.isArray(bdData.vehiculos) ? bdData.vehiculos : [])
-        .filter((vehicle) => String(vehicle.id_vehiculo ?? vehicle.id ?? "") === vehicleId)
+      const vehicleRows = (Array.isArray(bdData.vehiculos) ? bdData.vehiculos : [])
+        .filter((vehicle) => String(vehicle.id_vehiculo ?? vehicle.id ?? "") === vehicleId);
+      const assignedOccupants = vehicleRows
         .map((vehicle) => vehicle.id_personal)
         .filter((id) => id != null)
         .map((id) => `P:${id}`);
-      const occupants = [...new Set([...getVehicleOccupants(trackingKey), ...assignedOccupants])];
+      // Quienes realmente van a bordo (detectados en el mapa); si no hay nadie
+      // detectado, se muestra el personal asignado.
+      const ridingOccupants = getVehicleOccupants(trackingKey);
+      const showingAssigned = ridingOccupants.length === 0;
+      const occupants = [...new Set(showingAssigned ? assignedOccupants : ridingOccupants)];
+      const occupantsTitle = document.querySelector("#vehicleQuickMenuOccupants .vehicleQuickMenuOccupantsTitle");
+      if (occupantsTitle) {
+        occupantsTitle.textContent = showingAssigned ? "Personal asignado" : "Personas en el vehículo";
+      }
+      const vehicleAlias = String(vehicleRows.find((vehicle) => vehicle.alias)?.alias || "").trim();
+      if (vehicleAlias && dom.vehicleQuickMenuName) dom.vehicleQuickMenuName.textContent = vehicleAlias;
       const occupantsNames = occupants.map(occId => {
         const id = occId.split(":")[1];
         const p = personas.find(x => String(x.id_personal) === String(id));
@@ -1809,7 +1855,9 @@ export function initCesium() {
   const viewer = new Cesium.Viewer("map", {
     timeline: false,
     animation: false,
-    geocoder: [new OpenStreetMapNominatimGeocoder()],
+    // Sin internet no hay buscador de lugares (Nominatim).
+    geocoder: false,
+    baseLayer: false,
     baseLayerPicker: false,
     sceneModePicker: false,
     navigationHelpButton: true,
@@ -1829,11 +1877,10 @@ export function initCesium() {
   } catch (e) {
     console.warn("Failed to configure camera controls:", e);
   }
-  viewer.geocoder.viewModel.destinationFound = function (_viewModel, destination) {
-    viewer.camera.flyTo({ destination });
-  };
 
   setBaseLayer("hybrid");
+  // Al conocer los niveles de zoom instalados en el servidor, se redibuja la capa activa.
+  window.addEventListener("offlinemap:ready", () => setBaseLayer(dashboardState.baseLayerKey || "hybrid"));
 
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(-99.1332, 19.4326, 2500000)

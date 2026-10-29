@@ -194,6 +194,8 @@ class MainActivity : AppCompatActivity(),
                 return
             }
             if (intent.action != EmergencyMonitorService.ACTION_SHAKE_ALERT) return
+            // Por si el servicio quedó activo de una sesión operativa anterior.
+            if (isSupervisor()) return
             val lat = intent.takeIf { it.hasExtra(EmergencyMonitorService.EXTRA_SHAKE_LAT) }
                 ?.getDoubleExtra(EmergencyMonitorService.EXTRA_SHAKE_LAT, 0.0)
             val lon = intent.takeIf { it.hasExtra(EmergencyMonitorService.EXTRA_SHAKE_LON) }
@@ -460,7 +462,8 @@ class MainActivity : AppCompatActivity(),
         webView = findViewById(R.id.cesiumWebView)
 
         bluetoothController = BluetoothController(this, btnBluetoothMedia).apply {
-            onPttAlertTriggered = { active ->
+            onPttAlertTriggered = trigger@{ active ->
+                if (isSupervisor()) return@trigger
                 val senderName = if (::currentUser.isInitialized) getMapDataCurrentUserLabel() else "Elemento PTT"
                 chatSocketManager?.emitPttAlertToggle(
                     active = active,
@@ -543,7 +546,9 @@ class MainActivity : AppCompatActivity(),
             onEmitLocation = { lat, lon, speedKmh, headingDegrees, accuracyMeters ->
                 lastKnownLat = lat
                 lastKnownLon = lon
-                if (::currentUser.isInitialized) {
+                // El supervisor ve su posición en el mapa, pero no la publica:
+                // no forma parte de la operación.
+                if (::currentUser.isInitialized && !currentUser.esSupervisor) {
                     val deviceId = currentUser.idDispositivo
                     if (deviceId != null) {
                         val dispositivo = dispositivosList.firstOrNull { it.idDispositivo == deviceId }
@@ -634,7 +639,13 @@ class MainActivity : AppCompatActivity(),
             fetchVehiculosPanelData()
             fetchEquiposPanelData()
             fetchDispositivosPanelData()
-            startEmergencyService()
+            // El servicio de emergencias publica alertas propias (sacudida,
+            // reloj); un supervisor no las genera.
+            if (!currentUser.esSupervisor) startEmergencyService()
+        }
+        if (currentUser.esSupervisor) {
+            btnBluetoothMedia.visibility = View.GONE
+            Toast.makeText(this, "Modo supervisor: solo observación", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -778,7 +789,7 @@ class MainActivity : AppCompatActivity(),
 
             val isMapOnly = activePanel == Panel.NONE
             menuDrawerBtn?.visibility = if (isMapOnly && !expanded) View.VISIBLE else View.GONE
-            bluetoothBtn?.visibility = if (isMapOnly && !expanded) View.VISIBLE else View.GONE
+            bluetoothBtn?.visibility = if (isMapOnly && !expanded && !isSupervisor()) View.VISIBLE else View.GONE
 
             if (expanded) {
                 params.height = 0
@@ -1000,8 +1011,10 @@ class MainActivity : AppCompatActivity(),
         return optDouble(key, Double.NaN).takeIf { !it.isNaN() && !it.isInfinite() }
     }
 
+    // El supervisor no está asignado: no se valida su asignación (si no, el
+    // monitor lo sacaría de la operación en la primera revisión).
     override fun getLifecycleUserId(): Int? =
-        if (::currentUser.isInitialized) currentUser.id else null
+        if (::currentUser.isInitialized && !currentUser.esSupervisor) currentUser.id else null
 
     override fun getLifecycleOperationId(): Int =
         if (::currentOperation.isInitialized) currentOperation.id else -1
@@ -1083,9 +1096,14 @@ class MainActivity : AppCompatActivity(),
     }
 
     override fun shouldHideMediaControls(): Boolean {
+        // El supervisor solo observa: no transmite cámara ni micrófono.
+        if (isSupervisor()) return true
         return ::panelNavigationController.isInitialized &&
             panelNavigationController.activePanel != Panel.NONE
     }
+
+    private fun isSupervisor(): Boolean =
+        ::currentUser.isInitialized && currentUser.esSupervisor
 
     override fun getMapOperationId(): Int = currentOperation.id
 
@@ -2047,6 +2065,49 @@ class MainActivity : AppCompatActivity(),
         panelRenderer.selectDispositivo(null)
         cesiumWebController.followTrackingVehiculo(idVehiculo, lat, lon, zoom = 500)
         showMapVehiculoInfo(idVehiculo, null, null, null, null)
+    }
+
+    /** Lleva el mapa hasta el vehículo (cierra el panel) sin abrir el cuadro de información. */
+    override fun focusVehiculoOnMap(idVehiculo: Int, lat: Double?, lon: Double?, label: String) {
+        if (lat == null || lon == null || !isValidTrackingLocation(lat, lon)) {
+            Toast.makeText(this, "$label sin ubicacion activa.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        followedPersonalId = null
+        panelRenderer.selectPersonal(null)
+        panelRenderer.selectVehiculo(idVehiculo)
+        panelRenderer.selectEquipo(null)
+        panelRenderer.selectDispositivo(null)
+        cesiumWebController.followTrackingVehiculo(idVehiculo, lat, lon, zoom = 500)
+        panelNavigationController.showPanel(PanelNavigationController.Panel.NONE)
+    }
+
+    override fun focusEquipoOnMap(idEquipo: Int, lat: Double?, lon: Double?, label: String) {
+        if (lat == null || lon == null || !isValidTrackingLocation(lat, lon)) {
+            Toast.makeText(this, "$label sin ubicacion activa.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        followedPersonalId = null
+        panelRenderer.selectPersonal(null)
+        panelRenderer.selectVehiculo(null)
+        panelRenderer.selectEquipo(idEquipo)
+        panelRenderer.selectDispositivo(null)
+        cesiumWebController.followTrackingEquipo(idEquipo, lat, lon, zoom = 500)
+        panelNavigationController.showPanel(PanelNavigationController.Panel.NONE)
+    }
+
+    override fun focusDispositivoOnMap(idDispositivo: Int, lat: Double?, lon: Double?, label: String) {
+        if (lat == null || lon == null || !isValidTrackingLocation(lat, lon)) {
+            Toast.makeText(this, "$label sin ubicacion activa.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        followedPersonalId = null
+        panelRenderer.selectPersonal(null)
+        panelRenderer.selectVehiculo(null)
+        panelRenderer.selectEquipo(null)
+        panelRenderer.selectDispositivo(idDispositivo)
+        cesiumWebController.followTrackingDispositivo(idDispositivo, lat, lon, zoom = 500, label = label)
+        panelNavigationController.showPanel(PanelNavigationController.Panel.NONE)
     }
 
     override fun selectEquipoOnMap(idEquipo: Int, lat: Double?, lon: Double?, label: String) {
@@ -4545,6 +4606,7 @@ class MainActivity : AppCompatActivity(),
                 },
                 unreadCountFor = chatController::unreadCountFor,
                 lastMessageFor = chatController::lastMessagePreviewFor,
+                onChannelsListed = chatController::clearUnreadOutside,
                 onContactSelected = { selection ->
                     chatController.setActiveSelection(selection)
                     chatController.refreshVisibleMessages(notify = false)
@@ -5550,18 +5612,28 @@ class MainActivity : AppCompatActivity(),
         val directIds = vehicleRows.mapNotNull { it.idPersonalAsignado }.distinct()
         val direct = personalList.filter { it.idPersonal in directIds }
 
-        if (direct.isNotEmpty()) {
-            return direct
+        // Solo los asignados al vehículo, igual que la web (sin completar con el grupo).
+        return direct
+    }
+
+    /**
+     * Personas que realmente van a bordo: en movimiento y a ≤30 m del vehículo, siendo
+     * éste el más cercano a ellas (misma regla de agrupación que usa la web).
+     */
+    private fun detectVehicleRiders(idVehiculo: Int): List<PersonalItem> {
+        val vehiclePos = liveVehiculoLocations[idVehiculo] ?: return emptyList()
+        fun meters(a: Pair<Double, Double>, b: Pair<Double, Double>): Float {
+            val out = FloatArray(1)
+            android.location.Location.distanceBetween(a.first, a.second, b.first, b.second, out)
+            return out[0]
         }
-
-        val groupNames = vehicleRows
-            .flatMap { listOf(it.grupoNombre, it.grupoPadreNombre) }
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .toSet()
-
         return personalList.filter { person ->
-            person.grupoNombre.trim() in groupNames || person.grupoPadreNombre.trim() in groupNames
+            val pos = livePersonalLocations[person.idPersonal] ?: return@filter false
+            if ((person.velocidadKmh ?: 0.0) <= 1.0) return@filter false
+            val distance = meters(pos, vehiclePos)
+            distance <= 30f && liveVehiculoLocations.all { (id, other) ->
+                id == idVehiculo || meters(pos, other) >= distance
+            }
         }
     }
 
@@ -5642,46 +5714,62 @@ class MainActivity : AppCompatActivity(),
         val vehicle = vehiculosList.firstOrNull { it.idVehiculo == idVehiculo }
         val vehicleName = vehicle?.let { vehicleDisplayName(it) } ?: "Vehiculo $idVehiculo"
         val simulated = simulationVehicleOccupants[idVehiculo].orEmpty()
-        val occupants = (if (simulated.isNotEmpty()) simulated else resolveVehicleOccupants(idVehiculo))
+        val onboard = if (simulated.isNotEmpty()) simulated else detectVehicleRiders(idVehiculo)
+        val showingAssigned = onboard.isEmpty()
+        val occupants = (if (showingAssigned) resolveVehicleOccupants(idVehiculo) else onboard)
             .distinctBy { it.idPersonal }
 
         vehicleInfoPopup?.dismiss()
 
+        // Mismo aspecto que el menú rápido del vehículo en la web.
+        fun roundedBg(fill: String, stroke: String, radiusDp: Int) = android.graphics.drawable.GradientDrawable().apply {
+            setColor(Color.parseColor(fill))
+            setStroke(dp(1), Color.parseColor(stroke))
+            cornerRadius = dp(radiusDp).toFloat()
+        }
+
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(12))
-            setBackgroundResource(R.drawable.bg_logout_dialog)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = roundedBg("#FA0D2838", "#7A4AAEC5", 10)
         }
 
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(10))
         }
         header.addView(TextView(this).apply {
             text = vehicleName
-            setTextColor(Color.parseColor("#F1F7FA"))
+            setTextColor(Color.parseColor("#9FE3ED"))
             textSize = 15f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         header.addView(TextView(this).apply {
-            text = "X"
+            text = "x"
             gravity = android.view.Gravity.CENTER
-            setTextColor(Color.parseColor("#9EC7E8"))
-            textSize = 13f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setBackgroundResource(R.drawable.bg_object_tools_button)
-            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
+            setTextColor(Color.parseColor("#D9E8F2"))
+            textSize = 17f
+            layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
             setOnClickListener { vehicleInfoPopup?.dismiss() }
         })
         content.addView(header)
+        content.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#80598CA4"))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                bottomMargin = dp(12)
+            }
+        })
 
         content.addView(TextView(this).apply {
-            text = "Personal en el vehiculo"
-            setTextColor(Color.parseColor("#7DB8C8"))
-            textSize = 11f
-            setPadding(0, dp(3), 0, dp(8))
+            text = if (showingAssigned) "Personal asignado" else "Personas en el vehículo"
+            setTextColor(Color.parseColor("#A9DCEC"))
+            textSize = 12f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(2), dp(2), dp(2), dp(7))
         })
 
         val occupantList = LinearLayout(this).apply {
@@ -5689,26 +5777,49 @@ class MainActivity : AppCompatActivity(),
         }
         if (occupants.isEmpty()) {
             occupantList.addView(TextView(this).apply {
-                text = "Sin personal asignado."
-                setTextColor(Color.parseColor("#C7D8DE"))
-                textSize = 12f
-                setPadding(dp(9), dp(8), dp(9), dp(8))
-                setBackgroundResource(R.drawable.bg_object_tools_menu_item)
+                text = "Sin tripulación detectada."
+                setTextColor(Color.parseColor("#94A3B8"))
+                textSize = 11f
             })
         } else {
-            occupants.forEach { person ->
-                occupantList.addView(TextView(this).apply {
-                    text = listOf(personDisplayName(person), listOf(person.rol, abbreviateRank(person.puesto)).filter { it.isNotBlank() }.joinToString(" - "))
-                        .filter { it.isNotBlank() }
-                        .joinToString("\n")
-                    setTextColor(Color.parseColor("#E2E8F0"))
-                    textSize = 12f
-                    setPadding(dp(9), dp(7), dp(9), dp(7))
-                    setBackgroundResource(R.drawable.bg_object_tools_menu_item)
+            occupants.forEachIndexed { index, person ->
+                val name = personDisplayName(person)
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    minimumHeight = dp(38)
+                    setPadding(dp(3), dp(6), dp(3), dp(6))
+                    setOnClickListener {
+                        vehicleInfoPopup?.dismiss()
+                        showMapPersonalInfoReference(person.idPersonal, name, screenX, screenY, viewportWidth, viewportHeight)
+                    }
+                }
+                row.addView(TextView(this).apply {
+                    text = name.trim().take(1).uppercase().ifBlank { "P" }
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#082C36"))
+                    textSize = 11f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.OVAL
+                        setColor(Color.parseColor("#4AAEC5"))
+                    }
+                    layoutParams = LinearLayout.LayoutParams(dp(24), dp(24)).apply { marginEnd = dp(8) }
                 })
-                occupantList.addView(View(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(1, dp(5))
+                row.addView(TextView(this).apply {
+                    text = name
+                    setTextColor(Color.parseColor("#EDF8FB"))
+                    textSize = 13f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 })
+                occupantList.addView(row)
+                if (index < occupants.lastIndex) {
+                    occupantList.addView(View(this).apply {
+                        setBackgroundColor(Color.parseColor("#2E4AAEC5"))
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)
+                    })
+                }
             }
         }
 
@@ -5716,54 +5827,87 @@ class MainActivity : AppCompatActivity(),
             addView(occupantList)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(occupants.size.coerceAtLeast(1).coerceAtMost(3) * 42)
-            )
+                if (occupants.size > 4) dp(4 * 39) else ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(12) }
         })
+
+        fun actionButton(label: String, iconRes: Int, onClick: () -> Unit) = TextView(this).apply {
+            text = label
+            setCompoundDrawablesRelative(
+                androidx.core.content.ContextCompat.getDrawable(this@MainActivity, iconRes)?.apply { setBounds(0, 0, dp(14), dp(14)) },
+                null, null, null
+            )
+            compoundDrawablePadding = dp(6)
+            setPadding(dp(8), 0, dp(8), 0)
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.parseColor("#EDF6FB"))
+            textSize = 11f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            maxLines = 1
+            background = roundedBg("#D1194357", "#6B4AAEC5", 8)
+            layoutParams = LinearLayout.LayoutParams(0, dp(34), 1f)
+            setOnClickListener { onClick() }
+        }
 
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(10), 0, 0)
+            setPadding(0, dp(4), 0, 0)
         }
-
-        actions.addView(TextView(this).apply {
-            text = "Ver ruta"
-            gravity = android.view.Gravity.CENTER
-            setTextColor(Color.parseColor("#D9E8EC"))
-            textSize = 12f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setBackgroundResource(R.drawable.bg_logout_cancel)
-            layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f)
-            setOnClickListener {
-                vehicleInfoPopup?.dismiss()
-                showVehicleRouteOnMap(idVehiculo, vehicleName)
-            }
+        actions.addView(actionButton("Mensaje", R.drawable.ic_vehicle_action_chat) {
+            vehicleInfoPopup?.dismiss()
+            openChatForVehicle(idVehiculo)
         })
-
-        actions.addView(TextView(this).apply {
-            text = "Mandar alerta"
-            gravity = android.view.Gravity.CENTER
-            setTextColor(Color.WHITE)
-            textSize = 12f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setBackgroundResource(R.drawable.bg_logout_confirm)
-            layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f).apply {
-                marginStart = dp(8)
-            }
-            setOnClickListener {
-                vehicleInfoPopup?.dismiss()
-                sendVehicleAlert(idVehiculo, vehicleName, occupants)
-            }
-        })
-
+        actions.addView(actionButton("Ver ruta", R.drawable.ic_vehicle_action_route) {
+            vehicleInfoPopup?.dismiss()
+            showVehicleRouteOnMap(idVehiculo, vehicleName)
+        }.also { (it.layoutParams as LinearLayout.LayoutParams).marginStart = dp(8) })
         content.addView(actions)
 
-        val popupWidth = dp(260)
+        // Se conserva la acción propia de Android.
+        content.addView(actionButton("Mandar alerta", R.drawable.ic_vehicle_action_alert) {
+            vehicleInfoPopup?.dismiss()
+            sendVehicleAlert(idVehiculo, vehicleName, occupants)
+        }.also {
+            it.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)).apply { topMargin = dp(8) }
+        })
+
+        val popupWidth = minOf(dp(294), resources.displayMetrics.widthPixels - dp(24))
         val popupHeight = ViewGroup.LayoutParams.WRAP_CONTENT
+        var popupPosX = popupX(screenX, viewportWidth, popupWidth)
+        var popupPosY = popupY(screenY, viewportHeight)
+
+        // Se mueve arrastrando el encabezado (la "x" conserva su propio toque).
+        var touchStartX = 0f
+        var touchStartY = 0f
+        var startPosX = 0
+        var startPosY = 0
+        header.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    touchStartX = event.rawX
+                    touchStartY = event.rawY
+                    startPosX = popupPosX
+                    startPosY = popupPosY
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val metrics = resources.displayMetrics
+                    popupPosX = (startPosX + (event.rawX - touchStartX).toInt())
+                        .coerceIn(0, (metrics.widthPixels - content.width).coerceAtLeast(0))
+                    popupPosY = (startPosY + (event.rawY - touchStartY).toInt())
+                        .coerceIn(0, (metrics.heightPixels - content.height).coerceAtLeast(0))
+                    vehicleInfoPopup?.update(popupPosX, popupPosY, -1, -1)
+                    true
+                }
+                else -> true
+            }
+        }
+
         vehicleInfoPopup = PopupWindow(content, popupWidth, popupHeight, true).apply {
             isOutsideTouchable = true
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             elevation = dp(10).toFloat()
-            showAtLocation(webView, android.view.Gravity.NO_GRAVITY, popupX(screenX, viewportWidth, popupWidth), popupY(screenY, viewportHeight))
+            showAtLocation(webView, android.view.Gravity.NO_GRAVITY, popupPosX, popupPosY)
         }
     }
 

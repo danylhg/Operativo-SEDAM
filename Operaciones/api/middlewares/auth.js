@@ -24,3 +24,16 @@ export function requireAuth(req, res, next) {
     return res.status(401).json({ ok: false, mensaje: "Token inválido" });
   }
 }
+
+// Restringe una ruta a ciertos roles. Va después de requireAuth.
+// Ej.: router.post("/catalog/x", requireAuth, requireRole("ADMIN"), handler)
+export function requireRole(...roles) {
+  const allowed = new Set(roles.map((r) => String(r).toUpperCase()));
+  return (req, res, next) => {
+    const rol = String(req.user?.rol || "").toUpperCase();
+    if (!allowed.has(rol)) {
+      return res.status(403).json({ ok: false, mensaje: "No tienes permisos para esta acción." });
+    }
+    next();
+  };
+}

@@ -355,7 +355,7 @@
       Cesium.Color.fromCssColorString("#00E5FF")
     ];
 
-    const OSRM_BASE = "https://router.project-osrm.org";
+    const OSRM_BASE = "https://router.project-osrm.org"; // solo funciona con internet; sin él se traza línea directa
     const ROUTE_COLOR_HEX = [
       "#FF00FF", "#FFA500", "#32CD32",
       "#FFC0CB", "#00BFFF", "#FF69B4",
@@ -367,33 +367,62 @@
     let firstOperationViewHandled = false;
     let restoredCameraAt = 0;
 
+    // Mapas sin internet: las teselas las sirve la API del servidor (/tiles/<capa>/z/x/y.png).
+    // Debajo va el mapa mundial NaturalEarthII incluido en Cesium para que nunca quede vacío.
+    function tileApiBase() {
+      try {
+        if (window.Android && typeof Android.getApiBase === 'function') {
+          return String(Android.getApiBase() || '').replace(/\/+$/, '');
+        }
+      } catch (_) {}
+      return '';
+    }
+
+    const tileLayerInfo = {};
+    function localTiles(layer, credit) {
+      return new Cesium.UrlTemplateImageryProvider({
+        url: tileApiBase() + '/tiles/' + layer + '/{z}/{x}/{y}.png',
+        minimumLevel: 0,
+        maximumLevel: 19,
+        credit: credit
+      });
+    }
+
     const BASE_LAYER_PROVIDERS = {
-      osm: () => new Cesium.UrlTemplateImageryProvider({
-        url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-        // Niveles superiores pueden devolver mosaicos grises de Esri en
-        // algunas zonas. Cesium ampliará el nivel 17 y mantendrá el mapa visible.
-        maximumLevel: 19,
-        credit: "© OpenStreetMap contributors"
+      world: () => new Cesium.UrlTemplateImageryProvider({
+        url: Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII') + '/{z}/{x}/{reverseY}.jpg',
+        tilingScheme: new Cesium.GeographicTilingScheme(),
+        maximumLevel: 2,
+        credit: 'Natural Earth'
       }),
-      satellite: () => new Cesium.UrlTemplateImageryProvider({
-        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        // Solicita el nivel disponible de fotografía aérea antes de ampliar una tesela.
-        // Por encima de este nivel Esri puede devolver mosaicos vacíos.
-        // Cesium ampliará la última tesela válida y el mapa seguirá visible.
-        maximumLevel: 19,
-        credit: "Esri World Imagery"
-      }),
-      reference: () => new Cesium.UrlTemplateImageryProvider({
-        url: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-        maximumLevel: 19,
-        credit: "Esri Reference"
-      })
+      // Sin paquete de calles instalado, "Normal" usa la imagen satelital.
+      osm: () => tileLayerInfo.osm ? localTiles('osm', 'OpenStreetMap') : localTiles('satellite', 'Imagen satelital'),
+      satellite: () => localTiles('satellite', 'Imagen satelital'),
+      reference: () => localTiles('reference', 'Referencias')
     };
+
+    // Consulta los niveles de zoom instalados en el servidor y redibuja la capa activa.
+    (function loadTileInfo() {
+      const base = tileApiBase();
+      if (!base) return;
+      fetch(base + '/tiles/info', { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .then(info => {
+          if (!info || !info.layers) return;
+          Object.assign(tileLayerInfo, info.layers);
+          if (typeof viewer !== 'undefined' && viewer && typeof setBaseLayer === 'function') {
+            setBaseLayer(localStorage.getItem('sedam_android_map_layer') || 'hybrid');
+          }
+        })
+        .catch(() => {});
+    })();
 
     // Si el servidor de imágenes falla, conserva un mapa visible usando calles.
     // Esto evita dejar el globo vacío con el mensaje "Map data not available".
     function addImageryWithFallback(primaryLayer, fallbackKey) {
       const provider = primaryLayer && primaryLayer.imageryProvider;
+      // Teselas faltantes (404) son normales: Cesium amplía la del nivel inferior. No cambiar de capa.
+      return;
       if (!provider || !provider.errorEvent) return;
       let failures = 0;
       let switched = false;
@@ -424,6 +453,7 @@
 
       updateLayerButtons(layerKey);
       viewer.imageryLayers.removeAll();
+      viewer.imageryLayers.addImageryProvider(BASE_LAYER_PROVIDERS.world());
 
       if (layerKey === "hybrid") {
         const satelliteLayer = viewer.imageryLayers.addImageryProvider(BASE_LAYER_PROVIDERS.satellite());
@@ -1695,13 +1725,7 @@
         requestRenderMode: true,
         // No renderizar cuadros de forma continua mientras el mapa está quieto.
         maximumRenderTimeChange: Infinity,
-        baseLayer: new Cesium.ImageryLayer(
-          new Cesium.UrlTemplateImageryProvider({
-            url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-            subdomains: 'abcd',
-            credit: '© OpenStreetMap contributors, © CARTO'
-          })
-        ),
+        baseLayer: new Cesium.ImageryLayer(BASE_LAYER_PROVIDERS.world()),
         terrainProvider: new Cesium.EllipsoidTerrainProvider(),
         timeline: false,
         animation: false,
@@ -3523,14 +3547,33 @@
     // =========================
     // Rutas - OSRM
     // =========================
+    // Sin internet (OSRM inaccesible) se traza una línea directa a 40 km/h para no bloquear la ruta.
     async function getOsrmRoute(start, end) {
+      try {
+        return await getOsrmRouteRemote(start, end);
+      } catch (err) {
+        console.warn('Ruta OSRM no disponible, usando línea directa: ' + (err && err.message));
+        const rad = Math.PI / 180;
+        const dLat = (end.lat - start.lat) * rad;
+        const dLon = (end.lon - start.lon) * rad;
+        const h = Math.sin(dLat / 2) ** 2 + Math.cos(start.lat * rad) * Math.cos(end.lat * rad) * Math.sin(dLon / 2) ** 2;
+        const distance = 2 * 6371000 * Math.asin(Math.sqrt(h));
+        return {
+          distance: distance,
+          duration: distance / (40 / 3.6),
+          geometry: { type: 'LineString', coordinates: [[start.lon, start.lat], [end.lon, end.lat]] }
+        };
+      }
+    }
+
+    async function getOsrmRouteRemote(start, end) {
       const url =
         `${OSRM_BASE}/route/v1/driving/` +
         `${start.lon},${start.lat};${end.lon},${end.lat}` +
         `?overview=full&geometries=geojson`;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 900000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       try {
         const response = await fetch(url, {
@@ -6256,14 +6299,12 @@
         const maxY = Math.max(0, Math.min(tileCount - 1, latToY(south)));
         const urls = [];
         const layer = localStorage.getItem('sedam_android_map_layer') || 'osm';
+        const tileBase = tileApiBase() + '/tiles/';
         const templates = layer === 'osm'
-          ? ['https://tile.openstreetmap.org/{z}/{x}/{y}.png']
+          ? [tileBase + 'osm/{z}/{x}/{y}.png']
           : layer === 'satellite'
-            ? ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}']
-            : [
-                'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
-              ];
+            ? [tileBase + 'satellite/{z}/{x}/{y}.png']
+            : [tileBase + 'satellite/{z}/{x}/{y}.png', tileBase + 'reference/{z}/{x}/{y}.png'];
 
         for (let x = minX; x <= maxX; x += 1) {
           for (let y = minY; y <= maxY; y += 1) {

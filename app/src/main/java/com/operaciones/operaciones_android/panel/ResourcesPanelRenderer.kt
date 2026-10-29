@@ -207,7 +207,7 @@ internal class ResourcesPanelRenderer(
                 addSectionHeader(list, "Vehiculos asignados")
                 val vehicles = vehiculosList.groupBy { it.idVehiculo }.map { it.value.first() }.sortedBy { vehicleLabel(it) }
                 if (vehicles.isEmpty()) addEmptyState(list, "Cargando vehiculos...")
-                else vehicles.forEach { addVehicleRow(list, it) }
+                else vehicles.forEach { addVehicleRow(list, it, vehiculosList, personalList) }
             }
             ResourceTab.WAYPOINTS -> {
                 val waypoints = poisList.filter { !isBlancoPoi(it) }
@@ -224,25 +224,27 @@ internal class ResourcesPanelRenderer(
             ResourceTab.EQUIPO_TACTICO -> renderEquipmentGroup(
                 list,
                 "Equipo tactico",
-                equiposList.filter { it.categoria.equals("TACTICO", ignoreCase = true) }
+                equiposList.filter { it.categoria.equals("TACTICO", ignoreCase = true) },
+                personalList
             )
             ResourceTab.EQUIPO_COMUNICACION -> renderEquipmentGroup(
                 list,
                 "Equipo de comunicacion",
-                equiposList.filter { it.categoria.equals("COMUNICACION", ignoreCase = true) }
+                equiposList.filter { it.categoria.equals("COMUNICACION", ignoreCase = true) },
+                personalList
             )
             ResourceTab.DISPOSITIVOS -> {
                 addSectionHeader(list, "Dispositivos asignados")
                 if (dispositivosList.isEmpty()) addEmptyState(list, "Cargando dispositivos...")
-                else dispositivosList.sortedWith(compareBy({ it.tipo }, { it.marca }, { it.modelo })).forEach { addDeviceRow(list, it) }
+                else dispositivosList.sortedWith(compareBy({ it.tipo }, { it.marca }, { it.modelo })).forEach { addDeviceRow(list, it, personalList) }
             }
         }
     }
 
-    private fun renderEquipmentGroup(list: LinearLayout, title: String, items: List<EquipoItem>) {
+    private fun renderEquipmentGroup(list: LinearLayout, title: String, items: List<EquipoItem>, personalList: List<PersonalItem>) {
         addSectionHeader(list, title)
         if (items.isEmpty()) addEmptyState(list, "Sin elementos en esta seccion")
-        else items.sortedBy { it.nombre.ifBlank { it.numeroSerie } }.forEach { addEquipmentRow(list, it) }
+        else items.sortedBy { it.nombre.ifBlank { it.numeroSerie } }.forEach { addEquipmentRow(list, it, personalList) }
     }
 
     private fun addPersonalRow(list: LinearLayout, person: PersonalItem) {
@@ -275,31 +277,82 @@ internal class ResourcesPanelRenderer(
         list.addView(row)
     }
 
-    private fun addVehicleRow(list: LinearLayout, vehicle: VehiculoItem) {
+    /** Personas asignadas al vehículo como "Tte. Nombre Apellido" (todas las filas del vehículo). */
+    private fun vehicleAssignedPeople(
+        vehicle: VehiculoItem,
+        vehiculosList: List<VehiculoItem>,
+        personalList: List<PersonalItem>
+    ): List<String> =
+        vehiculosList.filter { it.idVehiculo == vehicle.idVehiculo }.mapNotNull { row ->
+            val person = row.idPersonalAsignado?.let { id -> personalList.firstOrNull { it.idPersonal == id } }
+            when {
+                person != null -> displayNameWithRank(person)
+                row.personalNombre.isNotBlank() || row.personalApellido.isNotBlank() -> {
+                    val rank = abbreviateRank(row.personalPuesto)
+                    listOf(rank, "${row.personalNombre} ${row.personalApellido}".trim())
+                        .filter { it.isNotBlank() }.joinToString(" ")
+                }
+                row.asignadoAApodo.isNotBlank() -> row.asignadoAApodo
+                else -> null
+            }
+        }.distinct()
+
+    private fun addVehicleRow(
+        list: LinearLayout,
+        vehicle: VehiculoItem,
+        vehiculosList: List<VehiculoItem>,
+        personalList: List<PersonalItem>
+    ) {
         val row = host.getLayoutInflater().inflate(R.layout.item_equipo, list, false)
         val rowLabel = vehicleLabel(vehicle)
         row.tag = rowLabel
 
-        row.findViewById<TextView>(R.id.equipoIcon).text = when {
-            vehicle.tipo.equals("INTERCEPTOR", ignoreCase = true) -> "INT"
-            vehicle.tipo.equals("BLINDADO", ignoreCase = true) -> "BLD"
-            vehicle.tipo.equals("PICKUP", ignoreCase = true) -> "PK"
-            else -> "VEH"
-        }
+        setCenteredIcon(row, R.drawable.ic_resource_vehicle)
         row.findViewById<TextView>(R.id.equipoNombre).text = rowLabel
-        row.findViewById<TextView>(R.id.equipoDetalle).text = vehicleDetail(vehicle)
+        val detail = row.findViewById<TextView>(R.id.equipoDetalle)
+        val people = vehicleAssignedPeople(vehicle, vehiculosList, personalList)
+        if (people.isEmpty()) {
+            detail.text = vehicleDetail(vehicle)
+        } else {
+            detail.text = "Asignado"
+            detail.compoundDrawablePadding = dp(row, 4f)
+            detail.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_chevron_down, 0)
+            detail.setPadding(0, dp(row, 4f), dp(row, 12f), dp(row, 2f))
+
+            // Lista desplegable con todas las personas del vehículo.
+            val column = detail.parent as LinearLayout
+            val peopleBox = LinearLayout(row.context).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+                setPadding(0, dp(row, 4f), 0, 0)
+                people.forEach { name ->
+                    addView(TextView(row.context).apply {
+                        text = name
+                        setTextColor(Color.parseColor("#C5D3E6"))
+                        textSize = 12f
+                        setPadding(0, dp(row, 3f), 0, dp(row, 3f))
+                    })
+                }
+            }
+            column.addView(peopleBox)
+            detail.setOnClickListener {
+                val expand = peopleBox.visibility != View.VISIBLE
+                peopleBox.visibility = if (expand) View.VISIBLE else View.GONE
+                detail.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                    0, 0, if (expand) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down, 0
+                )
+            }
+        }
         row.findViewById<TextView>(R.id.equipoTipo).text = vehicle.tipo.ifBlank { "VEHICULO" }.uppercase()
 
         val live = liveVehiculoLocations[vehicle.idVehiculo]
         val lat = live?.first ?: vehicle.lat
         val lon = live?.second ?: vehicle.lon
         val hasLocation = lat != null && lon != null && isValidLocation(lat, lon)
-        if (hasLocation) {
-            setSelectableForeground(row)
-            row.setOnClickListener {
-                selectVehiculo(vehicle.idVehiculo)
-                host.selectVehiculoOnMap(vehicle.idVehiculo, lat!!, lon!!, rowLabel)
-            }
+        // Tocar la tarjeta ya no abre el cuadro de información; el mapa se abre con el botón.
+        addMapButton(row) {
+            selectVehiculo(vehicle.idVehiculo)
+            host.focusVehiculoOnMap(vehicle.idVehiculo, lat, lon, rowLabel)
         }
 
         vehiculoRows[vehicle.idVehiculo] = row
@@ -307,30 +360,88 @@ internal class ResourcesPanelRenderer(
         list.addView(row)
     }
 
-    private fun addEquipmentRow(list: LinearLayout, item: EquipoItem) {
+    /** Icono centrado en el recuadro de la tarjeta (un drawable del TextView quedaba pegado arriba). */
+    private fun setCenteredIcon(row: View, iconRes: Int) {
+        row.findViewById<TextView>(R.id.equipoIcon).apply {
+            text = ""
+            androidx.core.content.ContextCompat.getDrawable(context, iconRes)?.let { icon ->
+                foreground = android.graphics.drawable.LayerDrawable(arrayOf(icon)).apply {
+                    setLayerSize(0, dp(row, 22f), dp(row, 22f))
+                    setLayerGravity(0, android.view.Gravity.CENTER)
+                }
+            }
+        }
+    }
+
+    /** Pone bajo el tipo/estado de la tarjeta un botón "Ver en mapa" con icono de ubicación. */
+    private fun addMapButton(row: View, onClick: () -> Unit) {
+        val typeLabel = row.findViewById<TextView>(R.id.equipoTipo)
+        val rightColumn = LinearLayout(row.context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.END
+        }
+        (typeLabel.parent as LinearLayout).let { parent ->
+            parent.removeView(typeLabel)
+            parent.addView(rightColumn)
+        }
+        rightColumn.addView(typeLabel)
+        rightColumn.addView(TextView(row.context).apply {
+            text = "Ver en mapa"
+            setTextColor(Color.parseColor("#69B4FF"))
+            textSize = 11f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = android.view.Gravity.CENTER
+            compoundDrawablePadding = dp(row, 4f)
+            androidx.core.content.ContextCompat.getDrawable(row.context, R.drawable.ic_attach_location)?.mutate()?.let {
+                it.setTint(Color.parseColor("#69B4FF"))
+                it.setBounds(0, 0, dp(row, 13f), dp(row, 13f))
+                setCompoundDrawablesRelative(it, null, null, null)
+            }
+            setPadding(dp(row, 10f), dp(row, 5f), dp(row, 10f), dp(row, 5f))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(row, 14f).toFloat()
+                setColor(Color.parseColor("#152A43"))
+                setStroke(dp(row, 1f), Color.parseColor("#2F5D8C"))
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(row, 6f) }
+            setOnClickListener { onClick() }
+        })
+    }
+
+    /** "Tte. Nombre Apellido" a partir del id (si está en la lista) o de los textos disponibles. */
+    private fun assignedPersonLabel(
+        idPersonal: Int?,
+        fallbackName: String,
+        fallbackRank: String,
+        personalList: List<PersonalItem>
+    ): String {
+        val person = idPersonal?.let { id -> personalList.firstOrNull { it.idPersonal == id } }
+        if (person != null) return displayNameWithRank(person)
+        val rank = abbreviateRank(fallbackRank)
+        return listOf(rank, fallbackName.trim()).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    private fun addEquipmentRow(list: LinearLayout, item: EquipoItem, personalList: List<PersonalItem>) {
         val row = host.getLayoutInflater().inflate(R.layout.item_equipo, list, false)
         val rowLabel = item.nombre.ifBlank { "E-${item.idEquipo}" }
         row.tag = rowLabel
 
-        row.findViewById<TextView>(R.id.equipoIcon).text = when {
-            item.categoria.equals("COMUNICACION", ignoreCase = true) -> "COM"
-            item.categoria.equals("TACTICO", ignoreCase = true) -> "TAC"
-            else -> "EQP"
-        }
+        val isComm = item.categoria.equals("COMUNICACION", ignoreCase = true)
+        setCenteredIcon(row, if (isComm) R.drawable.ic_resource_comm else R.drawable.ic_resource_tactical)
         row.findViewById<TextView>(R.id.equipoNombre).text = rowLabel
-        row.findViewById<TextView>(R.id.equipoDetalle).text = equipmentDetail(item)
+        row.findViewById<TextView>(R.id.equipoDetalle).text = equipmentDetail(item, personalList)
         row.findViewById<TextView>(R.id.equipoTipo).text = item.categoria.ifBlank { "EQUIPO" }.uppercase()
 
         val live = liveEquipoLocations[item.idEquipo]
         val lat = live?.first ?: item.lat
         val lon = live?.second ?: item.lon
         val hasLocation = lat != null && lon != null && isValidLocation(lat, lon)
-        if (hasLocation) {
-            setSelectableForeground(row)
-            row.setOnClickListener {
-                selectEquipo(item.idEquipo)
-                host.selectEquipoOnMap(item.idEquipo, lat, lon, rowLabel)
-            }
+        addMapButton(row) {
+            selectEquipo(item.idEquipo)
+            host.focusEquipoOnMap(item.idEquipo, lat, lon, rowLabel)
         }
 
         equipoRows[item.idEquipo] = row
@@ -338,26 +449,49 @@ internal class ResourcesPanelRenderer(
         list.addView(row)
     }
 
-    private fun addDeviceRow(list: LinearLayout, item: DispositivoItem) {
+    private fun addDeviceRow(list: LinearLayout, item: DispositivoItem, personalList: List<PersonalItem>) {
         val row = host.getLayoutInflater().inflate(R.layout.item_equipo, list, false)
         val rowLabel = deviceLabel(item)
         row.tag = rowLabel
 
-        row.findViewById<TextView>(R.id.equipoIcon).text = deviceIconText(item)
+        setCenteredIcon(row, deviceIconRes(item))
         row.findViewById<TextView>(R.id.equipoNombre).text = rowLabel
-        row.findViewById<TextView>(R.id.equipoDetalle).text = deviceDetail(item)
+        val detail = row.findViewById<TextView>(R.id.equipoDetalle)
+        val responsible = assignedPersonLabel(
+            item.idPersonal,
+            listOf(item.personalNombre, item.personalApellido).filter { it.isNotBlank() }
+                .joinToString(" ").ifBlank { item.personalApodo },
+            item.personalPuesto,
+            personalList
+        )
+        detail.text = if (responsible.isNotBlank()) "Asignado: $responsible" else "Sin asignar"
+        // Segunda línea con la batería.
+        item.bateriaPct?.let { battery ->
+            val pct = battery.toInt()
+            (detail.parent as LinearLayout).addView(TextView(row.context).apply {
+                text = "Batería: $pct%"
+                textSize = 11f
+                setTextColor(
+                    Color.parseColor(
+                        when {
+                            pct >= 50 -> "#22c55e"
+                            pct >= 20 -> "#f59e0b"
+                            else -> "#ef4444"
+                        }
+                    )
+                )
+                setPadding(0, dp(row, 2f), 0, 0)
+            })
+        }
         row.findViewById<TextView>(R.id.equipoTipo).text = item.estado.ifBlank { "DISP" }.uppercase()
 
         val live = liveDispositivoLocations[item.idDispositivo]
         val lat = live?.first ?: item.lat
         val lon = live?.second ?: item.lon
         val hasLocation = lat != null && lon != null && isValidLocation(lat, lon)
-        if (hasLocation) {
-            setSelectableForeground(row)
-            row.setOnClickListener {
-                selectDispositivo(item.idDispositivo)
-                host.selectDispositivoOnMap(item.idDispositivo, lat, lon, rowLabel)
-            }
+        addMapButton(row) {
+            selectDispositivo(item.idDispositivo)
+            host.focusDispositivoOnMap(item.idDispositivo, lat, lon, rowLabel)
         }
 
         dispositivoRows[item.idDispositivo] = row
@@ -661,15 +795,32 @@ internal class ResourcesPanelRenderer(
             rank.contains("capitán de navío") || rank.contains("capitan de navio") -> "Cap. Nav."
             rank.contains("capitán de fragata") || rank.contains("capitan de fragata") -> "Cap. Frag."
             rank.contains("capitán de corbeta") || rank.contains("capitan de corbeta") -> "Cap. Corb."
-            rank.contains("capitán") || rank.contains("capitan") -> "Cap."
+            rank.contains("capitán 1/o") || rank.contains("capitan 1/o") || rank.contains("capitán primero") -> "Cap. 1/o"
+            rank.contains("capitán 2/o") || rank.contains("capitan 2/o") || rank.contains("capitán segundo") -> "Cap. 2/o"
+            rank.contains("capitán") || rank.contains("capitan") || rank == "cap" || rank == "cap." -> "Cap."
             rank.contains("teniente de navío") || rank.contains("teniente de navio") -> "Tte. Nav."
             rank.contains("teniente de fragata") -> "Tte. Frag."
             rank.contains("teniente de corbeta") -> "Tte. Corb."
-            rank.contains("teniente") -> "Tte."
-            rank.contains("sargento") -> "Sgto."
-            rank.contains("cabo") -> "Cbo."
-            rank.contains("marinero") -> "Mro."
-            rank.contains("soldado") -> "Sld."
+            rank.contains("teniente coronel") -> "Tte. Cnel."
+            rank.contains("primer teniente") || rank.contains("1er teniente") -> "1er. Tte."
+            rank.contains("segundo teniente") || rank.contains("2do teniente") -> "2do. Tte."
+            rank.contains("subteniente") || rank == "subtte" || rank == "subtte." -> "Subtte."
+            rank.contains("teniente") || rank == "tte" || rank == "tte." -> "Tte."
+            rank.contains("sargento 1/o") || rank.contains("sargento primero") -> "Sgto. 1/o"
+            rank.contains("sargento 2/o") || rank.contains("sargento segundo") -> "Sgto. 2/o"
+            rank.contains("sargento") || rank == "sgto" || rank == "sgto." -> "Sgto."
+            rank.contains("cabo") || rank == "cbo" || rank == "cbo." -> "Cbo."
+            rank.contains("marinero") || rank == "mro" || rank == "mro." -> "Mro."
+            rank.contains("soldado") || rank == "sld" || rank == "sld." -> "Sld."
+            rank.contains("general de división") || rank.contains("general de division") -> "Gral. Div."
+            rank.contains("general de brigada") -> "Gral. Brig."
+            rank.contains("general brigadier") -> "Gral. Bgda."
+            rank.contains("general") || rank == "gral" || rank == "gral." -> "Gral."
+            rank.contains("vicealmirante") || rank == "valm" || rank == "valm." -> "Valm."
+            rank.contains("contralmirante") || rank == "calm" || rank == "calm." -> "Calm."
+            rank.contains("almirante") || rank == "alm" || rank == "alm." -> "Alm."
+            rank.contains("coronel") || rank == "cnel" || rank == "cnel." -> "Cnel."
+            rank.contains("mayor") || rank == "my" || rank == "my." -> "My."
             else -> ""
         }
     }
@@ -720,17 +871,18 @@ internal class ResourcesPanelRenderer(
         else -> "Sin asignacion visible"
     }
 
-    private fun equipmentDetail(item: EquipoItem): String = buildString {
-        append(item.numeroSerie.ifBlank { "Sin numero" })
+    /** "Asignado: …" con el cargo y nombre si es una persona; sin número de serie. */
+    private fun equipmentDetail(item: EquipoItem, personalList: List<PersonalItem>): String {
         val destino = when {
             item.vehiculoAsignado.isNotBlank() -> item.vehiculoAsignado
-            item.personalAsignado.isNotBlank() -> item.personalAsignado
+            item.personalAsignado.isNotBlank() || item.idPersonalAsignado != null ->
+                assignedPersonLabel(item.idPersonalAsignado, item.personalAsignado, "", personalList)
             item.grupoAsignado.isNotBlank() -> item.grupoAsignado
             item.flotillaAsignada.isNotBlank() -> item.flotillaAsignada
             item.asignadoA.isNotBlank() -> item.asignadoA
             else -> ""
         }
-        if (destino.isNotBlank()) append(" - $destino")
+        return if (destino.isNotBlank()) "Asignado: $destino" else "Sin asignar"
     }
 
     private fun deviceLabel(item: DispositivoItem): String =
@@ -739,32 +891,15 @@ internal class ResourcesPanelRenderer(
             .joinToString(" ")
             .ifBlank { "Dispositivo ${item.idDispositivo}" }
 
-    private fun deviceIconText(item: DispositivoItem): String {
+    private fun deviceIconRes(item: DispositivoItem): Int {
         val tipo = item.tipo.uppercase()
         return when {
-            tipo.contains("TABLET") -> "TAB"
-            tipo.contains("WATCH") || tipo.contains("RELOJ") -> "WCH"
-            tipo.contains("LORA") -> "LOR"
-            tipo.contains("RADIO") -> "RAD"
-            tipo.contains("CAM") -> "CAM"
-            else -> "DEV"
+            tipo.contains("TABLET") -> R.drawable.ic_resource_tablet
+            tipo.contains("WATCH") || tipo.contains("RELOJ") -> R.drawable.ic_resource_watch
+            tipo.contains("LORA") || tipo.contains("RADIO") -> R.drawable.ic_resource_antenna
+            tipo.contains("CAM") -> R.drawable.ic_resource_camera
+            else -> R.drawable.ic_resource_phone
         }
-    }
-
-    private fun deviceDetail(item: DispositivoItem): String = buildString {
-        val serial = item.numeroSerie.ifBlank { item.imei }
-        if (serial.isNotBlank()) append("Serie: $serial")
-        val fullName = listOf(item.personalNombre, item.personalApellido).filter { it.isNotBlank() }.joinToString(" ")
-        val responsible = fullName.ifBlank { item.personalApodo }
-        if (responsible.isNotBlank()) {
-            if (isNotEmpty()) append(" - ")
-            append("Custodio: $responsible")
-        }
-        if (item.bateriaPct != null) {
-            if (isNotEmpty()) append(" - ")
-            append("Bateria: ${item.bateriaPct.toInt()}%")
-        }
-        if (isEmpty()) append("Sin detalle")
     }
 
     private fun hasVehiculoLocation(id: Int): Boolean = liveVehiculoLocations[id] != null

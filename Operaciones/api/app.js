@@ -22,6 +22,7 @@ import zonaRoutes from "./routes/zona.routes.js";
 import validationRoutes from "./routes/validation.routes.js";
 import replayRoutes from "./routes/replay.routes.js";
 import pttRoutes from "./routes/ptt.routes.js";
+import tilesRoutes from "./routes/tiles.routes.js";
 
 const app = express();
 
@@ -48,6 +49,7 @@ const webRoot = join(__dirname, "..");
 app.use("/Operaciones", express.static(webRoot));
 app.use(express.static(webRoot));
 
+app.use("/", tilesRoutes); // antes del logger: son muchas peticiones por mapa
 app.use(requestLogger);
 
 app.use("/", systemRoutes);

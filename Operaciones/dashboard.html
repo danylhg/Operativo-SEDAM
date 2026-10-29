@@ -6,14 +6,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Panorama táctico</title>
 
-  <link rel="stylesheet" href="css/dashboard.css?v=20261009-route-popup" />
+  <link rel="stylesheet" href="css/dashboard.css?v=20261027-estado" />
   <script src="js/api_config.js?v=20261002-public-api"></script>
-  <script src="js/auth_check.js"></script>
+  <script src="js/auth_check.js?v=2-admin"></script>
 
-  <link href="https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
-  <script src="https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/Cesium.js"></script>
+  <script src="js/canvas_noise_fix.js?v=20261028-2"></script>
+  <script>window.CESIUM_BASE_URL = "vendor/cesium/";</script>
+  <link href="vendor/cesium/Widgets/widgets.css" rel="stylesheet">
+  <script src="vendor/cesium/Cesium.js"></script>
 
   <script defer src="js/libs/milsymbol.min.js"></script>
+  <script src="js/offline_tiles.js"></script>
 </head>
 
 <body>
@@ -779,7 +782,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/dashboard/dashboard.js?v=20261009-route-popup"></script>
+  <script type="module" src="js/dashboard/dashboard.js?v=20261027-estado"></script>
 
 </body>
 

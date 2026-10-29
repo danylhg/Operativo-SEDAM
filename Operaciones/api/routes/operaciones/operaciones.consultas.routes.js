@@ -5,7 +5,7 @@ import { Router } from "express";
 import { pool } from "../../db.js";
 
 // Middleware que exige autenticación antes de entrar a cualquier endpoint
-import { requireAuth } from "../../middlewares/auth.js";
+import { requireAuth, requireRole } from "../../middlewares/auth.js";
 
 // Helper para responder errores de BD de forma uniforme
 import { sendDbError } from "../../utils/dbErrors.js";
@@ -16,6 +16,42 @@ import { ensureExtendedTrackingSchema } from "../../utils/trackingSchema.js";
 
 // Crea el router que se exportará al final
 const router = Router();
+
+// =========================================================
+// GET /ops/supervision
+// Qué hace:
+//   Lista las operaciones ACTIVAS con su zona para que un Administrador
+//   entre desde la app móvil como supervisor (sin estar asignado).
+// Importante:
+//   Debe declararse antes que /ops/:id.
+// =========================================================
+router.get("/ops/supervision", requireAuth, requireRole("ADMIN"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         o.id_operacion, o.codigo, o.nombre, o.descripcion,
+         o.prioridad, o.estado, o.fecha_inicio, o.fecha_fin,
+         CASE WHEN z.id_operacion IS NULL THEN NULL ELSE json_build_object(
+           'centroide_lat', z.centroide_lat,
+           'centroide_lon', z.centroide_lon,
+           'zoom_inicial', z.zoom_inicial
+         ) END AS zona
+       FROM operacion o
+       LEFT JOIN LATERAL (
+         SELECT id_operacion, centroide_lat, centroide_lon, zoom_inicial
+         FROM zona_operacion
+         WHERE id_operacion = o.id_operacion
+         LIMIT 1
+       ) z ON TRUE
+       WHERE o.estado = 'ACTIVA'
+       ORDER BY o.fecha_inicio DESC NULLS LAST, o.id_operacion DESC`
+    );
+
+    return res.json({ ok: true, items: rows });
+  } catch (err) {
+    return sendDbError(res, err, "Error obteniendo operaciones para supervisión");
+  }
+});
 
 
 // =========================================================

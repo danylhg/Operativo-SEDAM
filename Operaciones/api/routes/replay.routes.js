@@ -7,20 +7,11 @@ import { ensureTimelineSchema } from "../utils/timeline.js";
 import { fetchOperationGrid } from "../utils/grid.js";
 import { ensureExtendedTrackingSchema } from "../utils/trackingSchema.js";
 import { ensureGeoMsgSchema } from "../utils/geoMsg.js";
+import { isTargetPoi } from "../utils/poiMotion.js";
 
 const router = Router();
 const MAX_TRACKING_EVENTS_PER_LAYER = 100000;
 const MAX_TIMELINE_EVENTS = 100000;
-
-// Los waypoints y los blancos comparten tabla (puntos_interes). Un blanco es un
-// objeto MIL-STD-2525 de unidad (SIDC "S...") o con tipo_poi MIL; todo lo demas
-// (SIDC de grafico tactico "G...", PDI) es un waypoint.
-function isTargetPoi(row) {
-  const sidc = String(row?.sidc || row?.icono_src || "").toUpperCase();
-  if (sidc.startsWith("S")) return true;
-  if (sidc.startsWith("G")) return false;
-  return String(row?.tipo_poi || "").toUpperCase() === "MIL";
-}
 
 function rowsToEvents(rows, mapFn) {
   return rows.map(mapFn).filter(Boolean);

@@ -40,6 +40,12 @@ const deleteOperationCancel = document.getElementById("deleteOperationCancel");
 
 let allOps = [];
 
+// Oculta el sistema de control desde el inicio para no mostrarlo un instante
+// a quien no es administrador; init() lo confirma con /me.
+if ((localStorage.getItem("rol") || "").toUpperCase() !== "ADMIN") {
+  btnPersonal.style.display = "none";
+}
+
 function confirmOperationDeletion() {
   return new Promise((resolve) => {
     if (!deleteOperationModal || !deleteOperationConfirm || !deleteOperationCancel) {
@@ -93,6 +99,11 @@ async function init() {
 
   const displayName = usuario.nombre ?? usuario.username;
   userName.textContent = displayName;
+
+  // El sistema de control solo se muestra al rol Administrador.
+  const esAdmin = String(usuario.rol || "").toUpperCase() === "ADMIN";
+  btnPersonal.style.display = esAdmin ? "" : "none";
+  if (!esAdmin) submenuControl.classList.add("hidden");
 }
 
 btnLogout.addEventListener("click", () => {

@@ -27,7 +27,7 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
-/** Unidad de la red SEDAM recibida por el socket (OWNPOS / TRACKPOS / RADIOPOS). */
+/** Unidad de la red SEDAM recibida por el socket (OWNPOS / TRACKPOS / RADIOPOS / WAYPOINTPOS). */
 data class SedamUnitPosition(
     val id: String,
     val lat: Double,
@@ -203,7 +203,7 @@ class SedamSocketManager(
             "TRACKPOS" -> {
                 val unit = fields.getOrNull(1)?.trim().orEmpty()
                 val num = fields.getOrNull(2)?.trim().orEmpty()
-                if (unit.isEmpty() || unit == myId) return
+                if (unit.isEmpty() || num.isEmpty() || unit == myId) return
                 val key = "T$unit-$num"
                 val lat = fields.getOrNull(5).toCoord() ?: 0.0
                 val lon = fields.getOrNull(6).toCoord() ?: 0.0
@@ -213,6 +213,20 @@ class SedamSocketManager(
                     key, lat, lon, fields.getOrNull(8).toCoord(), fields.getOrNull(9).toCoord(),
                     fields.getOrNull(3)?.trim()?.takeIf { it.length >= 10 }, fields.getOrNull(4)?.trim()
                 )
+            }
+            "WAYPOINTPOS" -> {
+                // Igual que la app y la web de SEDAM: primero el id del waypoint y después el del dueño.
+                val waypoint = fields.getOrNull(1)?.trim().orEmpty()
+                val owner = fields.getOrNull(2)?.trim().orEmpty()
+                if (waypoint.isEmpty() || owner.isEmpty() || owner == myId) return
+                val key = "W$owner-$waypoint"
+                // El dueño lo deja de compartir o lo elimina con REMOVE.
+                if (fields.getOrNull(3)?.trim()?.uppercase() == "REMOVE") { onTrackRemoved(key); return }
+                val lat = fields.getOrNull(5).toCoord() ?: return
+                val lon = fields.getOrNull(6).toCoord() ?: return
+                // Igual que los blancos: 0,0 también es señal de borrado.
+                if (lat == 0.0 && lon == 0.0) { onTrackRemoved(key); return }
+                emitUnit(key, lat, lon, null, null, fields.getOrNull(3)?.trim()?.takeIf { it.length >= 10 }, fields.getOrNull(4)?.trim())
             }
             "ID_ALIAS" -> {
                 val id = fields.getOrNull(1)?.trim().orEmpty()

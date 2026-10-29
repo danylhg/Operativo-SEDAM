@@ -59,55 +59,56 @@
 
   const TIPOS = ["TELEFONO", "TABLET", "SMARTWATCH", "LORA", "LAPTOP", "RADIO", "GPS", "OTRO"];
   const ESTADOS = ["DISPONIBLE", "ASIGNADO", "MANTENIMIENTO", "BAJA"];
-  const DISPOSITIVO_FIELDS = ["numero_telefono", "imei", "numero_serie", "sistema_operativo"];
+  const DISPOSITIVO_FIELDS = ["sesion_trabajo", "numero_telefono", "imei", "numero_serie", "sistema_operativo"];
   const DEVICE_FIELD_RULES = {
     "": {
-      visible: [],
+      visible: ["sesion_trabajo"],
       required: [],
       detallesPlaceholder: "Observaciones generales del dispositivo...",
     },
     TELEFONO: {
-      visible: ["numero_telefono", "imei", "numero_serie", "sistema_operativo"],
+      visible: ["sesion_trabajo", "numero_telefono", "imei", "numero_serie", "sistema_operativo"],
       required: ["numero_telefono", "imei", "sistema_operativo"],
       detallesPlaceholder: "Compania, SIM, cargador, accesorios u observaciones...",
     },
     TABLET: {
-      visible: ["imei", "numero_serie", "sistema_operativo"],
+      visible: ["sesion_trabajo", "imei", "numero_serie", "sistema_operativo"],
       required: ["numero_serie", "sistema_operativo"],
       detallesPlaceholder: "Funda, cargador, SIM de datos si aplica u observaciones...",
     },
     SMARTWATCH: {
-      visible: ["imei", "numero_serie", "sistema_operativo"],
+      visible: ["sesion_trabajo", "imei", "numero_serie", "sistema_operativo"],
       required: ["numero_serie", "sistema_operativo"],
       detallesPlaceholder: "Cargador, color, talla, sensores u observaciones...",
     },
     LORA: {
-      visible: ["numero_serie"],
+      visible: ["sesion_trabajo", "numero_serie"],
       required: ["numero_serie"],
       detallesPlaceholder: "DevEUI/AppEUI, frecuencia, antena u observaciones...",
     },
     LAPTOP: {
-      visible: ["numero_serie", "sistema_operativo"],
+      visible: ["sesion_trabajo", "numero_serie", "sistema_operativo"],
       required: ["numero_serie", "sistema_operativo"],
       detallesPlaceholder: "Cargador, RAM, almacenamiento, accesorios u observaciones...",
     },
     RADIO: {
-      visible: ["numero_serie"],
+      visible: ["sesion_trabajo", "numero_serie"],
       required: ["numero_serie"],
       detallesPlaceholder: "Banda, canal, frecuencia, bateria u observaciones...",
     },
     GPS: {
-      visible: ["imei", "numero_serie"],
+      visible: ["sesion_trabajo", "imei", "numero_serie"],
       required: ["numero_serie"],
       detallesPlaceholder: "ID de tracker, chip interno, accesorios u observaciones...",
     },
     OTRO: {
-      visible: ["numero_telefono", "imei", "numero_serie", "sistema_operativo"],
+      visible: ["sesion_trabajo", "numero_telefono", "imei", "numero_serie", "sistema_operativo"],
       required: [],
       detallesPlaceholder: "Descripcion, identificadores y observaciones...",
     },
   };
   const DEVICE_FIELD_LABELS = {
+    sesion_trabajo: "Sesión de trabajo",
     numero_telefono: "Num. telefono",
     imei: "IMEI",
     numero_serie: "Num. serie",
@@ -169,6 +170,7 @@
   const dropZoneDisp = document.getElementById("dropZoneDisp");
   const fImagenDisp = document.getElementById("fImagenDisp");
   const previewImgDisp = document.getElementById("previewImgDisp");
+  const fSesionTrabajo = document.getElementById("fSesionTrabajo");
   const fNumeroTelefono = document.getElementById("fNumeroTelefono");
   const fImei = document.getElementById("fImei");
   const fNumeroSerie = document.getElementById("fNumeroSerie");
@@ -179,6 +181,12 @@
     controlUserName.textContent = localStorage.getItem("nombre") || localStorage.getItem("username") || "Admin";
   }
   const deviceFieldControls = {
+    sesion_trabajo: {
+      el: fSesionTrabajo,
+      field: fSesionTrabajo?.closest(".field"),
+      label: fSesionTrabajo?.closest(".field")?.querySelector("label"),
+      labelText: DEVICE_FIELD_LABELS.sesion_trabajo,
+    },
     numero_telefono: {
       el: fNumeroTelefono,
       field: fNumeroTelefono?.closest(".field"),
@@ -313,6 +321,7 @@
       imei: d.imei ?? "",
       numero_serie: d.numero_serie ?? "",
       sistema_operativo: d.sistema_operativo ?? "",
+      sesion_trabajo: d.sesion_trabajo ?? "",
       estado: d.estado ?? "DISPONIBLE",
       responsable: d.responsable ?? "",
       detalles: d.detalles ?? "",
@@ -331,6 +340,7 @@
       if (!q) return true;
 
       return (
+        normalize(d.sesion_trabajo).includes(q) ||
         normalize(d.tipo).includes(q) ||
         normalize(d.marca).includes(q) ||
         normalize(d.modelo).includes(q) ||
@@ -362,7 +372,7 @@
 
     if (!list.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="10" style="color: rgba(11,18,32,.65); padding: 16px;">
+      tr.innerHTML = `<td colspan="11" style="color: rgba(11,18,32,.65); padding: 16px;">
         No hay registros con los filtros actuales.
       </td>`;
       tbody.appendChild(tr);
@@ -373,6 +383,7 @@
 
         tr.innerHTML = `
           <td>${renderDeviceImage(d.imagen_disp, `${d.marca} ${d.modelo}`)}</td>
+          <td>${escapeHtml(d.sesion_trabajo || "-")}</td>
           <td>${escapeHtml(d.tipo || "-")}</td>
           <td>${escapeHtml(d.marca || "-")}</td>
           <td>${escapeHtml(d.modelo || "-")}</td>
@@ -427,6 +438,7 @@
     if (!d) return;
 
     fTipo.value = d.tipo ?? "";
+    fSesionTrabajo.value = d.sesion_trabajo ?? "";
     fMarca.value = d.marca ?? "";
     fModelo.value = d.modelo ?? "";
     fNumeroTelefono.value = d.numero_telefono ?? "";
@@ -544,6 +556,7 @@
       imei: readDeviceField("imei", rule),
       numero_serie: readDeviceField("numero_serie", rule),
       sistema_operativo: readDeviceField("sistema_operativo", rule),
+      sesion_trabajo: readDeviceField("sesion_trabajo", rule),
       detalles: fDetalles?.value?.trim() || null,
       imagen_disp: imagenBase64 || null,
     };

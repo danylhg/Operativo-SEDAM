@@ -8262,3 +8262,122 @@ body *:not(#_perf1):not(#_perf2) {
 .chatForwardOverlay .chatForwardPicker {
   position: static;
 }
+
+/* ── Red SEDAM: panel de unidades, blancos/waypoints y mensajes ── */
+.sedamPanel {
+  position: fixed;
+  left: 92px;
+  bottom: 16px;
+  z-index: 1205;
+  width: min(330px, calc(100vw - 108px));
+  max-height: min(60vh, 520px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--dash-border);
+  border-radius: 14px;
+  background: rgba(8, 20, 38, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--dash-shadow);
+  color: var(--dash-text);
+  overflow: hidden;
+}
+
+.sedamPanel.collapsed { width: auto; }
+.sedamPanel.collapsed .sedamPanelTabs,
+.sedamPanel.collapsed .sedamPanelBody { display: none; }
+.sedamPanel.hasPanic { border-color: var(--dash-danger); }
+
+.sedamPanelHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 800;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.sedamPanelDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+.sedamPanel.hasPanic .sedamPanelDot { background: var(--dash-danger); box-shadow: 0 0 8px var(--dash-danger); }
+
+.sedamPanelTitle { flex: 1; text-align: left; text-transform: uppercase; font-size: 12px; color: #fbbf24; }
+
+.sedamPanelCount {
+  min-width: 26px;
+  padding: 1px 7px;
+  border: 1px solid rgba(251, 191, 36, .5);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.sedamPanelTabs { display: flex; border-top: 1px solid var(--dash-border); border-bottom: 1px solid var(--dash-border); }
+
+.sedamPanelTab {
+  flex: 1;
+  position: relative;
+  padding: 7px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--dash-muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: .7;
+}
+.sedamPanelTab.active { opacity: 1; color: #fbbf24; box-shadow: inset 0 -2px 0 #fbbf24; }
+
+.sedamBadge {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--dash-danger);
+  color: #fff;
+  font-size: 10px;
+}
+
+.sedamPanelBody { overflow-y: auto; }
+
+.sedamRow,
+.sedamMsg {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid rgba(186, 230, 253, .12);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+button.sedamRow, button.sedamMsg { cursor: pointer; }
+button.sedamRow:hover, button.sedamMsg:hover { background: var(--dash-surface-soft); }
+.sedamRow.panic { background: var(--dash-danger-soft); }
+
+.sedamRowIcon { width: 34px; flex: none; display: grid; place-items: center; }
+.sedamRowIcon img { max-width: 34px; max-height: 28px; }
+
+.sedamRowInfo { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sedamRowInfo strong { font-size: 12px; color: #fbbf24; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sedamRowInfo small { font-size: 11px; opacity: .8; }
+.sedamRowDelete { margin-left: auto; align-self: center; flex: none; padding: 2px 7px; border-radius: 6px; font-size: 13px; opacity: .55; }
+.sedamRowDelete:hover { opacity: 1; background: var(--dash-danger-soft); color: #fca5a5; }
+
+.sedamMsg { flex-direction: column; gap: 3px; }
+.sedamMsgHead { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
+.sedamMsgHead strong { color: #fbbf24; }
+.sedamMsgHead span { opacity: .7; }
+.sedamMsgText { font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+
+
+.sedamPanel.offline .sedamPanelDot { background: #94a3b8; box-shadow: none; }

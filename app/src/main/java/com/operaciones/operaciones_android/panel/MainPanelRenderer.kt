@@ -75,6 +75,9 @@ class MainPanelRenderer(
         fun toggleSimulation()
         fun selectPersonalOnMap(idPersonal: Int, lat: Double, lon: Double, label: String)
         fun selectVehiculoOnMap(idVehiculo: Int, lat: Double?, lon: Double?, label: String)
+        fun focusVehiculoOnMap(idVehiculo: Int, lat: Double?, lon: Double?, label: String)
+        fun focusEquipoOnMap(idEquipo: Int, lat: Double?, lon: Double?, label: String)
+        fun focusDispositivoOnMap(idDispositivo: Int, lat: Double?, lon: Double?, label: String)
         fun selectEquipoOnMap(idEquipo: Int, lat: Double?, lon: Double?, label: String)
         fun selectDispositivoOnMap(idDispositivo: Int, lat: Double?, lon: Double?, label: String)
         fun selectPoiOnMap(idPoi: Int, lat: Double, lon: Double, label: String)
@@ -191,11 +194,12 @@ class MainPanelRenderer(
         onBack: () -> Unit,
         unreadCountFor: (ChatChannelSelection) -> Int = { 0 },
         lastMessageFor: (ChatChannelSelection) -> String = { "Sin mensajes todavía" },
+        onChannelsListed: (List<ChatChannelSelection>) -> Unit = {},
         onContactSelected: (ChatChannelSelection) -> Unit
     ) {
         chatRenderer.inflateContacts(
             panelContent, currentUser, personalList, vehiculosList,
-            onBack, unreadCountFor, lastMessageFor, onContactSelected
+            onBack, unreadCountFor, lastMessageFor, onChannelsListed, onContactSelected
         )
     }
 

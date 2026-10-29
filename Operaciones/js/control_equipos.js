@@ -283,7 +283,9 @@
       estado: e.estado ?? "DISPONIBLE",
       detalles: e.detalles ?? "",
       fecha_registro: e.fecha_registro ?? "",
-    }));
+    }))
+      // Lo más reciente arriba (el ID crece con cada alta).
+      .sort((a, b) => (Number(b.id_equipo) || 0) - (Number(a.id_equipo) || 0));
   }
 
   /* =========================
